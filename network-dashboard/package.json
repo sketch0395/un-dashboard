@@ -9,10 +9,23 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@xterm/xterm": "^5.5.0",
+    "child_process": "^1.0.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
     "flowbite-react": "^0.10.2",
+    "lucide-react": "^0.482.0",
     "next": "15.2.2",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-xtermjs": "^1.0.9",
+    "tailwind-merge": "^3.0.2",
+    "tailwindcss-animate": "^1.0.7",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0",
+    "xterm-addon-webgl": "^0.16.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
