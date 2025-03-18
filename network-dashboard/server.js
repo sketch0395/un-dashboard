@@ -1,27 +1,55 @@
 const express = require("express");
 const cors = require("cors");
 const { exec } = require("child_process");
+const next = require("next");
 
-const app = express();
-// app.use(cors());
-app.use(cors({ origin: "*" })); // Allow all origins
+const dev = process.env.NODE_ENV !== "production";
+const nextApp = next({ dev });
+const handle = nextApp.getRequestHandler();
 
+nextApp.prepare().then(() => {
+    const app = express();
+    app.use(cors({ origin: "*" })); // Allow all origins
+    app.use(express.json()); // Ensure JSON parsing
 
-app.get("/status/:containerId", (req, res) => {
-    const containerId = req.params.containerId;
+    // ✅ API Route: Get Docker container status
+    app.get("/status/:containerId", (req, res) => {
+        const containerId = req.params.containerId;
 
-    // exec(`docker inspect -f '{{.State.Running}}' ${containerId}`, (error, stdout) => {
-    //     if (error) {
-    //         return res.json({ status: "error" });
-    //     }
-    //     const status = stdout.trim() === "true" ? "running" : "stopped";
-    //     res.json({ status });
-    exec(`docker ps -q --filter "name=${containerId}"`, (error, stdout) => {
-        console.log(`Docker ps result: ${stdout.trim()}`);
-        const status = stdout.trim() ? "running" : "stopped";
-        res.json({ status });
+        exec(`docker ps -q --filter "name=${containerId}"`, (error, stdout) => {
+            console.log(`Docker ps result: ${stdout.trim()}`);
+            const status = stdout.trim() ? "running" : "stopped";
+            res.json({ status });
+        });
     });
-    
-});
 
-app.listen(4000, () => console.log("Server running on port 4000"));
+    // ✅ API Route: Start/Stop Docker container
+    app.post("/api/docker", (req, res) => {
+        const { containerId, action } = req.body;
+        if (!containerId || !["start", "stop"].includes(action)) {
+            return res.status(400).json({ error: "Invalid container ID or action" });
+        }
+
+        const command = `docker ${action} ${containerId}`;
+        console.log(`Executing: ${command}`);
+
+        exec(command, (error, stdout, stderr) => {
+            if (error) {
+                console.error("Docker command error:", stderr);
+                return res.status(500).json({ error: stderr || "Failed to execute command" });
+            }
+            res.status(200).json({ message: `Container ${action}ed successfully` });
+        });
+    });
+
+    // ✅ Forward all Next.js routes
+    app.all("*", (req, res) => {
+        return handle(req, res);
+    });
+
+    // ✅ Start server on a single port
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => {
+        console.log(`> Server running on http://localhost:${PORT}`);
+    });
+});

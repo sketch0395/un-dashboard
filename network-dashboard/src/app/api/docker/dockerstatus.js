@@ -9,7 +9,7 @@ export default function DockerStatus({ containerId }) {
     useEffect(() => {
         async function fetchStatus() {
             try {
-                const res = await fetch(`http://localhost:4000/status/${containerId}`);
+                const res = await fetch(`http://localhost:3000/status/${containerId}`);
                 const data = await res.json();
                 setStatus(data.status);
             } catch {
