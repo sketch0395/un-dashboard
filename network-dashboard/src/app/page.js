@@ -26,13 +26,13 @@ export default function Home() {
                 <DockerStatus containerId="es02" />
               </CardContent>
               <div className="pl-5">
-              <DockerControlButton containerId="es02" className="w-24" />
+              <DockerControlButton containerId="es02" />
               </div>
               <div className="px-5">
               
                 <Button
                   href="https://localhost:9200"
-                  className="flex text-black"
+                  className="flex text-black w-52 rounded"
                 >
                   Launch 
                 </Button>
@@ -49,13 +49,16 @@ export default function Home() {
 
               <CardContent>
                 <h1 className="font-bold">Container Status</h1>
-                <DockerStatus containerId="kib02" />
+                <DockerStatus containerId="es02" />
               </CardContent>
-              <div className="p-5">
+              <div className="pl-5">
               <DockerControlButton containerId="kib02" />
+              </div>
+              <div className="px-5">
+              
                 <Button
-                  href="https://localhost:5601"
-                  className="flex text-black"
+                  href="http://localhost:5601"
+                  className="flex text-black w-52 rounded"
                 >
                   Launch Kibana
                 </Button>

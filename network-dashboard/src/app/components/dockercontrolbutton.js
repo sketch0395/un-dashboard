@@ -47,7 +47,7 @@ export default function DockerControlButton({ containerId }) {
         <button
             onClick={toggleContainer}
             disabled={loading}
-            className={`px-4 py-2 font-bold text-white rounded ${isRunning ? "bg-red-600" : "bg-green-600"}`}
+            className={`px-4 py-2 flex w-52 font-bold text-white rounded ${isRunning ? "bg-red-600" : "bg-green-600"}`}
         >
             {loading ? "Processing..." : isRunning ? "Stop Container" : "Start Container"}
         </button>
