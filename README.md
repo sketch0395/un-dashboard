@@ -1,4 +1,6 @@
-# no-dashboard
+# un-dashboard
+
+I am terrible at documentation, will update this to accurately reflect everything. 
  
 #Requirements
 * Pull Docker Container for Elastic
