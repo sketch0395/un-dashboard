@@ -79,7 +79,7 @@ export default function Home() {
                 <DockerStatus containerId="mystifying_euler" />
               </CardContent>
               <div className="pl-5">
-              <DockerControlButton containerId="kib02" />
+              <DockerControlButton containerId="mystifying_euler" />
               </div>
               <div className="px-5">
               
