@@ -1,4 +1,6 @@
 # no-dashboard
+
+I am terrible at documentation, will update this to accurately reflect everything. 
  
 #Requirements
 * Docker Container for Elastic
