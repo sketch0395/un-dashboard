@@ -121,10 +121,10 @@ export default function Topbar() {
             <Link href="/" className="block py-2 px-3 text-blue-700 md:p-0">
               Home
             </Link>
-            <Link href="/about" className="block py-2 px-3 text-gray-900 md:p-0 hover:text-blue-700 dark:text-white">
-              About
+            <Link href="/tools" className="block py-2 px-3 text-gray-900 md:p-0 hover:text-blue-700 dark:text-white">
+              Tools
             </Link>
-            <Link href="#" className="block py-2 px-3 text-gray-900 md:p-0 hover:text-blue-700 dark:text-white">
+            {/* <Link href="#" className="block py-2 px-3 text-gray-900 md:p-0 hover:text-blue-700 dark:text-white">
               Services
             </Link>
             <Link href="#" className="block py-2 px-3 text-gray-900 md:p-0 hover:text-blue-700 dark:text-white">
@@ -132,7 +132,7 @@ export default function Topbar() {
             </Link>
             <Link href="#" className="block py-2 px-3 text-gray-900 md:p-0 hover:text-blue-700 dark:text-white">
               Contact
-            </Link>
+            </Link> */}
           </div>
         </div>
       </nav>

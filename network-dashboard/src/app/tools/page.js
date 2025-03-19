@@ -1,5 +1,5 @@
 import Dropit from "@/app/components/usermenu";
-import DockerStatus from "./api/docker/dockerstatus";
+import DockerStatus from "../api/docker/dockerstatus";
 import { Button } from "flowbite-react";
 import {
   Card,
@@ -8,10 +8,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import DockerControlButton from "./components/dockercontrolbutton";
-import Appcard from "./components/appcard";
+import DockerControlButton from "../components/dockercontrolbutton";
+import Appcard from "../components/appcard";
 
-export default function Home() {
+export default function Tools() {
   return (
     <>
       <div className="p-5 flex flex-wrap">
@@ -19,20 +19,20 @@ export default function Home() {
           <div className="p-1 rounded-2xl bg-gradient-to-b from-blue-400 to-fuchsia-500">
             <Card className={"w-64 justify-items-center place-content-center"}>
               <CardTitle className={"pl-4 text-xl font-bold"}>
-                Elastic logo here
+                Cyber Chef Logo
               </CardTitle>
 
               <CardContent>
                 <h1 className="font-bold">Container Status</h1>
-                <DockerStatus containerId="es02" />
+                <DockerStatus containerId="CyberChef" />
               </CardContent>
               <div className="pl-5">
-              <DockerControlButton containerId="es02" />
+              <DockerControlButton containerId="CyberChef" />
               </div>
               <div className="px-5">
               
                 <Button
-                  href="https://localhost:9200"
+                  href="http://localhost:32768"
                   className="flex text-black w-52 rounded"
                 >
                   Launch 
