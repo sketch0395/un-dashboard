@@ -58,9 +58,26 @@ const Tools = () => {
           </div>
         </div>
 
-        <div>
-          <terminal_1.default />
-          <xterm_1.Terminal />
+
+              <CardContent>
+                <h1 className="font-bold">Container Status</h1>
+                <DockerStatus containerId="mystifying_euler" />
+              </CardContent>
+              <div className="pl-5">
+              <DockerControlButton containerId="kib02" />
+              </div>
+              <div className="px-5">
+              
+                <Button
+                  href="http://localhost:8080"
+                  className="flex text-black w-52 rounded"
+                >
+                  fml
+                </Button>
+              </div>
+            </Card>
+          </div>
+
         </div>
       </div>
     </>);
