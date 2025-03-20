@@ -7,6 +7,8 @@ const dev = process.env.NODE_ENV !== "production";
 const nextApp = next({ dev });
 const handle = nextApp.getRequestHandler();
 
+const CONTAINER_NAME = "my_linux_container"; // Change to your container name
+
 nextApp.prepare().then(() => {
     const app = express();
     app.use(cors({ origin: "*" })); // Allow all origins
@@ -39,6 +41,17 @@ nextApp.prepare().then(() => {
                 return res.status(500).json({ error: stderr || "Failed to execute command" });
             }
             res.status(200).json({ message: `Container ${action}ed successfully` });
+        });
+    });
+
+    // ✅ API to execute commands inside Docker container
+    app.post("/exec", (req, res) => {
+        const { command } = req.body;
+        if (!command) return res.status(400).json({ error: "No command provided" });
+
+        exec(`docker exec my_linux_container bash -c "${command}"`, (error, stdout, stderr) => {
+            if (error) return res.json({ output: stderr || error.message });
+            res.json({ output: stdout });
         });
     });
 

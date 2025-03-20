@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import "xterm/css/xterm.css";
 
-// Load xterm.js dynamically (client-side only)
+// Load xterm.js only on the client
 const XTermDynamic = dynamic(() => import("xterm"), { ssr: false });
 const FitAddonDynamic = dynamic(() => import("xterm-addon-fit"), { ssr: false });
 
@@ -17,7 +17,6 @@ const XTermTerminal = () => {
   const [fitAddonModule, setFitAddonModule] = useState(null);
 
   useEffect(() => {
-    // Load xterm.js dynamically
     const loadXterm = async () => {
       const xterm = await import("xterm");
       const fitAddon = await import("xterm-addon-fit");
@@ -35,7 +34,7 @@ const XTermTerminal = () => {
     const { FitAddon } = fitAddonModule;
 
     const terminal = new Terminal({
-      cursorBlink: true, // Blinking cursor to indicate focus
+      cursorBlink: true,
       theme: {
         background: "#1E1E1E",
         foreground: "#FFFFFF",
@@ -47,22 +46,19 @@ const XTermTerminal = () => {
     terminal.open(terminalRef.current);
     fitAddon.fit();
 
-    terminal.focus(); // Ensure input focus
-    terminal.write("> "); // Display prompt
+    terminal.focus();
+    terminal.write("> ");
 
     // Handle user input
     terminal.onData((data) => {
       if (data === "\r") {
-        // Enter key pressed -> Process command
         handleCommand(terminal);
       } else if (data === "\x7F") {
-        // Backspace handling
         if (inputBuffer.current.length > 0) {
           inputBuffer.current = inputBuffer.current.slice(0, -1);
-          terminal.write("\b \b"); // Visually remove last character
+          terminal.write("\b \b");
         }
       } else {
-        // Append to input buffer and display character
         inputBuffer.current += data;
         terminal.write(data);
       }
@@ -76,25 +72,36 @@ const XTermTerminal = () => {
     };
   }, [xtermModule, fitAddonModule]);
 
-  // Function to process commands
-  const handleCommand = (terminal) => {
+  // Send command to Docker container
+  const handleCommand = async (terminal) => {
     const command = inputBuffer.current.trim();
-    terminal.write("\n"); // Move to next line
+    terminal.write("\n");
+
+    if (!command) {
+      terminal.write("> ");
+      return;
+    }
 
     if (command === "clear") {
       terminal.clear();
-    } else if (command === "help") {
-      terminal.writeln("Available commands:");
-      terminal.writeln(" - help : Show this message");
-      terminal.writeln(" - clear : Clear the terminal");
-      terminal.writeln(" - echo [text] : Print text to the terminal");
-    } else if (command.startsWith("echo ")) {
-      terminal.writeln(command.slice(5)); // Print whatever follows "echo "
-    } else if (command) {
-      terminal.writeln(`Command not found: ${command}`);
+      terminal.write("> ");
+      inputBuffer.current = "";
+      return;
     }
 
-    // Reset input buffer and prompt again
+    try {
+      const response = await fetch("http://localhost:3000/exec", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command }),
+      });
+
+      const data = await response.json();
+      terminal.writeln(data.output || "No output");
+    } catch (error) {
+      terminal.writeln("Error: Could not reach server");
+    }
+
     inputBuffer.current = "";
     terminal.write("\n> ");
   };
@@ -103,7 +110,7 @@ const XTermTerminal = () => {
     <div
       ref={terminalRef}
       className="w-full h-64 border border-gray-500 rounded-md"
-      onClick={() => term.current?.focus()} // Click to refocus input
+      onClick={() => term.current?.focus()}
     />
   );
 };
