@@ -87,7 +87,7 @@ export default function Tools() {
                   href="http://localhost:8080"
                   className="flex text-black w-52 rounded"
                 >
-                  Launch Dashy
+                  fml
                 </Button>
               </div>
             </Card>
