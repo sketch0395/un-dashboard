@@ -3,8 +3,11 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "xterm";
 import { FitAddon } from "xterm-addon-fit";
+<<<<<<< HEAD
 import { WebglAddon } from "xterm-addon-webgl";
 
+=======
+>>>>>>> 87b8b55a595c901c4ea3e72a5a28105afe942cdc
 // import "xterm/css/xterm.css";
 import dynamic from "next/dynamic";
 
