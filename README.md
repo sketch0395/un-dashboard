@@ -1,8 +1,16 @@
 # un-dashboard
 
 I am terrible at documentation, will update this to accurately reflect everything. 
+
+# About
+
+This project is a personal endevor to create a network toolkit that includes docker monitoring, network monitoring, and access to network management/security tools
+
+* Uses Next.js v15.0.2
+* ShadCN CSS UI
+* Tailwind CSS
  
-#Requirements
+# Dependencies
 * Pull Docker Container for Elastic
 ```Powershell
 docker pull docker.elastic.co/elasticsearch/elasticsearch:8.15.1
