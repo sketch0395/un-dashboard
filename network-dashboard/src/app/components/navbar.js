@@ -124,10 +124,10 @@ export default function Topbar() {
             <Link href="/tools" className="block py-2 px-3 text-gray-900 md:p-0 hover:text-blue-700 dark:text-white">
               Tools
             </Link>
-            {/* <Link href="#" className="block py-2 px-3 text-gray-900 md:p-0 hover:text-blue-700 dark:text-white">
-              Services
+            <Link href="terminalpage" className="block py-2 px-3 text-gray-900 md:p-0 hover:text-blue-700 dark:text-white">
+              Terminal
             </Link>
-            <Link href="#" className="block py-2 px-3 text-gray-900 md:p-0 hover:text-blue-700 dark:text-white">
+            {/* <Link href="#" className="block py-2 px-3 text-gray-900 md:p-0 hover:text-blue-700 dark:text-white">
               Pricing
             </Link>
             <Link href="#" className="block py-2 px-3 text-gray-900 md:p-0 hover:text-blue-700 dark:text-white">
