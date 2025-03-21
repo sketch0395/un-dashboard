@@ -9,12 +9,15 @@ This project is a personal endevor to create a network toolkit that includes doc
 * Uses Next.js v15.0.2
 * ShadCN CSS UI
 * Tailwind CSS
+* node server
+
+# Start
+* Start Node Server
+``` node start server.js ```
+
+* Start Next app
+``` npm run dev ```
  
-<<<<<<< HEAD
-#Requirements
-* Docker Container for Elastic
-* Docker Container for Kibana
-=======
 # Dependencies
 * Pull Docker Container for Elastic
 ```Powershell
@@ -35,6 +38,5 @@ docker pull docker.elastic.co/kibana/kibana:8.15.1
 ```Powershell
 docker run --name kib02 --net elastic-net -p 5601:5601 docker.elastic.co/kibana/kibana:8.15.1
 ```
->>>>>>> 87b8b55a595c901c4ea3e72a5a28105afe942cdc
 * Docker Container for Cyberchef
 * Docker Container for Dashy (this will be removed soon)
