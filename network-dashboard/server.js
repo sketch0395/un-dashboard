@@ -49,7 +49,7 @@ nextApp.prepare().then(() => {
         const { command } = req.body;
         if (!command) return res.status(400).json({ error: "No command provided" });
 
-        exec(`docker exec my_linux_container bash -c "${command}"`, (error, stdout, stderr) => {
+        exec(`docker exec test_sshd bash -c "${command}"`, (error, stdout, stderr) => {
             if (error) return res.json({ output: stderr || error.message });
             res.json({ output: stdout });
         });

@@ -50,7 +50,7 @@ export default function Home() {
 
               <CardContent>
                 <h1 className="font-bold">Container Status</h1>
-                <DockerStatus containerId="es02" />
+                <DockerStatus containerId="kib02" />
               </CardContent>
               <div className="pl-5">
               <DockerControlButton containerId="kib02" />
@@ -58,7 +58,7 @@ export default function Home() {
               <div className="px-5">
               
                 <Button
-                  href="http://localhost:5601"
+                  href="https://localhost:5601"
                   className="flex text-black w-52 rounded"
                 >
                   Launch Kibana
