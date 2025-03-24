@@ -1,0 +1,25 @@
+
+
+services:
+  speedtest-server:
+    build: .
+    container_name: speedtest-server
+    ports:
+      - "37221:37221"
+    depends_on:
+      - librespeed
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: npm run start-speedtest
+
+  librespeed:
+    image: ghcr.io/librespeed/speedtest:latest
+    container_name: librespeed
+    ports:
+      - "80:80"
+    environment:
+      - MODE=standalone
+      - TELEMETRY=false
+      - ENABLE_ID_OBFUSCATION=false
+      - ENABLE_MULTI_SERVER=false

@@ -1,0 +1,4 @@
+.console-log {
+  max-height: 12rem; /* Adjust the height as needed */
+  overflow-y: auto;
+}
