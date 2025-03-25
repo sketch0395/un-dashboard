@@ -1,7 +1,5 @@
 const http = require('http');
 const WebSocket = require('ws');
-const ping = require('ping');
-const axios = require('axios');
 
 const server = http.createServer((req, res) => {
   res.writeHead(200);
@@ -14,8 +12,10 @@ wss.on('connection', (ws) => {
   console.log('Client connected');
   let isRunning = false;
   let interval;
+  let downloadSpeeds = [];
+  let uploadSpeeds = [];
 
-  ws.on('message', async (message) => {
+  ws.on('message', (message) => {
     const { ip, action } = JSON.parse(message);
     console.log(`Received message: ${message}`);
 
@@ -31,74 +31,33 @@ wss.on('connection', (ws) => {
       isRunning = true;
       console.log(`Starting speed test for IP: ${ip}`);
 
-      // Conduct ping test before starting speed test
-      const pingPromises = [];
-      for (let i = 0; i < 8; i++) {
-        pingPromises.push(ping.promise.probe(ip, { timeout: 5 }));
-      }
+      interval = setInterval(() => {
+        if (!isRunning) return;
 
-      try {
-        const results = await Promise.all(pingPromises);
-        const aliveResults = results.filter(res => res.alive);
-        if (aliveResults.length === 0) {
-          console.error(`Ping test failed for IP: ${ip}`);
-          ws.send(JSON.stringify({ status: 'error', message: 'Ping test failed' }));
-          isRunning = false;
-          return;
-        }
+        // Simulate download and upload speeds in MB/s
+        const downloadSpeed = parseFloat((Math.random() * 100).toFixed(2));
+        const uploadSpeed = parseFloat((Math.random() * 50).toFixed(2));
+        downloadSpeeds.push(downloadSpeed);
+        uploadSpeeds.push(uploadSpeed);
 
-        const avgPingStats = {
-          host: ip,
-          alive: true,
-          time: (aliveResults.reduce((sum, res) => sum + res.time, 0) / aliveResults.length).toFixed(2),
-          min: Math.min(...aliveResults.map(res => res.min)).toFixed(2),
-          max: Math.max(...aliveResults.map(res => res.max)).toFixed(2),
-          avg: (aliveResults.reduce((sum, res) => sum + res.avg, 0) / aliveResults.length).toFixed(2),
-          stddev: (aliveResults.reduce((sum, res) => sum + res.stddev, 0) / aliveResults.length).toFixed(2),
-          packetLoss: ((results.length - aliveResults.length) / results.length * 100).toFixed(2)
-        };
+        const avgDownloadSpeed = (downloadSpeeds.reduce((a, b) => a + b, 0) / downloadSpeeds.length).toFixed(2);
+        const avgUploadSpeed = (uploadSpeeds.reduce((a, b) => a + b, 0) / uploadSpeeds.length).toFixed(2);
+        const maxDownloadSpeed = Math.max(...downloadSpeeds).toFixed(2);
+        const maxUploadSpeed = Math.max(...uploadSpeeds).toFixed(2);
 
-        console.log(`Ping test succeeded for IP: ${ip}`);
         ws.send(JSON.stringify({
-          status: 'ping',
-          pingStats: avgPingStats
+          downloadSpeed,
+          uploadSpeed,
+          avgDownloadSpeed,
+          avgUploadSpeed,
+          maxDownloadSpeed,
+          maxUploadSpeed
         }));
 
-        // Perform speed test using LibreSpeed API
-        const speedTest = async () => {
-          try {
-            const downloadResponse = await axios.get('http://librespeed/api/download');
-            const uploadResponse = await axios.get('http://librespeed/api/upload');
-
-            const downloadSpeed = downloadResponse.data.speed;
-            const uploadSpeed = uploadResponse.data.speed;
-
-            ws.send(JSON.stringify({
-              downloadSpeed,
-              uploadSpeed,
-              avgDownloadSpeed: downloadSpeed, // Update with actual average calculation if needed
-              avgUploadSpeed: uploadSpeed, // Update with actual average calculation if needed
-              maxDownloadSpeed: downloadSpeed, // Update with actual max calculation if needed
-              maxUploadSpeed: uploadSpeed // Update with actual max calculation if needed
-            }));
-
-            console.log(`Download speed: ${downloadSpeed} MB/s, Upload speed: ${uploadSpeed} MB/s`);
-          } catch (error) {
-            console.error('Speed test error:', error);
-            ws.send(JSON.stringify({ status: 'error', message: 'Speed test error' }));
-          }
-        };
-
-        interval = setInterval(() => {
-          if (!isRunning) return;
-          speedTest();
-        }, 1000); // Perform speed test every 1 second
-
-      } catch (err) {
-        console.error(`Ping test error for IP: ${ip}`, err);
-        ws.send(JSON.stringify({ status: 'error', message: 'Ping test error' }));
-        isRunning = false;
-      }
+        console.log(`Current download speed: ${downloadSpeed} MB/s, Current upload speed: ${uploadSpeed} MB/s`);
+        console.log(`Average download speed: ${avgDownloadSpeed} MB/s, Average upload speed: ${avgUploadSpeed} MB/s`);
+        console.log(`Fastest download speed: ${maxDownloadSpeed} MB/s, Fastest upload speed: ${maxUploadSpeed} MB/s`);
+      }, 1000); // Send data every 1 second
     }
   });
 
