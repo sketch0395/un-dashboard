@@ -26,7 +26,7 @@ export default function Home() {
 
               <CardContent>
                 <h1 className="font-bold">Container Status</h1>
-                <DockerStatus containerId="test_sshd" />
+                <DockerStatus containerId="CyberChef" />
               </CardContent>
               <div className="pl-5">
                 <DockerControlButton containerId="CyberChef" />

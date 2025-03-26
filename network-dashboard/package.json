@@ -11,6 +11,7 @@
   "dependencies": {
     "@shadcn/ui": "^0.0.4",
     "@xterm/xterm": "^5.5.0",
+    "axios": "^1.8.4",
     "bootstrap": "^5.3.3",
     "child_process": "^1.0.2",
     "class-variance-authority": "^0.7.1",
@@ -20,6 +21,7 @@
     "dns-over-http-resolver": "^3.0.9",
     "dns-query": "^0.11.2",
     "express": "^4.21.2",
+    "flask": "^0.2.10",
     "flowbite-react": "^0.10.2",
     "lucide-react": "^0.482.0",
     "next": "15.2.2",
