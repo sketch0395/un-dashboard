@@ -1,44 +1,52 @@
 const express = require("express");
+const { exec } = require("child_process");
 const cors = require("cors");
-const Docker = require("dockerode");
 
 const app = express();
-const docker = new Docker({ socketPath: "/var/run/docker.sock" });
-
 app.use(cors());
 app.use(express.json());
 
-// Get list of Docker containers
-app.get("/api/docker/status", async (req, res) => {
-  try {
-    const containers = await docker.listContainers({ all: true });
-    res.json(containers);
-  } catch (error) {
-    console.error("Docker API Error:", error.message);
-    res.status(500).json({ error: error.message });
-  }
+// Get all containers (running & stopped)
+app.get("/api/containers", (req, res) => {
+    exec(`docker ps -a --format "{{json .}}"`, (error, stdout, stderr) => {
+        if (error || stderr) {
+            console.error("Docker Error:", stderr || error.message);
+            return res.status(500).json({ error: stderr || error.message });
+        }
+
+        if (!stdout.trim()) return res.json([]); // No containers found
+
+        const containers = stdout.trim().split("\n").map(line => {
+            try {
+                return JSON.parse(line);
+            } catch (e) {
+                console.error("JSON Parse Error:", e.message, "Line:", line);
+                return null;
+            }
+        }).filter(Boolean);
+
+        res.json(containers);
+    });
 });
 
-// Start, Stop, Restart Containers
-app.post("/api/docker/control", async (req, res) => {
-  try {
-    const { containerId, action } = req.body;
-    const container = docker.getContainer(containerId);
+// Control container (start/stop/restart)
+app.post("/api/containers/:id/:action", (req, res) => {
+    const { id, action } = req.params;
+    if (!["start", "stop", "restart"].includes(action)) {
+        return res.status(400).json({ error: "Invalid action" });
+    }
 
-    if (action === "start") await container.start();
-    else if (action === "stop") await container.stop();
-    else if (action === "restart") await container.restart();
-    else return res.status(400).json({ error: "Invalid action" });
+    exec(`docker ${action} ${id}`, (error, stdout, stderr) => {
+        if (error || stderr) {
+            console.error(`Failed to ${action} container:`, stderr || error.message);
+            return res.status(500).json({ error: stderr || error.message });
+        }
 
-    res.json({ message: `Container ${action}ed successfully` });
-  } catch (error) {
-    console.error("Docker API Error:", error.message);
-    res.status(500).json({ error: error.message });
-  }
+        res.json({ message: `Container ${id} ${action}ed successfully` });
+    });
 });
 
-// Start the Express server
 const PORT = 4000;
 app.listen(PORT, () => {
-  console.log(`🚀 Express server running at http://localhost:${PORT}`);
+    console.log(`Express server running on port ${PORT}`);
 });
