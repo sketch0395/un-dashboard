@@ -1,26 +1,37 @@
-const express = require("express");
-const { exec } = require("child_process");
-const cors = require("cors");
+const express = require('express');
+const { exec } = require('child_process');
+const cors = require('cors');
+const socketIo = require('socket.io');
+const http = require('http');
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+const server = http.createServer(app);
+const io = socketIo(server);
 
-// Get all containers (running & stopped)
-app.get("/api/containers", (req, res) => {
-    exec(`docker ps -a --format "{{json .}}"`, (error, stdout, stderr) => {
+// Middleware
+app.use(cors());
+
+// Serve API to fetch Docker containers
+app.get('/api/containers', (req, res) => {
+    exec('docker ps -a --format "{{json .}}" --no-trunc', (error, stdout, stderr) => {
         if (error || stderr) {
-            console.error("Docker Error:", stderr || error.message);
+            console.error('Docker Error:', stderr || error.message);
             return res.status(500).json({ error: stderr || error.message });
         }
 
-        if (!stdout.trim()) return res.json([]); // No containers found
+        if (!stdout.trim()) return res.json([]);
 
-        const containers = stdout.trim().split("\n").map(line => {
+        const containers = stdout.trim().split('\n').map((line) => {
             try {
-                return JSON.parse(line);
+                const container = JSON.parse(line);
+
+                // Extract the host port dynamically (ephemeral port)
+                const portMatch = container.Ports?.match(/0.0.0.0:(\d+)->/);
+                container.PublishedPort = portMatch ? portMatch[1] : null;
+
+                return container;
             } catch (e) {
-                console.error("JSON Parse Error:", e.message, "Line:", line);
+                console.error('JSON Parse Error:', e.message, 'Line:', line);
                 return null;
             }
         }).filter(Boolean);
@@ -29,24 +40,84 @@ app.get("/api/containers", (req, res) => {
     });
 });
 
-// Control container (start/stop/restart)
-app.post("/api/containers/:id/:action", (req, res) => {
+// Start/Stop/Restart Docker containers
+app.post('/api/containers/:id/:action', (req, res) => {
     const { id, action } = req.params;
-    if (!["start", "stop", "restart"].includes(action)) {
-        return res.status(400).json({ error: "Invalid action" });
+
+    // Validate action
+    const validActions = ['start', 'stop', 'restart'];
+    if (!validActions.includes(action)) {
+        return res.status(400).json({ error: 'Invalid action' });
     }
 
-    exec(`docker ${action} ${id}`, (error, stdout, stderr) => {
+    exec(`docker container ${action} ${id}`, (error, stdout, stderr) => {
         if (error || stderr) {
-            console.error(`Failed to ${action} container:`, stderr || error.message);
+            console.error(`${action} Error:`, stderr || error.message);
             return res.status(500).json({ error: stderr || error.message });
         }
-
-        res.json({ message: `Container ${id} ${action}ed successfully` });
+        res.json({ message: `${action.charAt(0).toUpperCase() + action.slice(1)}ed successfully` });
     });
 });
 
-const PORT = 4000;
-app.listen(PORT, () => {
-    console.log(`Express server running on port ${PORT}`);
+// Socket.IO for real-time updates
+let lastFetched = Date.now();
+const SOCKET_UPDATE_INTERVAL = 10000; // 10 seconds (adjust as needed)
+
+io.on('connection', (socket) => {
+    console.log('A user connected');
+    let fetchContainersInterval;
+
+    const fetchContainers = () => {
+        // Avoid excessive updates
+        const currentTime = Date.now();
+        if (currentTime - lastFetched < SOCKET_UPDATE_INTERVAL) {
+            return; // Skip update if it's too soon
+        }
+        
+        lastFetched = currentTime; // Update last fetched time
+        
+        exec('docker ps -a --format "{{json .}}" --no-trunc', (error, stdout, stderr) => {
+            if (error || stderr) {
+                console.error('Docker Error:', stderr || error.message);
+                socket.emit('error', stderr || error.message);
+                return;
+            }
+
+            if (!stdout.trim()) {
+                socket.emit('containers', []);
+                return;
+            }
+
+            const containers = stdout.trim().split('\n').map((line) => {
+                try {
+                    const container = JSON.parse(line);
+
+                    // Extract the host port dynamically (ephemeral port)
+                    const portMatch = container.Ports?.match(/0.0.0.0:(\d+)->/);
+                    container.PublishedPort = portMatch ? portMatch[1] : null;
+
+                    return container;
+                } catch (e) {
+                    console.error('JSON Parse Error:', e.message, 'Line:', line);
+                    return null;
+                }
+            }).filter(Boolean);
+
+            socket.emit('containers', containers);
+        });
+    };
+
+    fetchContainers(); // Initial fetch on connect
+
+    fetchContainersInterval = setInterval(fetchContainers, SOCKET_UPDATE_INTERVAL);
+
+    socket.on('disconnect', () => {
+        console.log('User disconnected');
+        clearInterval(fetchContainersInterval);
+    });
+});
+
+// Start the server
+server.listen(4000, () => {
+    console.log('Server running on http://localhost:4000');
 });
