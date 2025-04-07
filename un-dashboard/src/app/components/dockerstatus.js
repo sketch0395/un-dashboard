@@ -9,16 +9,11 @@ export default function DockerStatus() {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        const socket = io("http://localhost:4000");
+        const socket = io("http://localhost:4002");
 
         socket.on("containers", (data) => {
             console.log("WebSocket Data:", data);
             setContainers(data);  // Update containers
-        });
-
-        socket.on("error", (err) => {
-            console.error("Socket Error:", err);
-            setError("Socket error occurred");
         });
 
         socket.on("connect_error", () => {
@@ -35,7 +30,7 @@ export default function DockerStatus() {
     }, []);
 
     const fetchContainers = () => {
-        fetch("http://localhost:4000/api/containers")
+        fetch("http://localhost:4002/api/containers")
             .then(res => res.json())
             .then(data => {
                 console.log("API response:", data);
@@ -55,18 +50,17 @@ export default function DockerStatus() {
             )
         );
 
-        fetch(`http://localhost:4000/api/containers/${id}/${action}`, { method: "POST" })
-            .then(() => {
-                fetchContainers();  // Re-fetch containers after action
-            })
-            .catch(err => {
-                console.error(`Failed to ${action} container:`, err);
-                setContainers(prevContainers =>
-                    prevContainers.map(container =>
-                        container.ID === id ? { ...container, refreshing: false } : container
-                    )
-                );
-            });
+        const socket = io("http://localhost:4002");
+        socket.emit('containerAction', { action, containerID: id });
+
+        socket.on('error', (message) => {
+            console.error(`Failed to ${action} container:`, message);
+            setContainers(prevContainers =>
+                prevContainers.map(container =>
+                    container.ID === id ? { ...container, refreshing: false } : container
+                )
+            );
+        });
     };
 
     const openContainerPage = (hostPort) => {
