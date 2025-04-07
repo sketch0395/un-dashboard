@@ -8,25 +8,16 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: 'http://localhost:3000', // Allow only your frontend to access the server
+        origin: 'http://localhost:3000',
         methods: ['GET', 'POST'],
         allowedHeaders: ['Content-Type'],
-        credentials: true, // Allow cookies if necessary
+        credentials: true,
     },
 });
 
-// CORS configuration for regular HTTP requests
-const corsOptions = {
-    origin: 'http://localhost:3000', // Allow only your frontend to access the server
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type'],
-    credentials: true, // Allow cookies if necessary
-};
+app.use(cors());
 
-// Middleware for HTTP CORS
-app.use(cors(corsOptions));
-
-// Docker API to fetch containers
+// --- DOCKER MANAGEMENT API ---
 app.get('/api/containers', (req, res) => {
     exec('docker ps -a --format "{{json .}}" --no-trunc', (error, stdout, stderr) => {
         if (error || stderr) {
@@ -39,11 +30,8 @@ app.get('/api/containers', (req, res) => {
         const containers = stdout.trim().split('\n').map((line) => {
             try {
                 const container = JSON.parse(line);
-
-                // Extract the host port dynamically (ephemeral port)
                 const portMatch = container.Ports?.match(/0.0.0.0:(\d+)->/);
                 container.PublishedPort = portMatch ? portMatch[1] : null;
-
                 return container;
             } catch (e) {
                 console.error('JSON Parse Error:', e.message, 'Line:', line);
@@ -55,94 +43,130 @@ app.get('/api/containers', (req, res) => {
     });
 });
 
-// Start/Stop/Restart Docker containers
-app.post('/api/containers/:id/:action', (req, res) => {
-    const { id, action } = req.params;
+// --- SOCKET.IO ---
+let lastFetched = 0;
+const SOCKET_UPDATE_INTERVAL = 10000; // Every 10 seconds
 
-    // Validate action
-    const validActions = ['start', 'stop', 'restart'];
-    if (!validActions.includes(action)) {
-        return res.status(400).json({ error: 'Invalid action' });
-    }
-
-    exec(`docker container ${action} ${id}`, (error, stdout, stderr) => {
+const fetchContainers = () => {
+    exec('docker ps -a --format "{{json .}}" --no-trunc', (error, stdout, stderr) => {
         if (error || stderr) {
-            console.error(`${action} Error:`, stderr || error.message);
-            return res.status(500).json({ error: stderr || error.message });
+            console.error('Docker Error:', stderr || error.message);
+            io.emit('error', stderr || error.message);
+            return;
         }
-        res.json({ message: `${action.charAt(0).toUpperCase() + action.slice(1)}ed successfully` });
+
+        if (!stdout.trim()) {
+            io.emit('containers', []);
+            return;
+        }
+
+        const containers = stdout.trim().split('\n').map((line) => {
+            try {
+                const container = JSON.parse(line);
+                const portMatch = container.Ports?.match(/0.0.0.0:(\d+)->/);
+                container.PublishedPort = portMatch ? portMatch[1] : null;
+                return container;
+            } catch (e) {
+                console.error('JSON Parse Error:', e.message, 'Line:', line);
+                return null;
+            }
+        }).filter(Boolean);
+
+        io.emit('containers', containers);
     });
-});
+};
 
-// WebSocket connection for network scan updates (using `nmap` command with status)
-let networkData = [];
-
+// Emit initial containers and set interval for future updates
 io.on('connection', (socket) => {
     console.log('A user connected');
-    
-    // Start network scan when client emits 'startNetworkScan'
-    socket.on('startNetworkScan', () => {
-        fetchNetworkScan(socket);
+    fetchContainers(); // Emit containers immediately on connect
+    const fetchContainersInterval = setInterval(fetchContainers, SOCKET_UPDATE_INTERVAL); // Fetch every 10 seconds
+
+    // Ensure containers update if Docker status changes
+    socket.on('disconnect', () => {
+        console.log('User disconnected');
+        clearInterval(fetchContainersInterval);
     });
 
-    // Emit network scan status during scan
-    const fetchNetworkScan = (socket) => {
-        const nmapCommand = 'nmap --unprivileged -sC -T4 -p- -vv -e eth2 10.5.1.1-255'; // Change the IP range as needed
-        const nmapProcess = exec(nmapCommand);
-
-        // Emit status updates to clients during scan
-        socket.emit('networkScanStatus', { status: 'Scanning network...', progress: '0%' });
-
-        let outputData = '';
-
-        nmapProcess.stdout.on('data', (data) => {
-            outputData += data;
-
-            // Check for progress or status output from Nmap
-            if (outputData.includes('Nmap scan report for')) {
-                socket.emit('networkScanStatus', { status: 'Scan in progress...', output: outputData });
+    // --- NETWORK SCAN VIA NMAP ---
+    const parseNmapOutput = (output) => {
+        const lines = output.split('\n');
+        const devices = [];
+        let currentDevice = {};
+    
+        lines.forEach((line) => {
+            if (line.includes('Nmap scan report for')) {
+                if (Object.keys(currentDevice).length) {
+                    devices.push(currentDevice);
+                }
+                currentDevice = { ip: line.split('Nmap scan report for ')[1].trim() };
+            } else if (line.includes('MAC Address:')) {
+                const parts = line.split('MAC Address: ')[1].split(' ');
+                currentDevice.mac = parts[0];
+                currentDevice.vendor = parts.slice(1).join(' ').trim();
+            } else if (line.includes('Host is up')) {
+                currentDevice.status = 'up';
+            } else if (line.match(/^\d+\/tcp/)) {
+                if (!currentDevice.ports) currentDevice.ports = [];
+                currentDevice.ports.push(line.trim());
             }
         });
+    
+        if (Object.keys(currentDevice).length) {
+            devices.push(currentDevice);
+        }
+    
+        return devices;
+    };
 
+    socket.on("startNetworkScan", ({ target }) => {
+        const sanitizedTarget = target?.trim() || "10.5.1.130-255"; // fallback
+    
+        // Option 1: Use host Nmap (recommended)
+        const nmapCommand = `nmap -sV -T4 -F ${sanitizedTarget}`;
+    
+        // Option 2: Use Docker Nmap (if necessary)
+        // const nmapCommand = `docker run --rm --cap-add=NET_RAW --cap-add=NET_ADMIN --network=host parrotsec/nmap nmap -sV -T4 -F ${sanitizedTarget}`;
+    
+        console.log('[SCAN] Starting Nmap scan on:', sanitizedTarget);
+    
+        const nmapProcess = exec(nmapCommand);
+    
+        socket.emit('networkScanStatus', { status: 'Scanning network...' });
+    
+        let outputData = '';
+    
+        nmapProcess.stdout.on('data', (data) => {
+            outputData += data;
+            socket.emit('networkScanStatus', { status: 'Scan in progress...', output: data });
+        
+            // Try to extract current IP being scanned
+            const match = data.toString().match(/Nmap scan report for ([^\s]+)/);
+            if (match && match[1]) {
+                socket.emit('currentScanIP', { ip: match[1] });
+            }
+        });
+        
+    
         nmapProcess.stderr.on('data', (data) => {
+            console.error('[SCAN] STDERR:', data);
             socket.emit('networkScanStatus', { status: 'Error during scan...', error: data });
         });
-
+    
         nmapProcess.on('close', (code) => {
             if (code === 0) {
                 socket.emit('networkScanStatus', { status: 'Scan complete' });
-
-                // Parse Nmap output to extract devices and emit network data
-                const devices = parseNmapOutput(outputData); // Customize this function as needed
-                networkData = devices;
-                socket.emit('networkData', networkData);
+                const devices = parseNmapOutput(outputData);
+                socket.emit('networkData', devices);
             } else {
                 socket.emit('networkScanStatus', { status: 'Scan failed', errorCode: code });
             }
         });
-    };
-
-    // Parse Nmap output to extract relevant information (customize as needed)
-    const parseNmapOutput = (output) => {
-        const lines = output.split('\n');
-        const devices = [];
-
-        lines.forEach(line => {
-            if (line.includes('Nmap scan report for')) {
-                const ip = line.split(' ')[4];  // Extract IP address
-                devices.push({ ip });
-            }
-        });
-
-        return devices;
-    };
-
-    socket.on('disconnect', () => {
-        console.log('User disconnected');
     });
+    
 });
 
-// Start the server
-server.listen(5001, () => {
-    console.log('Server running on http://localhost:5001');
+// --- START SERVER ---
+server.listen(4000, () => {
+    console.log('Server running on http://localhost:4000');
 });

@@ -16,6 +16,11 @@ export default function DockerStatus() {
             setContainers(data);  // Update containers
         });
 
+        socket.on("error", (err) => {
+            console.error("Socket Error:", err);
+            setError("Socket error occurred");
+        });
+
         socket.on("connect_error", () => {
             console.warn("WebSocket failed, using polling");
             fetchContainers();
