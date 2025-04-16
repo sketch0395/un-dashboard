@@ -3,6 +3,7 @@ const { exec } = require('child_process');
 const cors = require('cors');
 const socketIo = require('socket.io');
 const http = require('http');
+const Docker = require('dockerode'); // Import dockerode
 
 const app = express();
 const server = http.createServer(app);
@@ -18,29 +19,23 @@ const io = socketIo(server, {
 app.use(cors());
 
 // --- DOCKER MANAGEMENT API ---
-app.get('/api/containers', (req, res) => {
-    exec('docker ps -a --format "{{json .}}" --no-trunc', (error, stdout, stderr) => {
-        if (error || stderr) {
-            console.error('Docker Error:', stderr || error.message);
-            return res.status(500).json({ error: stderr || error.message });
-        }
+const docker = new Docker({ host: '10.5.1.212', port: 2375 }); // Connect to the remote Docker daemon
 
-        if (!stdout.trim()) return res.json([]);
-
-        const containers = stdout.trim().split('\n').map((line) => {
-            try {
-                const container = JSON.parse(line);
-                const portMatch = container.Ports?.match(/0.0.0.0:(\d+)->/);
-                container.PublishedPort = portMatch ? portMatch[1] : null;
-                return container;
-            } catch (e) {
-                console.error('JSON Parse Error:', e.message, 'Line:', line);
-                return null;
-            }
-        }).filter(Boolean);
-
-        res.json(containers);
-    });
+app.get('/api/containers', async (req, res) => {
+    try {
+        const containers = await docker.listContainers({ all: true });
+        const formattedContainers = containers.map((container) => {
+            const portMatch = container.Ports?.find((port) => port.PublicPort);
+            return {
+                ...container,
+                PublishedPort: portMatch ? portMatch.PublicPort : null,
+            };
+        });
+        res.json(formattedContainers);
+    } catch (error) {
+        console.error('Docker Error:', error.message);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // --- SOCKET.IO ---
@@ -51,71 +46,62 @@ io.on('connection', (socket) => {
     console.log('A user connected');
     let fetchContainersInterval;
 
-    // Emit Docker container list every 10 seconds
-    const fetchContainers = () => {
+    const fetchContainers = async () => {
         if (Date.now() - lastFetched < SOCKET_UPDATE_INTERVAL) return;
         lastFetched = Date.now();
 
-        exec('docker ps -a --format "{{json .}}" --no-trunc', (error, stdout, stderr) => {
-            if (error || stderr) {
-                console.error('Docker Error:', stderr || error.message);
-                socket.emit('error', stderr || error.message);
-                return;
-            }
-
-            if (!stdout.trim()) {
-                socket.emit('containers', []);
-                return;
-            }
-
-            const containers = stdout.trim().split('\n').map((line) => {
-                try {
-                    const container = JSON.parse(line);
-                    const portMatch = container.Ports?.match(/0.0.0.0:(\d+)->/);
-                    container.PublishedPort = portMatch ? portMatch[1] : null;
-                    return container;
-                } catch (e) {
-                    console.error('JSON Parse Error:', e.message, 'Line:', line);
-                    return null;
-                }
-            }).filter(Boolean);
-
-            socket.emit('containers', containers);
-        });
+        try {
+            const containers = await docker.listContainers({ all: true });
+            const formattedContainers = containers.map((container) => {
+                const portMatch = container.Ports?.find((port) => port.PublicPort);
+                return {
+                    ...container,
+                    PublishedPort: portMatch ? portMatch.PublicPort : null,
+                };
+            });
+            socket.emit('containers', formattedContainers);
+        } catch (error) {
+            console.error('Docker Error:', error.message);
+            socket.emit('error', error.message);
+        }
     };
 
     fetchContainers(); // On connect
     fetchContainersInterval = setInterval(fetchContainers, SOCKET_UPDATE_INTERVAL);
 
-    // Handle Docker container actions (start, stop, restart)
-    socket.on('containerAction', (data) => {
+    socket.on('containerAction', async (data) => {
         const { action, containerID } = data;
-        let command;
 
-        switch (action) {
-            case 'start':
-                command = `docker start ${containerID}`;
-                break;
-            case 'stop':
-                command = `docker stop ${containerID}`;
-                break;
-            case 'restart':
-                command = `docker restart ${containerID}`;
-                break;
-            default:
-                return;
+        if (!containerID) {
+            console.error("Invalid container ID received");
+            socket.emit('error', "Invalid container ID");
+            return;
         }
 
-        exec(command, (error, stdout, stderr) => {
-            if (error || stderr) {
-                console.error('Docker Error:', stderr || error.message);
-                socket.emit('error', stderr || error.message);
-                return;
+        try {
+            switch (action) {
+                case 'start':
+                    await docker.getContainer(containerID).start();
+                    break;
+                case 'stop':
+                    await docker.getContainer(containerID).stop();
+                    break;
+                case 'restart':
+                    await docker.getContainer(containerID).restart();
+                    break;
+                case 'delete':
+                    await docker.getContainer(containerID).remove({ force: true });
+                    break;
+                default:
+                    console.error("Invalid action:", action);
+                    return;
             }
-
             console.log(`Docker ${action} executed successfully`);
-            fetchContainers();  // Refresh the container list
-        });
+            fetchContainers(); // Refresh the container list
+        } catch (error) {
+            console.error('Docker Error:', error.message);
+            socket.emit('error', error.message);
+        }
     });
 
     socket.on('disconnect', () => {

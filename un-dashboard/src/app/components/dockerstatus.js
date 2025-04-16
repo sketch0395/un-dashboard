@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
-import DockerCard from "./dockercard"; // Import the DockerCard component
+import DockerCard from "./dockercard";
 
 export default function DockerStatus() {
     const [containers, setContainers] = useState([]);
@@ -13,14 +13,14 @@ export default function DockerStatus() {
 
         socket.on("containers", (data) => {
             console.log("WebSocket Data:", data);
-            setContainers(data);  // Update containers
+            setContainers(data);
         });
 
         socket.on("connect_error", () => {
             console.warn("WebSocket failed, using polling");
             fetchContainers();
 
-            const interval = setInterval(fetchContainers, 10000);  // Slow down polling
+            const interval = setInterval(fetchContainers, 10000);
             return () => clearInterval(interval);
         });
 
@@ -31,33 +31,39 @@ export default function DockerStatus() {
 
     const fetchContainers = () => {
         fetch("http://localhost:4002/api/containers")
-            .then(res => res.json())
-            .then(data => {
+            .then((res) => res.json())
+            .then((data) => {
                 console.log("API response:", data);
                 setContainers(Array.isArray(data) ? data : []);
             })
-            .catch(err => {
+            .catch((err) => {
                 console.error("Fetch error:", err);
                 setError("Failed to fetch containers");
             });
     };
 
     const handleAction = (id, action) => {
-        // Mark the container as refreshing
-        setContainers(prevContainers =>
-            prevContainers.map(container =>
-                container.ID === id ? { ...container, refreshing: true } : container
+        console.log("Container ID:", id, "Action:", action);
+
+        if (!id) {
+            console.error("Invalid container ID");
+            return;
+        }
+
+        setContainers((prevContainers) =>
+            prevContainers.map((container) =>
+                container.Id === id ? { ...container, refreshing: true } : container
             )
         );
 
         const socket = io("http://localhost:4002");
-        socket.emit('containerAction', { action, containerID: id });
+        socket.emit("containerAction", { action, containerID: id });
 
-        socket.on('error', (message) => {
+        socket.on("error", (message) => {
             console.error(`Failed to ${action} container:`, message);
-            setContainers(prevContainers =>
-                prevContainers.map(container =>
-                    container.ID === id ? { ...container, refreshing: false } : container
+            setContainers((prevContainers) =>
+                prevContainers.map((container) =>
+                    container.Id === id ? { ...container, refreshing: false } : container
                 )
             );
         });
@@ -79,7 +85,7 @@ export default function DockerStatus() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                     {containers.map((container) => (
                         <DockerCard
-                            key={container.ID}
+                            key={container.Id}
                             container={container}
                             onAction={handleAction}
                             onOpenContainerPage={openContainerPage}

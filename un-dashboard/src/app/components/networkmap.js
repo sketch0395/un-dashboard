@@ -11,15 +11,22 @@ export default function NetworkMap({ devices, onClearHistory }) {
     const [vendorColors, setVendorColors] = useState({}); // Store custom colors for vendors
     const [isVendorColorModalOpen, setIsVendorColorModalOpen] = useState(false); // Modal state
     const [useDocker, setUseDocker] = useState(false);
+    const [scanHistory, setScanHistory] = useState([]); // Store history of scans
+    const [contextMenu, setContextMenu] = useState(null); // Context menu state
 
     useEffect(() => {
-        console.log("Devices:", devices);
         if (!devices || Object.keys(devices).length === 0) return;
 
-        // Flatten the grouped devices into a single array
-        const flattenedDevices = Object.values(devices).flat();
-        console.log("Flattened Devices:", flattenedDevices);
+        // Merge new devices into scan history
+        setScanHistory((prevHistory) => {
+            const flattenedDevices = Object.values(devices).flat();
+            const existingIPs = new Set(prevHistory.map((device) => device.ip));
+            const newDevices = flattenedDevices.filter((device) => !existingIPs.has(device.ip));
+            return [...prevHistory, ...newDevices];
+        });
+    }, [devices]);
 
+    useEffect(() => {
         const width = svgRef.current.clientWidth || 1000;
         const height = svgRef.current.clientHeight || 600;
 
@@ -37,13 +44,14 @@ export default function NetworkMap({ devices, onClearHistory }) {
         svg.call(zoomBehavior);
 
         // Create nodes
-        const nodes = flattenedDevices.map((d, i) => ({
+        const nodes = scanHistory.map((d, i) => ({
             ...d,
             id: d.ip || `device-${i}`, // Ensure unique id
             vendor: d.vendor || "Unknown",
             ip: d.ip || `Unknown IP ${i}`,
-            x: Math.random() * width, // Initial random position
-            y: Math.random() * height,
+            x: d.x || Math.random() * width, // Preserve position if available
+            y: d.y || Math.random() * height,
+            locked: d.locked || false, // Preserve locked state
         }));
 
         // Create links
@@ -51,9 +59,6 @@ export default function NetworkMap({ devices, onClearHistory }) {
             source: node.id, // Use the node's id
             target: nodes[(i + 1) % nodes.length].id, // Link to the next node in the array
         }));
-
-        console.log("Nodes:", nodes);
-        console.log("Links:", links);
 
         const simulation = d3.forceSimulation(nodes)
             .force("charge", d3.forceManyBody().strength(-300)) // Increase repulsion
@@ -86,20 +91,33 @@ export default function NetworkMap({ devices, onClearHistory }) {
                 d3.drag()
                     .on("start", (event, d) => {
                         if (!event.active) simulation.alphaTarget(0.3).restart();
-                        d.fx = d.x;
-                        d.fy = d.y;
+                        if (!d.locked) {
+                            d.fx = d.x;
+                            d.fy = d.y;
+                        }
                     })
                     .on("drag", (event, d) => {
-                        d.fx = event.x;
-                        d.fy = event.y;
+                        if (!d.locked) {
+                            d.fx = event.x;
+                            d.fy = event.y;
+                        }
                     })
                     .on("end", (event, d) => {
                         if (!event.active) simulation.alphaTarget(0);
-                        d.fx = null;
-                        d.fy = null;
+                        if (!d.locked) {
+                            d.fx = null;
+                            d.fy = null;
+                        }
                     })
             )
-            .on("click", (_, d) => setSelectedDevice(d));
+            .on("contextmenu", (event, d) => {
+                event.preventDefault();
+                setContextMenu({
+                    x: event.pageX,
+                    y: event.pageY,
+                    device: d,
+                });
+            });
 
         // Add labels
         const label = zoomLayer
@@ -129,19 +147,36 @@ export default function NetworkMap({ devices, onClearHistory }) {
         }
 
         return () => simulation.stop();
-    }, [devices, customNames, vendorColors]);
+    }, [scanHistory, customNames, vendorColors]);
 
-    // Function to determine node color based on device properties or custom vendor colors
     const getNodeColor = (device) => {
         const vendor = device.vendor?.toLowerCase() || "unknown";
         return vendorColors[vendor] || "#6b7280"; // Default gray
     };
 
-    const handleVendorColorChange = (vendor, color) => {
-        setVendorColors((prev) => ({
-            ...prev,
-            [vendor.toLowerCase()]: color,
-        }));
+    const handleContextMenuAction = (action, device) => {
+        if (action === "lock") {
+            setScanHistory((prev) =>
+                prev.map((d) => (d.id === device.id ? { ...d, locked: !d.locked } : d))
+            );
+        } else if (action === "changeColor") {
+            const newColor = prompt("Enter a new color (hex or name):", "#6b7280");
+            if (newColor) {
+                setVendorColors((prev) => ({
+                    ...prev,
+                    [device.vendor.toLowerCase()]: newColor,
+                }));
+            }
+        } else if (action === "changeName") {
+            const newName = prompt("Enter a new name:", device.ip);
+            if (newName) {
+                setCustomNames((prev) => ({
+                    ...prev,
+                    [device.id]: newName,
+                }));
+            }
+        }
+        setContextMenu(null);
     };
 
     const startScan = () => {
@@ -151,6 +186,32 @@ export default function NetworkMap({ devices, onClearHistory }) {
     return (
         <div className="relative w-full h-full bg-gray-900 rounded-lg shadow-lg overflow-hidden">
             <svg ref={svgRef} width="100%" height="100%" className="select-none" />
+
+            {contextMenu && (
+                <div
+                    className="absolute bg-gray-800 text-white p-2 rounded shadow-lg"
+                    style={{ top: contextMenu.y, left: contextMenu.x }}
+                >
+                    <button
+                        className="block w-full text-left px-4 py-2 hover:bg-gray-700"
+                        onClick={() => handleContextMenuAction("lock", contextMenu.device)}
+                    >
+                        {contextMenu.device.locked ? "Unlock Node" : "Lock Node"}
+                    </button>
+                    <button
+                        className="block w-full text-left px-4 py-2 hover:bg-gray-700"
+                        onClick={() => handleContextMenuAction("changeColor", contextMenu.device)}
+                    >
+                        Change Vendor Color
+                    </button>
+                    <button
+                        className="block w-full text-left px-4 py-2 hover:bg-gray-700"
+                        onClick={() => handleContextMenuAction("changeName", contextMenu.device)}
+                    >
+                        Change Name
+                    </button>
+                </div>
+            )}
 
             {isVendorColorModalOpen && (
                 <div className="absolute top-0 left-0 w-full h-full bg-black bg-opacity-80 flex items-center justify-center z-50">

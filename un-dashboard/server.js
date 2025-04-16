@@ -3,6 +3,7 @@ const { spawn, execSync } = require('child_process'); // Add execSync for checki
 const cors = require('cors');
 const socketIo = require('socket.io');
 const http = require('http');
+const Docker = require('dockerode'); // Import dockerode for remote Docker integration
 
 const app = express();
 const server = http.createServer(app);
@@ -84,10 +85,13 @@ const isDockerAvailable = () => {
     }
 };
 
+// Connect to the external Docker daemon
+const docker = new Docker({ host: '10.5.1.212', port: 2375 });
+
 io.on('connection', (socket) => {
     console.log('A user connected');
 
-    socket.on('startNetworkScan', (data) => {
+    socket.on('startNetworkScan', async (data) => {
         const { range, useDocker } = data;
 
         if (!range) {
@@ -101,19 +105,44 @@ io.on('connection', (socket) => {
         }
 
         if (useDocker) {
-            if (!isDockerAvailable()) {
-                socket.emit('networkScanStatus', { status: 'Error: Docker is not installed on the host system.' });
-                console.error('Error: Docker is not installed on the host system.');
-                return;
+            try {
+                console.log(`[SCAN] Starting Nmap scan using external Docker for range: ${range}...`);
+
+                // Run the Nmap container on the external Docker instance
+                const container = await docker.createContainer({
+                    Image: 'instrumentisto/nmap',
+                    Cmd: ['-Pn', '-sS', '-O', '-p', DEFAULT_PORTS, range],
+                    HostConfig: {
+                        NetworkMode: 'host',
+                    },
+                });
+
+                await container.start();
+
+                let outputData = '';
+                const stream = await container.logs({
+                    follow: true,
+                    stdout: true,
+                    stderr: true,
+                });
+
+                stream.on('data', (chunk) => {
+                    const data = chunk.toString();
+                    outputData += data;
+                    socket.emit('networkScanStatus', { status: 'Scan in progress...', output: data });
+                });
+
+                stream.on('end', async () => {
+                    await container.remove();
+                    const groupedDevices = parseNmapOutput(outputData);
+                    console.log('Grouped Devices:', groupedDevices);
+                    socket.emit('networkData', groupedDevices);
+                    socket.emit('networkScanStatus', { status: 'Scan complete' });
+                });
+            } catch (error) {
+                console.error('Error during Docker-based scan:', error.message);
+                socket.emit('networkScanStatus', { status: 'Error during Docker-based scan', error: error.message });
             }
-
-            console.log(`[SCAN] Starting Nmap scan using Docker for range: ${range}...`);
-            const nmapProcess = spawn('docker', [
-                'run', '--rm', '--network=host', 'instrumentisto/nmap',
-                '-Pn', '-sS', '-O', '-p', DEFAULT_PORTS, range
-            ]);
-
-            handleNmapProcess(nmapProcess, socket);
         } else {
             if (!isNmapAvailable()) {
                 socket.emit('networkScanStatus', { status: 'Error: Nmap is not installed on the host system.' });
@@ -122,9 +151,7 @@ io.on('connection', (socket) => {
             }
 
             console.log(`[SCAN] Starting Nmap scan on host for range: ${range}...`);
-            const nmapProcess = spawn('nmap', [
-                '-Pn', '-sS', '-O', '-p', DEFAULT_PORTS, range
-            ]);
+            const nmapProcess = spawn('nmap', ['-Pn', '-sS', '-O', '-p', DEFAULT_PORTS, range]);
 
             handleNmapProcess(nmapProcess, socket);
         }

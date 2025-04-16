@@ -32,6 +32,7 @@ export default function NetworkDashboard() {
     const [useDocker, setUseDocker] = useState(false);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, node: null });
     const [newDeviceIPs, setNewDeviceIPs] = useState([]); // Track new device IPs
+    const [selectedVendor, setSelectedVendor] = useState(null); // Track selected vendor for color change
 
     const colorPalette = [
         "#FF5733", "#33FF57", "#3357FF", "#FFC300", "#DAF7A6", "#C70039", "#900C3F", "#581845",
@@ -95,12 +96,12 @@ export default function NetworkDashboard() {
 
     const mergeDevices = (newDevices) => {
         const updatedDevices = { ...devices };
-    
+
         Object.entries(newDevices).forEach(([vendor, vendorDevices]) => {
             if (!updatedDevices[vendor]) {
                 updatedDevices[vendor] = [];
             }
-    
+
             vendorDevices.forEach((newDevice) => {
                 const exists = updatedDevices[vendor].some((device) => device.ip === newDevice.ip);
                 if (!exists) {
@@ -108,7 +109,7 @@ export default function NetworkDashboard() {
                 }
             });
         });
-    
+
         console.log("Merged Devices:", updatedDevices); // Debugging log
         setDevices(updatedDevices);
     };
@@ -156,6 +157,36 @@ export default function NetworkDashboard() {
 
     const toggleExpand = (ip) => {
         setExpandedIPs((prev) => ({ ...prev, [ip]: !prev[ip] }));
+    };
+
+    const handleContextMenuAction = (action, device) => {
+        if (action === "lock") {
+            setDeviceHistory((prev) =>
+                prev.map((d) => (d.ip === device.ip ? { ...d, locked: !d.locked } : d))
+            );
+        } else if (action === "changeColor") {
+            setSelectedVendor(device.vendor.toLowerCase());
+            setIsVendorColorModalOpen(true);
+        } else if (action === "changeName") {
+            const newName = prompt("Enter a new name:", device.ip);
+            if (newName) {
+                setCustomNames((prev) => ({
+                    ...prev,
+                    [device.ip]: newName,
+                }));
+            }
+        }
+        setContextMenu({ visible: false, x: 0, y: 0, node: null });
+    };
+
+    const handleVendorColorChange = (color) => {
+        if (selectedVendor) {
+            setVendorColors((prev) => ({
+                ...prev,
+                [selectedVendor]: color,
+            }));
+        }
+        setIsVendorColorModalOpen(false);
     };
 
     useEffect(() => {
@@ -233,7 +264,11 @@ export default function NetworkDashboard() {
             .attr("fill", (d) => vendorColors[d.vendor?.toLowerCase()] || "#6b7280")
             .attr("stroke", "#1e3a8a")
             .attr("stroke-width", 2)
-            .style("cursor", "pointer");
+            .style("cursor", "pointer")
+            .on("contextmenu", (event, d) => {
+                event.preventDefault();
+                setContextMenu({ visible: true, x: event.pageX, y: event.pageY, node: d });
+            });
 
         zoomLayer
             .selectAll("text")
@@ -328,6 +363,60 @@ export default function NetworkDashboard() {
                     <svg ref={svgRef} width="100%" height="100%" className="select-none" />
                 </div>
             </div>
+
+            {/* Context Menu */}
+            {contextMenu.visible && (
+                <div
+                    className="absolute bg-gray-800 text-white p-2 rounded shadow-lg"
+                    style={{ top: contextMenu.y, left: contextMenu.x }}
+                >
+                    <button
+                        className="block w-full text-left px-4 py-2 hover:bg-gray-700"
+                        onClick={() => handleContextMenuAction("lock", contextMenu.node)}
+                    >
+                        {contextMenu.node.locked ? "Unlock Node" : "Lock Node"}
+                    </button>
+                    <button
+                        className="block w-full text-left px-4 py-2 hover:bg-gray-700"
+                        onClick={() => handleContextMenuAction("changeColor", contextMenu.node)}
+                    >
+                        Change Vendor Color
+                    </button>
+                    <button
+                        className="block w-full text-left px-4 py-2 hover:bg-gray-700"
+                        onClick={() => handleContextMenuAction("changeName", contextMenu.node)}
+                    >
+                        Change Name
+                    </button>
+                </div>
+            )}
+
+            {/* Vendor Color Modal */}
+            {isVendorColorModalOpen && (
+                <div className="absolute top-0 left-0 w-full h-full bg-black bg-opacity-80 flex items-center justify-center z-50">
+                    <div className="bg-white text-black p-6 rounded-lg max-w-md w-full shadow-xl">
+                        <h2 className="text-lg font-bold mb-4">Select Vendor Color</h2>
+                        <div className="grid grid-cols-4 gap-4">
+                            {colorPalette.map((color) => (
+                                <button
+                                    key={color}
+                                    className="w-10 h-10 rounded-full"
+                                    style={{ backgroundColor: color }}
+                                    onClick={() => handleVendorColorChange(color)}
+                                />
+                            ))}
+                        </div>
+                        <div className="text-right mt-4">
+                            <button
+                                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                                onClick={() => setIsVendorColorModalOpen(false)}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
