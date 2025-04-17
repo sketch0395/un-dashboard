@@ -9,7 +9,7 @@ export default function DockerStatus() {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        const socket = io("http://localhost:4002");
+        const socket = io("http://10.5.1.83:4002");
 
         socket.on("containers", (data) => {
             console.log("WebSocket Data:", data);
@@ -30,7 +30,7 @@ export default function DockerStatus() {
     }, []);
 
     const fetchContainers = () => {
-        fetch("http://localhost:4002/api/containers")
+        fetch("http://10.5.1.83:4002/api/containers")
             .then((res) => res.json())
             .then((data) => {
                 console.log("API response:", data);
@@ -56,7 +56,7 @@ export default function DockerStatus() {
             )
         );
 
-        const socket = io("http://localhost:4002");
+        const socket = io("http://10.5.1.83:4002");
         socket.emit("containerAction", { action, containerID: id });
 
         socket.on("error", (message) => {
@@ -71,7 +71,7 @@ export default function DockerStatus() {
 
     const openContainerPage = (hostPort) => {
         const protocol = hostPort === "443" ? "https" : "http";
-        window.open(`${protocol}://localhost:${hostPort}`, "_blank");
+        window.open(`${protocol}://10.5.1.212:${hostPort}`, "_blank");
     };
 
     return (

@@ -9,7 +9,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: 'http://localhost:3000',
+        origin: 'http://10.5.1.83:3000',
         methods: ['GET', 'POST'],
         allowedHeaders: ['Content-Type'],
         credentials: true,
@@ -112,5 +112,5 @@ io.on('connection', (socket) => {
 
 // --- START SERVER ---
 server.listen(4002, () => {
-    console.log('Server running on http://localhost:4002');
+    console.log('Server running on http://10.5.1.83:4002');
 });

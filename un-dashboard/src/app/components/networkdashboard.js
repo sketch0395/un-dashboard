@@ -15,13 +15,8 @@ export default function NetworkDashboard() {
     const [scanOutput, setScanOutput] = useState("");
     const [ipRange, setIpRange] = useState("10.5.1.130-255");
     const [scannedSubnets, setScannedSubnets] = useState([]); // Track scanned subnets
-    const [deviceHistory, setDeviceHistory] = useState(() => {
-        if (typeof window !== "undefined") {
-            const savedHistory = localStorage.getItem("deviceHistory");
-            return savedHistory ? JSON.parse(savedHistory) : [];
-        }
-        return []; // Return an empty array if localStorage is not available
-    });
+    const [deviceHistory, setDeviceHistory] = useState([]);
+    const [scanHistory, setScanHistory] = useState([]);
     const [expandedIPs, setExpandedIPs] = useState({});
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedDevice, setSelectedDevice] = useState(null);
@@ -57,7 +52,17 @@ export default function NetworkDashboard() {
     }, {});
 
     useEffect(() => {
-        const socket = io("http://localhost:4000");
+        if (typeof window !== "undefined") {
+            const savedDeviceHistory = localStorage.getItem("deviceHistory");
+            const savedScanHistory = localStorage.getItem("scanHistory");
+
+            setDeviceHistory(savedDeviceHistory ? JSON.parse(savedDeviceHistory) : []);
+            setScanHistory(savedScanHistory ? JSON.parse(savedScanHistory) : []);
+        }
+    }, []);
+
+    useEffect(() => {
+        const socket = io("http://10.5.1.83:4000");
         socketRef.current = socket;
 
         socket.on("networkScanStatus", (data) => {
@@ -70,16 +75,51 @@ export default function NetworkDashboard() {
         });
 
         socket.on("networkData", (data) => {
-            console.log("New Scan Data:", data); // Debugging log
+            console.log("Received networkData event:", data); // Debugging log
+
+            if (!data || Object.keys(data).length === 0) {
+                console.error("No data received from networkData event");
+                return;
+            }
+
             mergeDevices(data); // Merge new devices into the existing topology
             setStatus("Scan complete");
             setCurrentScanIP(null);
             assignRandomColorsToVendors(data); // Assign random colors to vendors
+
+            // Update device history
             updateDeviceHistory(data);
+
+            // Update scan history
+            setScanHistory((prev) => {
+                const updatedHistory = prev.map((scan) =>
+                    scan.ipRange === ipRange ? { ...scan, status: "Complete", devices: data } : scan
+                );
+                console.log("Updated Scan History:", updatedHistory); // Debugging log
+                localStorage.setItem("scanHistory", JSON.stringify(updatedHistory));
+                return updatedHistory;
+            });
         });
 
         return () => socket.disconnect();
     }, []);
+
+    useEffect(() => {
+        const timeout = setTimeout(() => {
+            if (status === "In Progress") {
+                setStatus("Scan complete (timeout)");
+                console.warn("Scan status updated to complete due to timeout");
+            }
+        }, 30000); // 30 seconds timeout
+
+        return () => clearTimeout(timeout);
+    }, [status]);
+
+    useEffect(() => {
+        if (scanHistory.length > 0) {
+            mergeScanHistoryToDevices();
+        }
+    }, [scanHistory]);
 
     const assignRandomColorsToVendors = (devices) => {
         const newVendorColors = { ...vendorColors };
@@ -103,8 +143,12 @@ export default function NetworkDashboard() {
             }
 
             vendorDevices.forEach((newDevice) => {
-                const exists = updatedDevices[vendor].some((device) => device.ip === newDevice.ip);
-                if (!exists) {
+                const existingDevice = updatedDevices[vendor].find((device) => device.ip === newDevice.ip);
+                if (existingDevice) {
+                    // Preserve locked positions (fx, fy) if the device already exists
+                    newDevice.fx = existingDevice.fx;
+                    newDevice.fy = existingDevice.fy;
+                } else {
                     updatedDevices[vendor].push(newDevice);
                 }
             });
@@ -115,14 +159,25 @@ export default function NetworkDashboard() {
     };
 
     const updateDeviceHistory = (newDevices) => {
+        console.log("Updating Device History with:", newDevices); // Debugging log
+
+        if (!newDevices || Object.keys(newDevices).length === 0) {
+            console.error("No devices to update in device history");
+            return;
+        }
+
         const updatedHistory = [...deviceHistory];
         const newDeviceIPs = [];
 
         Object.values(newDevices).flat().forEach((device) => {
             const existingDevice = updatedHistory.find((d) => d.ip === device.ip);
             if (!existingDevice) {
-                updatedHistory.push({ ...device, x: null, y: null }); // Add new device with no position
+                updatedHistory.push({ ...device, x: null, y: null, fx: null, fy: null }); // Add new device with no position
                 newDeviceIPs.push(device.ip);
+            } else {
+                // Preserve locked positions (fx, fy) in the history
+                existingDevice.fx = existingDevice.fx || null;
+                existingDevice.fy = existingDevice.fy || null;
             }
         });
 
@@ -131,8 +186,34 @@ export default function NetworkDashboard() {
             setTimeout(() => setNewDeviceIPs([]), 5000); // Clear highlights after 5 seconds
         }
 
+        console.log("Updated Device History:", updatedHistory); // Debugging log
         setDeviceHistory(updatedHistory);
         localStorage.setItem("deviceHistory", JSON.stringify(updatedHistory));
+    };
+
+    const mergeScanHistoryToDevices = () => {
+        const mergedDevices = {};
+
+        // Iterate through scanHistory and merge devices
+        scanHistory.forEach((scan) => {
+            if (scan.devices) {
+                Object.entries(scan.devices).forEach(([vendor, vendorDevices]) => {
+                    if (!mergedDevices[vendor]) {
+                        mergedDevices[vendor] = [];
+                    }
+
+                    vendorDevices.forEach((device) => {
+                        const existingDevice = mergedDevices[vendor].find((d) => d.ip === device.ip);
+                        if (!existingDevice) {
+                            mergedDevices[vendor].push(device);
+                        }
+                    });
+                });
+            }
+        });
+
+        console.log("Merged Devices from Scan History:", mergedDevices); // Debugging log
+        setDevices(mergedDevices); // Update the devices state
     };
 
     const clearHistory = () => {
@@ -148,6 +229,18 @@ export default function NetworkDashboard() {
             alert(`Subnet ${ipRange} has already been scanned.`);
             return;
         }
+
+        const newScan = {
+            ipRange,
+            timestamp: new Date().toISOString(),
+            status: "In Progress",
+        };
+
+        setScanHistory((prev) => {
+            const updatedHistory = [...prev, newScan];
+            localStorage.setItem("scanHistory", JSON.stringify(updatedHistory));
+            return updatedHistory;
+        });
 
         setScannedSubnets((prev) => [...prev, ipRange]);
         setStatus("Starting scan...");
@@ -247,6 +340,21 @@ export default function NetworkDashboard() {
                     .attr("y", (d) => d.y);
             });
 
+        const drag = d3.drag()
+            .on("start", (event, d) => {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x; // Fix the node's x position
+                d.fy = d.y; // Fix the node's y position
+            })
+            .on("drag", (event, d) => {
+                d.fx = event.x; // Update the fixed x position during drag
+                d.fy = event.y; // Update the fixed y position during drag
+            })
+            .on("end", (event, d) => {
+                if (!event.active) simulation.alphaTarget(0);
+                // Keep the node locked in place by retaining fx and fy
+            });
+
         zoomLayer
             .selectAll("line")
             .data(links)
@@ -268,7 +376,8 @@ export default function NetworkDashboard() {
             .on("contextmenu", (event, d) => {
                 event.preventDefault();
                 setContextMenu({ visible: true, x: event.pageX, y: event.pageY, node: d });
-            });
+            })
+            .call(drag);
 
         zoomLayer
             .selectAll("text")
@@ -317,6 +426,12 @@ export default function NetworkDashboard() {
                 >
                     Clear History
                 </button>
+                <button
+                    onClick={mergeScanHistoryToDevices}
+                    className="w-full bg-green-600 hover:bg-green-700 px-4 py-2 rounded mb-4"
+                >
+                    Merge Scans to Topology
+                </button>
                 <input
                     type="text"
                     value={searchQuery}
@@ -355,6 +470,31 @@ export default function NetworkDashboard() {
                         </div>
                     ))}
                 </div>
+                <h2 className="text-xl font-bold mb-4">Scan History</h2>
+                {scanHistory.length > 0 && scanHistory.map((scan, idx) => (
+                    <div key={idx} className="mb-4 bg-gray-700 p-3 rounded">
+                        <p><strong>IP Range:</strong> {scan.ipRange}</p>
+                        <p><strong>Timestamp:</strong> {new Date(scan.timestamp).toLocaleString()}</p>
+                        <p><strong>Status:</strong> {scan.status}</p>
+                        {scan.devices && (
+                            <button
+                                className="mt-2 text-blue-400 underline"
+                                onClick={() => console.log("Devices:", scan.devices)}
+                            >
+                                View Devices
+                            </button>
+                        )}
+                    </div>
+                ))}
+                <button
+                    onClick={() => {
+                        setScanHistory([]);
+                        localStorage.removeItem("scanHistory");
+                    }}
+                    className="w-full bg-red-600 hover:bg-red-700 px-4 py-2 rounded mt-4"
+                >
+                    Clear Scan History
+                </button>
             </div>
 
             {/* Right Panel */}

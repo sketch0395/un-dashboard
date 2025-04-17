@@ -1,15 +1,15 @@
 const express = require('express');
-const { spawn, execSync } = require('child_process'); // Add execSync for checking nmap availability
+const { spawn, execSync } = require('child_process');
 const cors = require('cors');
 const socketIo = require('socket.io');
 const http = require('http');
-const Docker = require('dockerode'); // Import dockerode for remote Docker integration
+const Docker = require('dockerode');
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: 'http://localhost:3000',
+        origin: 'http://10.5.1.83:3000',
         methods: ['GET', 'POST'],
         allowedHeaders: ['Content-Type'],
         credentials: true,
@@ -20,6 +20,8 @@ app.use(cors());
 
 // --- NETWORK MAPPING VIA NMAP ---
 const parseNmapOutput = (output) => {
+    console.log('[PARSE] Raw Nmap Output:', output); // Debugging log
+
     const lines = output.split('\n');
     const devices = [];
     let currentDevice = {};
@@ -54,6 +56,7 @@ const parseNmapOutput = (output) => {
         return acc;
     }, {});
 
+    console.log('[PARSE] Grouped Devices:', groupedDevices); // Debugging log
     return groupedDevices;
 };
 
@@ -65,27 +68,15 @@ const isValidIpRange = (range) => {
 const DEFAULT_IP_RANGE = process.env.DEFAULT_IP_RANGE || '10.5.1.130-255';
 const DEFAULT_PORTS = process.env.DEFAULT_PORTS || '22,80,443';
 
-// Check if nmap is available on the host
 const isNmapAvailable = () => {
     try {
-        execSync('nmap -v', { stdio: 'ignore' }); // Check if nmap command runs without error
+        execSync('nmap -v', { stdio: 'ignore' });
         return true;
     } catch (error) {
         return false;
     }
 };
 
-// Check if Docker is available
-const isDockerAvailable = () => {
-    try {
-        execSync('docker -v', { stdio: 'ignore' }); // Check if Docker command runs without error
-        return true;
-    } catch (error) {
-        return false;
-    }
-};
-
-// Connect to the external Docker daemon
 const docker = new Docker({ host: '10.5.1.212', port: 2375 });
 
 io.on('connection', (socket) => {
@@ -108,7 +99,6 @@ io.on('connection', (socket) => {
             try {
                 console.log(`[SCAN] Starting Nmap scan using external Docker for range: ${range}...`);
 
-                // Run the Nmap container on the external Docker instance
                 const container = await docker.createContainer({
                     Image: 'instrumentisto/nmap',
                     Cmd: ['-Pn', '-sS', '-O', '-p', DEFAULT_PORTS, range],
@@ -134,6 +124,11 @@ io.on('connection', (socket) => {
 
                 stream.on('end', async () => {
                     await container.remove();
+                    if (!outputData.trim()) {
+                        console.error('[SCAN] No output from Docker-based scan');
+                        socket.emit('networkScanStatus', { status: 'No devices found' });
+                        return;
+                    }
                     const groupedDevices = parseNmapOutput(outputData);
                     console.log('Grouped Devices:', groupedDevices);
                     socket.emit('networkData', groupedDevices);
@@ -164,6 +159,7 @@ io.on('connection', (socket) => {
 
         nmapProcess.stdout.on('data', (data) => {
             outputData += data;
+            console.log('[SCAN] STDOUT:', data.toString()); // Debugging log
             socket.emit('networkScanStatus', { status: 'Scan in progress...', output: data.toString() });
         });
 
@@ -174,7 +170,11 @@ io.on('connection', (socket) => {
 
         nmapProcess.on('close', (code) => {
             if (code === 0) {
-                socket.emit('networkScanStatus', { status: 'Scan complete' });
+                if (!outputData.trim()) {
+                    console.error('[SCAN] No output from Nmap process');
+                    socket.emit('networkScanStatus', { status: 'No devices found' });
+                    return;
+                }
 
                 const groupedDevices = parseNmapOutput(outputData);
                 console.log('Grouped Devices:', groupedDevices);
@@ -197,5 +197,5 @@ io.on('connection', (socket) => {
 
 // --- START SERVER ---
 server.listen(4000, () => {
-    console.log('Server running on http://localhost:4000');
+    console.log('Server running on http://10.5.1.83:4000');
 });
