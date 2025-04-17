@@ -20,7 +20,8 @@ const Navbar = () => {
     useEffect(() => {
         const fetchHostInfo = async () => {
             try {
-                const response = await fetch("/api/system-info");
+                const apiEndpoint = process.env.NEXT_PUBLIC_API_SYSTEM_INFO || "/api/system-info";
+                const response = await fetch(apiEndpoint);
                 if (!response.ok) {
                     throw new Error(`HTTP error! status: ${response.status}`);
                 }
@@ -69,10 +70,6 @@ const Navbar = () => {
                 ) : (
                     <>
                         <p>Hostname: {hostInfo.hostname}</p>
-                        <p>Platform: {hostInfo.platform}</p>
-                        <p>OS Type: {hostInfo.osType}</p>
-                        <p>OS Release: {hostInfo.osRelease}</p>
-                        <p>Architecture: {hostInfo.architecture}</p>
                         <p>Total Memory: {hostInfo.totalMemory}</p>
                         <p>Free Memory: {hostInfo.freeMemory}</p>
                         <p>Uptime: {hostInfo.uptime}</p>

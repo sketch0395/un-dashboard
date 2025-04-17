@@ -28,6 +28,7 @@ export default function NetworkDashboard() {
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0, node: null });
     const [newDeviceIPs, setNewDeviceIPs] = useState([]); // Track new device IPs
     const [selectedVendor, setSelectedVendor] = useState(null); // Track selected vendor for color change
+    const [errorMessage, setErrorMessage] = useState("");
 
     const colorPalette = [
         "#FF5733", "#33FF57", "#3357FF", "#FFC300", "#DAF7A6", "#C70039", "#900C3F", "#581845",
@@ -67,6 +68,9 @@ export default function NetworkDashboard() {
 
         socket.on("networkScanStatus", (data) => {
             setStatus(data.status);
+            if (data.error) {
+                setErrorMessage(data.error); // Update error message
+            }
             if (data.output) {
                 setScanOutput((prev) => prev + data.output);
                 const match = data.output.match(/Nmap scan report for ([\d.]+)/);
@@ -229,6 +233,8 @@ export default function NetworkDashboard() {
             alert(`Subnet ${ipRange} has already been scanned.`);
             return;
         }
+
+        setErrorMessage(""); // Clear previous error message
 
         const newScan = {
             ipRange,
@@ -439,6 +445,11 @@ export default function NetworkDashboard() {
                     placeholder="Search by IP, Vendor, or MAC"
                     className="px-3 py-2 mb-2 rounded bg-gray-700 text-white w-full"
                 />
+                {errorMessage && (
+                    <div className="bg-red-600 text-white p-3 rounded mb-4">
+                        <strong>Error:</strong> {errorMessage}
+                    </div>
+                )}
                 <div className="text-sm text-gray-400 mb-4">
                     {status} {currentScanIP && `: ${currentScanIP}`}
                 </div>

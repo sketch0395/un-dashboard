@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const { spawn, execSync } = require('child_process');
 const cors = require('cors');
@@ -17,6 +19,45 @@ const io = socketIo(server, {
 });
 
 app.use(cors());
+
+if (!process.env.DEFAULT_IP_RANGE || !process.env.DEFAULT_PORTS) {
+    console.error('[ERROR] Missing required environment variables: DEFAULT_IP_RANGE or DEFAULT_PORTS');
+    process.exit(1);
+}
+
+const isValidIpRange = (range) => {
+    const ipRangeRegex = /^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(-\d{1,3})?$/;
+    const parts = range.split('-');
+    if (!ipRangeRegex.test(range)) return false;
+
+    // Ensure each octet is within 0-255
+    const isValidOctet = (ip) => ip.split('.').every((octet) => {
+        const num = parseInt(octet, 10);
+        return num >= 0 && num <= 255;
+    });
+
+    return parts.every(isValidOctet);
+};
+
+const DEFAULT_IP_RANGE = process.env.DEFAULT_IP_RANGE || '10.5.1.130-255';
+const DEFAULT_PORTS = process.env.DEFAULT_PORTS || '22,80,443';
+
+if (!isValidIpRange(DEFAULT_IP_RANGE)) {
+    console.error('[ERROR] Invalid DEFAULT_IP_RANGE environment variable');
+    process.exit(1);
+}
+
+const isValidPortList = (ports) => {
+    return ports.split(',').every((port) => {
+        const num = parseInt(port, 10);
+        return num > 0 && num <= 65535;
+    });
+};
+
+if (!isValidPortList(DEFAULT_PORTS)) {
+    console.error('[ERROR] Invalid DEFAULT_PORTS environment variable');
+    process.exit(1);
+}
 
 // --- NETWORK MAPPING VIA NMAP ---
 const parseNmapOutput = (output) => {
@@ -60,16 +101,58 @@ const parseNmapOutput = (output) => {
     return groupedDevices;
 };
 
-const isValidIpRange = (range) => {
-    const ipRangeRegex = /^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})(-\d{1,3})?$/;
-    return ipRangeRegex.test(range);
+const docker = new Docker({ host: '10.5.1.212', port: 2375 });
+
+const handleDockerScan = async (range, socket) => {
+    try {
+        const sanitizedRange = sanitizeInput(range);
+        console.log(`[SCAN] Starting Docker-based scan for range: ${sanitizedRange}`);
+        const container = await docker.createContainer({
+            Image: 'instrumentisto/nmap',
+            Cmd: ['-Pn', '-sS', '-O', '-p', DEFAULT_PORTS, sanitizedRange],
+            HostConfig: {
+                NetworkMode: 'host',
+            },
+        });
+
+        await container.start();
+
+        let outputData = '';
+        const stream = await container.logs({
+            follow: true,
+            stdout: true,
+            stderr: true,
+        });
+
+        stream.on('data', (chunk) => {
+            const data = chunk.toString();
+            outputData += data;
+            socket.emit('networkScanStatus', { status: 'Scan in progress...', output: data });
+        });
+
+        stream.on('end', async () => {
+            await container.remove();
+            if (!outputData.trim()) {
+                throw new Error('No output from Docker-based scan');
+            }
+            const groupedDevices = parseNmapOutput(outputData);
+            socket.emit('networkData', groupedDevices);
+            socket.emit('networkScanStatus', { status: 'Scan complete' });
+        });
+    } catch (error) {
+        console.error('[ERROR] Docker-based scan:', error.message);
+        socket.emit('networkScanStatus', { status: 'Error during Docker-based scan', error: error.message });
+    }
 };
 
-const DEFAULT_IP_RANGE = process.env.DEFAULT_IP_RANGE || '10.5.1.130-255';
-const DEFAULT_PORTS = process.env.DEFAULT_PORTS || '22,80,443';
+const sanitizeInput = (input) => {
+    if (typeof input !== 'string') return '';
+    return input.replace(/[^a-zA-Z0-9\-.,]/g, ''); // Allow only alphanumeric, dash, dot, and comma
+};
 
 const isNmapAvailable = () => {
     try {
+        // Use execSync to check if the `nmap` command is available
         execSync('nmap -v', { stdio: 'ignore' });
         return true;
     } catch (error) {
@@ -77,121 +160,92 @@ const isNmapAvailable = () => {
     }
 };
 
-const docker = new Docker({ host: '10.5.1.212', port: 2375 });
+const handleNmapProcess = (nmapProcess, socket) => {
+    let outputData = '';
+
+    // Capture stdout data
+    nmapProcess.stdout.on('data', (data) => {
+        const chunk = data.toString();
+        outputData += chunk;
+        socket.emit('networkScanStatus', { status: 'Scan in progress...', output: chunk });
+    });
+
+    // Capture stderr data (errors from nmap)
+    nmapProcess.stderr.on('data', (data) => {
+        const errorMessage = data.toString();
+        console.error('[ERROR] Nmap stderr:', errorMessage);
+        socket.emit('networkScanStatus', { status: 'Error', error: `Nmap error: ${errorMessage}` });
+    });
+
+    // Handle process exit
+    nmapProcess.on('close', (code) => {
+        if (code === 0) {
+            console.log('[SCAN] Nmap process completed successfully');
+            const groupedDevices = parseNmapOutput(outputData);
+            socket.emit('networkData', groupedDevices);
+            socket.emit('networkScanStatus', { status: 'Scan complete' });
+        } else {
+            const errorDetails = `Nmap exited with code ${code}`;
+            console.error(`[ERROR] ${errorDetails}`);
+            socket.emit('networkScanStatus', { status: 'Error', error: errorDetails });
+        }
+    });
+};
+
+const handleHostScan = (range, socket) => {
+    try {
+        const sanitizedRange = sanitizeInput(range);
+        console.log(`[SCAN] Starting host-based scan for range: ${sanitizedRange}`);
+        const nmapProcess = spawn('nmap', ['-Pn', '-sS', '-O', '-p', DEFAULT_PORTS, sanitizedRange]);
+
+        handleNmapProcess(nmapProcess, socket);
+    } catch (error) {
+        console.error('[ERROR] Host-based scan:', error.message);
+        socket.emit('networkScanStatus', { status: 'Error during host-based scan', error: error.message });
+    }
+};
 
 io.on('connection', (socket) => {
     console.log('A user connected');
 
     socket.on('startNetworkScan', async (data) => {
-        const { range, useDocker } = data;
+        try {
+            const { range, useDocker } = data;
 
-        if (!range) {
-            socket.emit('networkScanStatus', { status: 'IP range is required' });
-            return;
-        }
-
-        if (!isValidIpRange(range)) {
-            socket.emit('networkScanStatus', { status: 'Invalid IP range' });
-            return;
-        }
-
-        if (useDocker) {
-            try {
-                console.log(`[SCAN] Starting Nmap scan using external Docker for range: ${range}...`);
-
-                const container = await docker.createContainer({
-                    Image: 'instrumentisto/nmap',
-                    Cmd: ['-Pn', '-sS', '-O', '-p', DEFAULT_PORTS, range],
-                    HostConfig: {
-                        NetworkMode: 'host',
-                    },
-                });
-
-                await container.start();
-
-                let outputData = '';
-                const stream = await container.logs({
-                    follow: true,
-                    stdout: true,
-                    stderr: true,
-                });
-
-                stream.on('data', (chunk) => {
-                    const data = chunk.toString();
-                    outputData += data;
-                    socket.emit('networkScanStatus', { status: 'Scan in progress...', output: data });
-                });
-
-                stream.on('end', async () => {
-                    await container.remove();
-                    if (!outputData.trim()) {
-                        console.error('[SCAN] No output from Docker-based scan');
-                        socket.emit('networkScanStatus', { status: 'No devices found' });
-                        return;
-                    }
-                    const groupedDevices = parseNmapOutput(outputData);
-                    console.log('Grouped Devices:', groupedDevices);
-                    socket.emit('networkData', groupedDevices);
-                    socket.emit('networkScanStatus', { status: 'Scan complete' });
-                });
-            } catch (error) {
-                console.error('Error during Docker-based scan:', error.message);
-                socket.emit('networkScanStatus', { status: 'Error during Docker-based scan', error: error.message });
-            }
-        } else {
-            if (!isNmapAvailable()) {
-                socket.emit('networkScanStatus', { status: 'Error: Nmap is not installed on the host system.' });
-                console.error('Error: Nmap is not installed on the host system.');
-                return;
+            if (!range) {
+                throw new Error('IP range is required');
             }
 
-            console.log(`[SCAN] Starting Nmap scan on host for range: ${range}...`);
-            const nmapProcess = spawn('nmap', ['-Pn', '-sS', '-O', '-p', DEFAULT_PORTS, range]);
+            if (!isValidIpRange(range)) {
+                throw new Error('Invalid IP range format');
+            }
 
-            handleNmapProcess(nmapProcess, socket);
+            if (useDocker) {
+                await handleDockerScan(range, socket);
+            } else {
+                if (!isNmapAvailable()) {
+                    throw new Error('Nmap is not installed on the host system');
+                }
+                handleHostScan(range, socket);
+            }
+        } catch (error) {
+            console.error('[ERROR] startNetworkScan:', error.message);
+            socket.emit('networkScanStatus', { status: 'Error', error: error.message });
         }
     });
 
-    const handleNmapProcess = (nmapProcess, socket) => {
-        let outputData = '';
-
-        socket.emit('networkScanStatus', { status: 'Scanning network...' });
-
-        nmapProcess.stdout.on('data', (data) => {
-            outputData += data;
-            console.log('[SCAN] STDOUT:', data.toString()); // Debugging log
-            socket.emit('networkScanStatus', { status: 'Scan in progress...', output: data.toString() });
-        });
-
-        nmapProcess.stderr.on('data', (data) => {
-            console.error('[SCAN] STDERR:', data.toString());
-            socket.emit('networkScanStatus', { status: 'Error during scan...', error: data.toString() });
-        });
-
-        nmapProcess.on('close', (code) => {
-            if (code === 0) {
-                if (!outputData.trim()) {
-                    console.error('[SCAN] No output from Nmap process');
-                    socket.emit('networkScanStatus', { status: 'No devices found' });
-                    return;
-                }
-
-                const groupedDevices = parseNmapOutput(outputData);
-                console.log('Grouped Devices:', groupedDevices);
-                socket.emit('networkData', groupedDevices);
-            } else {
-                socket.emit('networkScanStatus', { status: 'Scan failed', errorCode: code });
-            }
-        });
-
-        socket.on('disconnect', () => {
-            console.log('[SCAN] User disconnected, terminating scan...');
-            nmapProcess.kill();
-        });
-    };
-
     socket.on('disconnect', () => {
         console.log('User disconnected');
+    });
+});
+
+// Error-handling middleware
+app.use((err, req, res, next) => {
+    console.error('[ERROR]', err.message);
+    res.status(err.status || 500).json({
+        error: {
+            message: err.message || 'Internal Server Error',
+        },
     });
 });
 
