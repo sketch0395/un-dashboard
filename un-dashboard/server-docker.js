@@ -9,7 +9,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: 'http://10.5.1.83:3000',
+        origin: ['http://localhost:3000', 'http://10.5.1.83:3000'],
         methods: ['GET', 'POST'],
         allowedHeaders: ['Content-Type'],
         credentials: true,
