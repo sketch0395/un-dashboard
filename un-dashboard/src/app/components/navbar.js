@@ -70,9 +70,20 @@ const Navbar = () => {
                 ) : (
                     <>
                         <p>Hostname: {hostInfo.hostname}</p>
-                        <p>Total Memory: {hostInfo.totalMemory}</p>
-                        <p>Free Memory: {hostInfo.freeMemory}</p>
                         <p>Uptime: {hostInfo.uptime}</p>
+                        
+
+                    </>
+                )}
+            </div>
+            <div className="text-sm text-gray-400">
+                {error ? (
+                    <p className="text-red-500">{error}</p>
+                ) : (
+                    <>
+
+                        <p>Free Memory: {hostInfo.freeMemory}</p>
+                        <p>Total Memory: {hostInfo.totalMemory}</p>
                     </>
                 )}
             </div>
