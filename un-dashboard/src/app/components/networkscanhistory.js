@@ -1,12 +1,49 @@
-" use client";
+"use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { FaEdit } from "react-icons/fa";
+import { format } from "date-fns";
+import { v4 as uuidv4 } from "uuid"; // Install uuid package if not already installed
 
-export default function NetworkScanHistory({ scanHistory, setScanHistory, addZonesToTopology }) {
+export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData }) {
+    const [scanHistory, setScanHistory] = useState([]);
     const [editingIndex, setEditingIndex] = useState(null);
     const [newName, setNewName] = useState("");
     const [selectedScans, setSelectedScans] = useState([]);
+
+    useEffect(() => {
+        const savedHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
+        console.log("Loaded scan history from localStorage:", savedHistory);
+        setScanHistory(savedHistory);
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem("scanHistory", JSON.stringify(scanHistory));
+        console.log("Saved scan history in localStorage:", localStorage.getItem("scanHistory"));
+    }, [scanHistory]);
+
+    useEffect(() => {
+        console.log("Received scanHistoryData prop:", scanHistoryData);
+        if (scanHistoryData) {
+            const { data, ipRange } = scanHistoryData;
+            console.log("Saving scan history with IP Range:", ipRange);
+            saveScanHistory(data, ipRange);
+        }
+    }, [scanHistoryData]);
+
+    const saveScanHistory = (data, ipRange) => {
+        console.log("Saving scan history with IP Range:", ipRange);
+        console.log("Data received for saving:", data);
+
+        const newEntry = {
+            id: uuidv4(), // Add a unique identifier
+            timestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+            ipRange,
+            devices: Object.values(data).flat().length,
+        };
+        console.log("New entry to be added to scan history:", newEntry);
+        setScanHistory((prev) => [...prev, newEntry]);
+    };
 
     const handleDelete = (index) => {
         const updatedHistory = scanHistory.filter((_, idx) => idx !== index);
@@ -30,18 +67,21 @@ export default function NetworkScanHistory({ scanHistory, setScanHistory, addZon
     const handleCheckboxChange = (index) => {
         setSelectedScans((prev) =>
             prev.includes(index)
-                ? prev.filter((i) => i !== index) // Remove if already selected
-                : [...prev, index] // Add if not selected
+                ? prev.filter((i) => i !== index)
+                : [...prev, index]
         );
     };
 
     const handleAddZones = () => {
         const selectedZones = selectedScans.map((index) => scanHistory[index]);
-        addZonesToTopology(selectedZones); // Pass selected scans to the topology map
-        setSelectedScans([]); // Clear selection after adding
+        addZonesToTopology(selectedZones);
+        setSelectedScans([]);
     };
 
-    console.log("Scan History:", scanHistory);
+    const clearHistory = () => {
+        setScanHistory([]);
+        localStorage.removeItem("scanHistory");
+    };
 
     return (
         <div className="mt-6">
@@ -105,6 +145,9 @@ export default function NetworkScanHistory({ scanHistory, setScanHistory, addZon
                                     <p className="text-sm">
                                         <strong>Devices Found:</strong> {entry.devices}
                                     </p>
+                                    <p className="text-sm">
+                                        <strong>Vendors Found:</strong> {Object.keys(entry.data || {}).join(", ")}
+                                    </p>
                                     <button
                                         onClick={() => handleDelete(originalIndex)}
                                         className="mt-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
@@ -124,6 +167,12 @@ export default function NetworkScanHistory({ scanHistory, setScanHistory, addZon
                     Add Selected to Topology as Zones
                 </button>
             )}
+            <button
+                onClick={clearHistory}
+                className="mt-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
+            >
+                Clear History
+            </button>
         </div>
     );
 }
