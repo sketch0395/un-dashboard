@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { io } from "socket.io-client";
 import { FaDesktop, FaServer, FaMobileAlt, FaWifi, FaNetworkWired, FaTabletAlt } from "react-icons/fa";
+import { format } from "date-fns";
+import NetworkScanHistory from "./networkscanhistory"; // Import the component
 
 export default function NetworkScanControl({ devices, setDevices, vendorColors, setVendorColors, customNames = {}, setCustomNames }) {
     const socketRef = useRef(null);
@@ -13,17 +15,17 @@ export default function NetworkScanControl({ devices, setDevices, vendorColors, 
     const [scanOutput, setScanOutput] = useState("");
     const [expandedIPs, setExpandedIPs] = useState({});
     const [errorMessage, setErrorMessage] = useState("");
-    const [selectedDevice, setSelectedDevice] = useState(null); // Track the selected device for the modal
+    const [selectedDevice, setSelectedDevice] = useState(null);
     const [newName, setNewName] = useState("");
-    const [selectedIcon, setSelectedIcon] = useState(null); // Track the selected icon
-    const [selectedVendor, setSelectedVendor] = useState(null); // Track the selected vendor for color changes
+    const [selectedIcon, setSelectedIcon] = useState(null);
+    const [selectedVendor, setSelectedVendor] = useState(null);
+    const [scanHistory, setScanHistory] = useState([]);
 
     const colorPalette = [
         "#FF5733", "#33FF57", "#3357FF", "#FFC300", "#DAF7A6", "#C70039", "#900C3F", "#581845",
         "#FF33FF", "#33FFFF", "#FF9933", "#66FF66", "#FF6666", "#9966FF", "#66FFFF", "#FFCC66"
     ];
 
-    // List of device-related icons
     const deviceIcons = [
         { name: "Desktop", icon: <FaDesktop /> },
         { name: "Server", icon: <FaServer /> },
@@ -49,15 +51,58 @@ export default function NetworkScanControl({ devices, setDevices, vendorColors, 
 
         socket.on("networkData", (data) => {
             console.log("WebSocket networkData event received:", data);
+            console.log("Current IP Range (state):", ipRange); // Log the current state of ipRange
             if (data && Object.keys(data).length > 0) {
                 setDevices(data); // Update the parent component's devices state
+                saveScanHistory(data, ipRange); // Pass the current IP range explicitly
             }
+        });
+
+        socket.on("connect_error", (err) => {
+            console.error("Socket connection error:", err);
+            setErrorMessage("Failed to connect to the server.");
         });
 
         return () => socket.disconnect();
     }, [setDevices]);
 
+    useEffect(() => {
+        const savedHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
+        setScanHistory(savedHistory);
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem("scanHistory", JSON.stringify(scanHistory));
+    }, [scanHistory]);
+
+    const saveScanHistory = (data, currentIpRange) => {
+        console.log("Saving scan history...");
+        console.log("Current IP Range (passed):", currentIpRange);
+        console.log("IP Range State:", ipRange); // Log the current state of ipRange
+
+        if (currentIpRange !== ipRange) {
+            console.error("Mismatch between currentIpRange and ipRange state!");
+        }
+
+        if (!currentIpRange || !data || Object.keys(data).length === 0) {
+            console.warn("Invalid scan data or IP range. Skipping history save.");
+            return;
+        }
+
+        const allDevices = Object.values(data).flat();
+
+        const newEntry = {
+            timestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+            ipRange: currentIpRange, // Use the explicitly passed IP range
+            devices: allDevices.length,
+        };
+
+        setScanHistory((prev) => [...prev, newEntry]);
+        console.log("Scan history saved:", newEntry); // Debug log
+    };
+
     const startScan = () => {
+        console.log("Starting scan with IP range:", ipRange); // Log the current IP range
         setErrorMessage("");
         setStatus("Starting scan...");
         setScanOutput("");
@@ -74,7 +119,7 @@ export default function NetworkScanControl({ devices, setDevices, vendorColors, 
                 ...prev,
                 [selectedDevice.ip]: { name: newName, icon: selectedIcon },
             }));
-            setSelectedDevice(null); // Close the modal
+            setSelectedDevice(null);
             setNewName("");
             setSelectedIcon(null);
         }
@@ -86,8 +131,18 @@ export default function NetworkScanControl({ devices, setDevices, vendorColors, 
                 ...prev,
                 [selectedVendor]: color,
             }));
-            setSelectedVendor(null); // Clear the selected vendor
+            setSelectedVendor(null);
         }
+    };
+
+    const addZonesToTopology = (zones) => {
+        console.log("Adding zones to topology:", zones);
+        zones.forEach((zone, idx) => {
+            setDevices((prevDevices) => ({
+                ...prevDevices,
+                [`Zone ${idx + 1}`]: zone.devices || [],
+            }));
+        });
     };
 
     return (
@@ -113,42 +168,47 @@ export default function NetworkScanControl({ devices, setDevices, vendorColors, 
             )}
             <div className="text-sm text-gray-400 mb-4">{status}</div>
             <div>
-                {Object.entries(devices).map(([vendor, vendorDevices]) => (
-                    <div key={vendor} className="mb-4">
-                        <h3 className="text-lg font-bold mb-2">{vendor}</h3>
-                        {/* Device List */}
-                        {vendorDevices.map((device, idx) => (
-                            <div
-                                key={idx}
-                                className="mb-2 bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded"
-                            >
-                                <button
-                                    onClick={() => setSelectedDevice(device)} // Open the modal with device info
-                                    className="w-full flex justify-between items-center"
+                {Object.entries(devices).map(([vendor, vendorDevices]) => {
+                    // Ensure vendorDevices is an array
+                    if (!Array.isArray(vendorDevices)) {
+                        console.warn(`Expected an array for vendor "${vendor}", but got:`, vendorDevices);
+                        return null; // Skip this vendor if it's not an array
+                    }
+
+                    return (
+                        <div key={vendor} className="mb-4">
+                            <h3 className="text-lg font-bold mb-2">{vendor}</h3>
+                            {vendorDevices.map((device, idx) => (
+                                <div
+                                    key={idx}
+                                    className="mb-2 bg-gray-700 hover:bg-gray-600 px-3 py-2 rounded"
                                 >
-                                    <span className="flex items-center gap-2">
-                                        {/* Render the icon if it exists, otherwise fallback to the IP */}
-                                        {customNames?.[device.ip]?.icon || <FaNetworkWired />}
-                                        {customNames?.[device.ip]?.name || device.ip}
-                                    </span>
-                                    {expandedIPs[device.ip] ? (
-                                        <ChevronUp size={16} />
-                                    ) : (
-                                        <ChevronDown size={16} />
+                                    <button
+                                        onClick={() => setSelectedDevice(device)}
+                                        className="w-full flex justify-between items-center"
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            {customNames?.[device.ip]?.icon || <FaNetworkWired />}
+                                            {customNames?.[device.ip]?.name || device.ip}
+                                        </span>
+                                        {expandedIPs[device.ip] ? (
+                                            <ChevronUp size={16} />
+                                        ) : (
+                                            <ChevronDown size={16} />
+                                        )}
+                                    </button>
+                                    {expandedIPs[device.ip] && (
+                                        <div className="bg-gray-800 px-3 py-2 text-sm whitespace-pre-wrap text-gray-300 rounded-b">
+                                            {JSON.stringify(device, null, 2)}
+                                        </div>
                                     )}
-                                </button>
-                                {expandedIPs[device.ip] && (
-                                    <div className="bg-gray-800 px-3 py-2 text-sm whitespace-pre-wrap text-gray-300 rounded-b">
-                                        {JSON.stringify(device, null, 2)}
-                                    </div>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                ))}
+                                </div>
+                            ))}
+                        </div>
+                    );
+                })}
             </div>
 
-            {/* Modal for Device Information */}
             {selectedDevice && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                     <div className="bg-gray-800 text-white p-6 rounded-lg shadow-lg w-96">
@@ -177,7 +237,7 @@ export default function NetworkScanControl({ devices, setDevices, vendorColors, 
                                 {deviceIcons.map((icon) => (
                                     <button
                                         key={icon.name}
-                                        onClick={() => setSelectedIcon(icon.icon)} // Save the actual icon component
+                                        onClick={() => setSelectedIcon(icon.icon)}
                                         className={`p-2 rounded ${
                                             selectedIcon === icon.icon ? "bg-blue-600 border-2 border-white" : "bg-gray-700"
                                         }`}
@@ -197,7 +257,7 @@ export default function NetworkScanControl({ devices, setDevices, vendorColors, 
                         </div>
                         <div className="flex justify-end gap-2">
                             <button
-                                onClick={() => setSelectedDevice(null)} // Close the modal
+                                onClick={() => setSelectedDevice(null)}
                                 className="bg-red-600 hover:bg-red-700 px-4 py-2 rounded"
                             >
                                 Cancel
@@ -213,7 +273,6 @@ export default function NetworkScanControl({ devices, setDevices, vendorColors, 
                 </div>
             )}
 
-            {/* Vendor Color Selection */}
             <div className="mt-6">
                 <h3 className="text-lg font-bold mb-2">Change Vendor Color</h3>
                 <select
@@ -241,6 +300,12 @@ export default function NetworkScanControl({ devices, setDevices, vendorColors, 
                     ))}
                 </div>
             </div>
+
+            <NetworkScanHistory
+                scanHistory={scanHistory}
+                setScanHistory={setScanHistory}
+                addZonesToTopology={addZonesToTopology}
+            />
         </div>
     );
 }
