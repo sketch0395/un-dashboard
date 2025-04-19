@@ -13,6 +13,11 @@ export default function NetworkScanControl({ devices, setDevices }) {
     const [errorMessage, setErrorMessage] = useState("");
     const [scanHistoryData, setScanHistoryData] = useState(null);
 
+    const addZonesToTopology = (data) => {
+        console.log("Adding zones to topology:", data);
+        setDevices(data.devices); // Update the devices state in NetworkDashboard
+    };
+
     useEffect(() => {
         const socket = io("http://10.5.1.83:4000");
         socketRef.current = socket;
@@ -74,7 +79,10 @@ export default function NetworkScanControl({ devices, setDevices }) {
                 </div>
             )}
             <div className="text-sm text-gray-400 mb-4">{status}</div>
-            <NetworkScanHistory scanHistoryData={scanHistoryData} />
+            <NetworkScanHistory
+                scanHistoryData={scanHistoryData}
+                addZonesToTopology={addZonesToTopology} // Pass the function here
+            />
         </div>
     );
 }

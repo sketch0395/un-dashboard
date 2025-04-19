@@ -1,67 +1,44 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { FaEdit } from "react-icons/fa";
+import { FaChevronDown, FaChevronUp, FaTrash, FaEdit, FaEllipsisV } from "react-icons/fa";
 import { format } from "date-fns";
-import { v4 as uuidv4 } from "uuid"; // Install uuid package if not already installed
+import { v4 as uuidv4 } from "uuid";
 
 export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData }) {
     const [scanHistory, setScanHistory] = useState([]);
-    const [editingIndex, setEditingIndex] = useState(null);
-    const [newName, setNewName] = useState("");
     const [selectedScans, setSelectedScans] = useState([]);
+    const [expandedIndex, setExpandedIndex] = useState(null); // Track which accordion is expanded
+    const [modalDevice, setModalDevice] = useState(null); // Track the device to show in the modal
+    const [editingIndex, setEditingIndex] = useState(null); // Track which scan is being renamed
+    const [newName, setNewName] = useState(""); // Track the new name for renaming
+    const [menuOpenIndex, setMenuOpenIndex] = useState(null); // Track which menu is open
 
     useEffect(() => {
         const savedHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
-        console.log("Loaded scan history from localStorage:", savedHistory);
         setScanHistory(savedHistory);
     }, []);
 
     useEffect(() => {
         localStorage.setItem("scanHistory", JSON.stringify(scanHistory));
-        console.log("Saved scan history in localStorage:", localStorage.getItem("scanHistory"));
     }, [scanHistory]);
 
     useEffect(() => {
-        console.log("Received scanHistoryData prop:", scanHistoryData);
         if (scanHistoryData) {
             const { data, ipRange } = scanHistoryData;
-            console.log("Saving scan history with IP Range:", ipRange);
             saveScanHistory(data, ipRange);
         }
     }, [scanHistoryData]);
 
     const saveScanHistory = (data, ipRange) => {
-        console.log("Saving scan history with IP Range:", ipRange);
-        console.log("Data received for saving:", data);
-
         const newEntry = {
-            id: uuidv4(), // Add a unique identifier
+            id: uuidv4(),
             timestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
             ipRange,
             devices: Object.values(data).flat().length,
+            data, // Save the actual devices data
         };
-        console.log("New entry to be added to scan history:", newEntry);
         setScanHistory((prev) => [...prev, newEntry]);
-    };
-
-    const handleDelete = (index) => {
-        const updatedHistory = scanHistory.filter((_, idx) => idx !== index);
-        setScanHistory(updatedHistory);
-    };
-
-    const handleEdit = (index) => {
-        setEditingIndex(index);
-        setNewName(scanHistory[index].name || `Scan ${index + 1}`);
-    };
-
-    const handleSaveName = (index) => {
-        const updatedHistory = scanHistory.map((entry, idx) =>
-            idx === index ? { ...entry, name: newName } : entry
-        );
-        setScanHistory(updatedHistory);
-        setEditingIndex(null);
-        setNewName("");
     };
 
     const handleCheckboxChange = (index) => {
@@ -74,13 +51,60 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
 
     const handleAddZones = () => {
         const selectedZones = selectedScans.map((index) => scanHistory[index]);
-        addZonesToTopology(selectedZones);
+        const combinedDevices = selectedZones.reduce((acc, zone) => {
+            return [...acc, ...Object.values(zone.data || {}).flat()];
+        }, []);
+        const combinedData = {
+            devices: combinedDevices,
+            vendorColors: {}, // Add vendor color mapping if needed
+            customNames: {}, // Add custom names if needed
+        };
+        addZonesToTopology(combinedData);
         setSelectedScans([]);
     };
 
-    const clearHistory = () => {
-        setScanHistory([]);
-        localStorage.removeItem("scanHistory");
+    const toggleAccordion = (index) => {
+        setExpandedIndex((prev) => (prev === index ? null : index));
+    };
+
+    const openModal = (device) => {
+        setModalDevice(device);
+    };
+
+    const closeModal = () => {
+        setModalDevice(null);
+    };
+
+    const visualizeOnTopology = (entry) => {
+        const combinedData = {
+            devices: Object.values(entry.data || {}).flat(),
+            vendorColors: {}, // Add vendor color mapping if needed
+            customNames: {}, // Add custom names if needed
+        };
+        addZonesToTopology(combinedData);
+    };
+
+    const deleteScan = (index) => {
+        const updatedHistory = scanHistory.filter((_, i) => i !== index);
+        setScanHistory(updatedHistory);
+    };
+
+    const startRenaming = (index) => {
+        setEditingIndex(index);
+        setNewName(scanHistory[index].name || `Scan ${index + 1}`);
+        setMenuOpenIndex(null); // Close the menu
+    };
+
+    const saveRename = (index) => {
+        const updatedHistory = [...scanHistory];
+        updatedHistory[index].name = newName;
+        setScanHistory(updatedHistory);
+        setEditingIndex(null);
+        setNewName("");
+    };
+
+    const toggleMenu = (index) => {
+        setMenuOpenIndex((prev) => (prev === index ? null : index));
     };
 
     return (
@@ -95,46 +119,60 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                         .reverse()
                         .map((entry, idx) => {
                             const originalIndex = scanHistory.length - idx - 1;
+                            const isExpanded = expandedIndex === originalIndex;
+
                             return (
                                 <div
                                     key={originalIndex}
-                                    className="bg-gray-700 text-white p-4 rounded-lg shadow-md flex flex-col justify-between"
+                                    className="bg-gray-700 text-white p-4 rounded-lg shadow-md"
                                 >
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <input
-                                            type="checkbox"
-                                            checked={selectedScans.includes(originalIndex)}
-                                            onChange={() => handleCheckboxChange(originalIndex)}
-                                            className="form-checkbox h-5 w-5 text-blue-600"
-                                        />
-                                        {editingIndex === originalIndex ? (
-                                            <div className="flex items-center gap-2 w-full">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <input
+                                                type="checkbox"
+                                                checked={selectedScans.includes(originalIndex)}
+                                                onChange={() => handleCheckboxChange(originalIndex)}
+                                                className="form-checkbox h-5 w-5 text-blue-600"
+                                            />
+                                            {editingIndex === originalIndex ? (
                                                 <input
                                                     type="text"
                                                     value={newName}
                                                     onChange={(e) => setNewName(e.target.value)}
-                                                    className="px-2 py-1 rounded bg-gray-600 text-white w-full"
+                                                    className="bg-gray-600 text-white px-2 py-1 rounded"
                                                 />
-                                                <button
-                                                    onClick={() => handleSaveName(originalIndex)}
-                                                    className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded"
-                                                >
-                                                    Save
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center justify-between w-full">
+                                            ) : (
                                                 <h4 className="text-md font-bold">
                                                     {entry.name || `Scan ${originalIndex + 1}`}
                                                 </h4>
-                                                <button
-                                                    onClick={() => handleEdit(originalIndex)}
-                                                    className="text-gray-400 hover:text-white"
-                                                >
-                                                    <FaEdit />
-                                                </button>
-                                            </div>
-                                        )}
+                                            )}
+                                        </div>
+                                        <div className="relative">
+                                            <button
+                                                onClick={() => toggleMenu(originalIndex)}
+                                                className="text-gray-400 hover:text-white"
+                                            >
+                                                <FaEllipsisV />
+                                            </button>
+                                            {menuOpenIndex === originalIndex && (
+                                                <div className="absolute right-0 mt-2 bg-gray-800 text-white rounded shadow-lg z-10">
+                                                    <button
+                                                        onClick={() => startRenaming(originalIndex)}
+                                                        className="block px-4 py-2 text-sm hover:bg-gray-700 w-full text-left"
+                                                    >
+                                                        <FaEdit className="inline mr-2" />
+                                                        Rename
+                                                    </button>
+                                                    <button
+                                                        onClick={() => deleteScan(originalIndex)}
+                                                        className="block px-4 py-2 text-sm hover:bg-gray-700 w-full text-left text-red-500"
+                                                    >
+                                                        <FaTrash className="inline mr-2" />
+                                                        Delete
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     <p className="text-sm">
                                         <strong>Timestamp:</strong> {entry.timestamp}
@@ -145,14 +183,35 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                     <p className="text-sm">
                                         <strong>Devices Found:</strong> {entry.devices}
                                     </p>
-                                    <p className="text-sm">
-                                        <strong>Vendors Found:</strong> {Object.keys(entry.data || {}).join(", ")}
-                                    </p>
+
+                                    {isExpanded && (
+                                        <div className="mt-4 bg-gray-800 p-3 rounded">
+                                            <h5 className="text-sm font-bold mb-2">Devices:</h5>
+                                            <ul className="text-sm text-gray-300">
+                                                {Object.values(entry.data || {}).flat().map((device, i) => (
+                                                    <li key={i} className="mb-1">
+                                                        <button
+                                                            onClick={() => openModal(device)}
+                                                            className="text-blue-400 hover:underline"
+                                                        >
+                                                            {device.ip}
+                                                        </button>
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                            <button
+                                                onClick={() => visualizeOnTopology(entry)}
+                                                className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                                            >
+                                                Visualize on Topology
+                                            </button>
+                                        </div>
+                                    )}
                                     <button
-                                        onClick={() => handleDelete(originalIndex)}
-                                        className="mt-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
+                                        onClick={() => toggleAccordion(originalIndex)}
+                                        className="mt-2 text-blue-400 hover:underline"
                                     >
-                                        Delete
+                                        {isExpanded ? "Hide Devices" : "View Devices"}
                                     </button>
                                 </div>
                             );
@@ -167,12 +226,33 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                     Add Selected to Topology as Zones
                 </button>
             )}
-            <button
-                onClick={clearHistory}
-                className="mt-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
-            >
-                Clear History
-            </button>
+
+            {/* Modal */}
+            {modalDevice && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 text-white p-6 rounded-lg shadow-lg w-96">
+                        <h4 className="text-lg font-bold mb-4">Device Details</h4>
+                        <p>
+                            <strong>IP:</strong> {modalDevice.ip}
+                        </p>
+                        <p>
+                            <strong>OS:</strong> {modalDevice.os || "Unknown"}
+                        </p>
+                        <p>
+                            <strong>Vendor:</strong> {modalDevice.vendor || "Unknown"}
+                        </p>
+                        <p>
+                            <strong>Other Info:</strong> {modalDevice.otherInfo || "N/A"}
+                        </p>
+                        <button
+                            onClick={closeModal}
+                            className="mt-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
