@@ -67,7 +67,7 @@ export default function TopologyMap({ devices, vendorColors, customNames }) {
         nodeGroup
             .append("circle")
             .attr("r", 25)
-            .attr("fill", (d) => vendorColors[d.vendor?.toLowerCase()] || "#6b7280")
+            .attr("fill", (d) => customNames?.[d.id]?.color || vendorColors[d.vendor?.toLowerCase()] || "#6b7280")
             .attr("stroke", "#1e3a8a")
             .attr("stroke-width", 2)
             .attr("cx", (d) => d.x)
@@ -76,24 +76,24 @@ export default function TopologyMap({ devices, vendorColors, customNames }) {
         // Add icons and names using foreignObject
         nodeGroup
             .append("foreignObject")
-            .attr("width", 50)
-            .attr("height", 50)
-            .attr("x", (d) => d.x - 25)
-            .attr("y", (d) => d.y - 25)
+            .attr("width", 80) // Increase the width to prevent text cutoff
+            .attr("height", 60) // Increase the height for better spacing
+            .attr("x", (d) => d.x - 40) // Adjust x to center the text
+            .attr("y", (d) => d.y - 30) // Adjust y to center the text
             .each(function (d) {
                 const customIcon = customNames?.[d.id]?.icon || <FaNetworkWired />;
                 const customName = customNames?.[d.id]?.name || d.ip;
 
                 const container = document.createElement("div");
                 createRoot(container).render(
-                    <div style={{ textAlign: "center", color: "white", fontSize: "12px" }}>
-                        <div style={{ fontSize: "20px" }}>{customIcon}</div>
-                        <div>{customName}</div>
+                    <div style={{ textAlign: "center", color: "white", fontSize: "12px", overflow: "visible" }}>
+                        <div style={{ fontSize: "20px", marginBottom: "4px" }}>{customIcon}</div>
+                        <div style={{ whiteSpace: "nowrap" }}>{customName}</div> {/* Prevent text wrapping */}
                     </div>
                 );
                 this.appendChild(container);
             });
-    }, [devices, vendorColors, customNames]);
+    }, [devices, vendorColors, customNames]); // Add customNames as a dependency
 
     return <svg ref={svgRef} width="100%" height="100%" className="select-none" />;
 }

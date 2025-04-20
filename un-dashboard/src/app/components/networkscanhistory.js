@@ -4,15 +4,16 @@ import React, { useState, useEffect } from "react";
 import { FaChevronDown, FaChevronUp, FaTrash, FaEdit, FaEllipsisV } from "react-icons/fa";
 import { format } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
+import DeviceModal from "./devicemodal"; // Import the new modal component
 
 export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData }) {
     const [scanHistory, setScanHistory] = useState([]);
     const [selectedScans, setSelectedScans] = useState([]);
-    const [expandedIndex, setExpandedIndex] = useState(null); // Track which accordion is expanded
-    const [modalDevice, setModalDevice] = useState(null); // Track the device to show in the modal
-    const [editingIndex, setEditingIndex] = useState(null); // Track which scan is being renamed
-    const [newName, setNewName] = useState(""); // Track the new name for renaming
-    const [menuOpenIndex, setMenuOpenIndex] = useState(null); // Track which menu is open
+    const [expandedIndex, setExpandedIndex] = useState(null);
+    const [modalDevice, setModalDevice] = useState(null);
+    const [editingIndex, setEditingIndex] = useState(null);
+    const [newName, setNewName] = useState("");
+    const [menuOpenIndex, setMenuOpenIndex] = useState(null);
 
     useEffect(() => {
         const savedHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
@@ -36,7 +37,7 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             timestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
             ipRange,
             devices: Object.values(data).flat().length,
-            data, // Save the actual devices data
+            data,
         };
         setScanHistory((prev) => [...prev, newEntry]);
     };
@@ -105,6 +106,40 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
 
     const toggleMenu = (index) => {
         setMenuOpenIndex((prev) => (prev === index ? null : index));
+    };
+
+    const saveDeviceChanges = (updatedDevice) => {
+        const updatedHistory = scanHistory.map((entry) => {
+            if (entry.data) {
+                Object.values(entry.data).flat().forEach((device) => {
+                    if (device.ip === updatedDevice.ip) {
+                        device.name = updatedDevice.name;
+                        device.color = updatedDevice.color;
+                        device.icon = updatedDevice.icon;
+                    }
+                });
+            }
+            return entry;
+        });
+
+        // Update the customNames object for the topology map
+        const updatedCustomNames = {};
+        updatedHistory.forEach((entry) => {
+            Object.values(entry.data || {}).flat().forEach((device) => {
+                updatedCustomNames[device.ip] = {
+                    name: device.name,
+                    color: device.color,
+                    icon: device.icon,
+                };
+            });
+        });
+
+        setScanHistory(updatedHistory);
+        addZonesToTopology({
+            devices: Object.values(updatedHistory.map((entry) => entry.data || {})).flat(),
+            vendorColors: {}, // Add vendor color mapping if needed
+            customNames: updatedCustomNames, // Pass updated custom names
+        });
     };
 
     return (
@@ -227,32 +262,12 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                 </button>
             )}
 
-            {/* Modal */}
-            {modalDevice && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-gray-800 text-white p-6 rounded-lg shadow-lg w-96">
-                        <h4 className="text-lg font-bold mb-4">Device Details</h4>
-                        <p>
-                            <strong>IP:</strong> {modalDevice.ip}
-                        </p>
-                        <p>
-                            <strong>OS:</strong> {modalDevice.os || "Unknown"}
-                        </p>
-                        <p>
-                            <strong>Vendor:</strong> {modalDevice.vendor || "Unknown"}
-                        </p>
-                        <p>
-                            <strong>Other Info:</strong> {modalDevice.otherInfo || "N/A"}
-                        </p>
-                        <button
-                            onClick={closeModal}
-                            className="mt-4 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
-                        >
-                            Close
-                        </button>
-                    </div>
-                </div>
-            )}
+            {/* Use the new DeviceModal component */}
+            <DeviceModal
+                modalDevice={modalDevice}
+                setModalDevice={setModalDevice}
+                onSave={saveDeviceChanges}
+            />
         </div>
     );
 }
