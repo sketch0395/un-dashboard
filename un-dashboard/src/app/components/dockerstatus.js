@@ -3,15 +3,20 @@
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import DockerCard from "./dockercard";
+import AddDockerContainer from "./addDockerContainer";
 
 export default function DockerStatus() {
     const [containers, setContainers] = useState([]);
     const [error, setError] = useState(null);
     const [operations, setOperations] = useState({});
     const [isLoading, setIsLoading] = useState(true);
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    
+    // Socket URL stored as a constant for reuse
+    const SOCKET_URL = "http://10.5.1.83:4002";
 
     useEffect(() => {
-        const socket = io("http://10.5.1.83:4002");
+        const socket = io(SOCKET_URL);
 
         socket.on("containers", (data) => {
             console.log("WebSocket Data:", data);
@@ -57,7 +62,7 @@ export default function DockerStatus() {
 
     const fetchContainers = () => {
         setIsLoading(true);
-        fetch("http://10.5.1.83:4002/api/containers")
+        fetch(`${SOCKET_URL}/api/containers`)
             .then((res) => res.json())
             .then((data) => {
                 console.log("API response:", data);
@@ -85,7 +90,7 @@ export default function DockerStatus() {
             )
         );
 
-        const socket = io("http://10.5.1.83:4002");
+        const socket = io(SOCKET_URL);
         socket.emit("containerAction", { action, containerID: id });
 
         socket.on("error", (message) => {
@@ -132,7 +137,28 @@ export default function DockerStatus() {
                     </button>
                 </div>
             </div>
+
+            {/* Add Container Button */}
+            <div className="mb-6">
+                <button 
+                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded flex items-center"
+                    onClick={() => setShowCreateModal(true)}
+                >
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Create Container
+                </button>
+            </div>
             
+            {/* Add Docker Container component */}
+            <AddDockerContainer 
+                isOpen={showCreateModal}
+                onClose={() => setShowCreateModal(false)}
+                socketUrl={SOCKET_URL}
+            />
+
+            {/* Container listing */}
             {error ? (
                 <div className="bg-red-900 text-white p-3 rounded mb-4">
                     <p className="text-red-300">{error}</p>

@@ -186,6 +186,123 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on("createContainer", async (config) => {
+        try {
+            const { image, name, ports, environment, volumes } = config;
+            
+            // Update operation status to show we're working on it
+            socket.emit("operation", {
+                type: "containerAction",
+                status: "start",
+                action: "create",
+                message: `Creating container from image ${image}...`
+            });
+            
+            // Check if image exists locally, if not pull it
+            try {
+                await docker.getImage(image).inspect();
+                console.log(`Image ${image} found locally`);
+            } catch (err) {
+                // Image not found locally, try to pull it
+                console.log(`Image ${image} not found locally, pulling from registry...`);
+                socket.emit("operation", {
+                    type: "containerAction",
+                    status: "start",
+                    action: "pull",
+                    message: `Pulling image ${image}...`
+                });
+                
+                // Use stream to track pull progress
+                const stream = await docker.pull(image);
+                await new Promise((resolve, reject) => {
+                    docker.modem.followProgress(stream, (err, output) => {
+                        if (err) reject(err);
+                        else resolve(output);
+                    }, (event) => {
+                        // Optional: emit progress updates if desired
+                        if (event.progress) {
+                            socket.emit("operation", {
+                                type: "containerAction",
+                                status: "progress",
+                                action: "pull",
+                                message: `Pulling ${image}: ${event.progress}`
+                            });
+                        }
+                    });
+                });
+                
+                socket.emit("operation", {
+                    type: "containerAction",
+                    status: "progress",
+                    action: "create",
+                    message: `Image pulled, creating container...`
+                });
+            }
+            
+            // Parse port mappings
+            const portBindings = {};
+            const exposedPorts = {};
+            
+            if (ports) {
+                ports.split(',').forEach(portMapping => {
+                    const [hostPort, containerPort] = portMapping.trim().split(':');
+                    const containerPortWithProto = `${containerPort}/tcp`;
+                    exposedPorts[containerPortWithProto] = {};
+                    portBindings[containerPortWithProto] = [{ HostPort: hostPort }];
+                });
+            }
+            
+            // Parse environment variables
+            const envArray = environment ? environment.split('\n').filter(line => line.trim()) : [];
+            
+            // Parse volumes
+            const volumeBindings = [];
+            if (volumes) {
+                volumes.split('\n').forEach(volume => {
+                    if (volume.trim()) {
+                        const [hostPath, containerPath] = volume.trim().split(':');
+                        volumeBindings.push(`${hostPath}:${containerPath}`);
+                    }
+                });
+            }
+            
+            // Create container config
+            const containerConfig = {
+                Image: image,
+                name: name || undefined,
+                ExposedPorts: Object.keys(exposedPorts).length > 0 ? exposedPorts : undefined,
+                HostConfig: {
+                    PortBindings: Object.keys(portBindings).length > 0 ? portBindings : undefined,
+                    Binds: volumeBindings.length > 0 ? volumeBindings : undefined
+                },
+                Env: envArray.length > 0 ? envArray : undefined
+            };
+            
+            // Create and start container using Docker API
+            const container = await docker.createContainer(containerConfig);
+            await container.start();
+            
+            // Emit success message
+            socket.emit("operation", {
+                type: "containerAction",
+                status: "complete",
+                action: "create",
+                message: `Container ${name || container.id.substring(0, 12)} created successfully`
+            });
+            
+            // Send updated container list
+            fetchContainers(); // Use your existing fetch function to update the container list
+        } catch (error) {
+            console.error("Error creating container:", error);
+            socket.emit("operation", {
+                type: "containerAction",
+                status: "error",
+                action: "create",
+                message: error.message
+            });
+        }
+    });
+
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
         activeConnections.delete(socket.id);
