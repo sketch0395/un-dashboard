@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { iconMap, getIconForLink } from './icons/iconMapping';
-import { FaChevronLeft, FaChevronRight, FaCircle } from 'react-icons/fa';
+import { FaChevronLeft, FaChevronRight, FaCircle, FaPlus } from 'react-icons/fa';
 
 const CustomLinks = () => {
   // Store links in state - initially with some examples
@@ -14,6 +14,11 @@ const CustomLinks = () => {
   const [newLink, setNewLink] = useState({ name: '', url: '', category: '' });
   const [isAdding, setIsAdding] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
+  const [categoriesPerPage, setCategoriesPerPage] = useState(4);
+  const [isCustomCategory, setIsCustomCategory] = useState(false);
+  
+  // Container ref for measuring available width
+  const containerRef = useRef(null);
   
   // Load links from localStorage on component mount
   useEffect(() => {
@@ -28,11 +33,37 @@ const CustomLinks = () => {
     localStorage.setItem('customLinks', JSON.stringify(links));
   }, [links]);
   
+  // Responsive carousel - adjust cards per page based on container width
+  useEffect(() => {
+    const updateCardsPerPage = () => {
+      if (!containerRef.current) return;
+      
+      const containerWidth = containerRef.current.offsetWidth;
+      const cardWidth = 320; // card width + gap (300px + 20px)
+      const cardsToShow = Math.max(1, Math.floor(containerWidth / cardWidth));
+      
+      setCategoriesPerPage(cardsToShow);
+      // Reset to first page when resizing to avoid empty pages
+      setCurrentPage(0);
+    };
+    
+    // Initial calculation
+    updateCardsPerPage();
+    
+    // Add resize listener
+    window.addEventListener('resize', updateCardsPerPage);
+    
+    return () => {
+      window.removeEventListener('resize', updateCardsPerPage);
+    };
+  }, []);
+  
   const handleAddLink = () => {
     if (newLink.name && newLink.url) {
       setLinks([...links, { ...newLink, id: Date.now() }]);
       setNewLink({ name: '', url: '', category: '' });
       setIsAdding(false);
+      setIsCustomCategory(false);
     }
   };
   
@@ -48,11 +79,13 @@ const CustomLinks = () => {
     return acc;
   }, {});
   
+  // Get unique categories for dropdown
+  const uniqueCategories = [...new Set(links.map(link => link.category || 'Uncategorized'))];
+  
   // Get categories as array
   const categories = Object.keys(linksByCategory);
   
   // Calculate total number of pages
-  const categoriesPerPage = 4;
   const totalPages = Math.ceil(categories.length / categoriesPerPage);
   
   // Get current visible categories
@@ -70,6 +103,18 @@ const CustomLinks = () => {
     setCurrentPage((prev) => (prev === 0 ? totalPages - 1 : prev - 1));
   };
   
+  // Category selection handler
+  const handleCategorySelect = (e) => {
+    const value = e.target.value;
+    if (value === "custom") {
+      setIsCustomCategory(true);
+      setNewLink({...newLink, category: ''});
+    } else {
+      setIsCustomCategory(false);
+      setNewLink({...newLink, category: value});
+    }
+  };
+  
   return (
     <div className="p-6 bg-gray-900 text-white rounded-lg shadow-lg mt-6 w-full">
       <div className="flex justify-between items-center mb-4">
@@ -84,7 +129,7 @@ const CustomLinks = () => {
       
       {isAdding && (
         <div className="mb-6 bg-gray-800 p-4 rounded-lg shadow-md">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             <input
               type="text"
               placeholder="Name"
@@ -99,17 +144,43 @@ const CustomLinks = () => {
               onChange={(e) => setNewLink({...newLink, url: e.target.value})}
               className="bg-gray-700 text-white px-3 py-2 rounded"
             />
-            <input
-              type="text"
-              placeholder="Category (optional)"
-              value={newLink.category}
-              onChange={(e) => setNewLink({...newLink, category: e.target.value})}
-              className="bg-gray-700 text-white px-3 py-2 rounded"
-            />
           </div>
+          
+          <div className="mb-4">
+            <div className="flex gap-4 items-end">
+              <div className="flex-grow">
+                <label className="block text-sm text-gray-400 mb-1">Category</label>
+                <select
+                  value={isCustomCategory ? "custom" : newLink.category}
+                  onChange={handleCategorySelect}
+                  className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                >
+                  <option value="">Select category...</option>
+                  {uniqueCategories.map(category => (
+                    <option key={category} value={category}>{category}</option>
+                  ))}
+                  <option value="custom">+ Add new category</option>
+                </select>
+              </div>
+              
+              {isCustomCategory && (
+                <div className="flex-grow">
+                  <input
+                    type="text"
+                    placeholder="New category name"
+                    value={newLink.category}
+                    onChange={(e) => setNewLink({...newLink, category: e.target.value})}
+                    className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                    autoFocus
+                  />
+                </div>
+              )}
+            </div>
+          </div>
+          
           <button 
             onClick={handleAddLink}
-            className="mt-4 bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded"
+            className="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded"
           >
             Save Link
           </button>
@@ -120,9 +191,43 @@ const CustomLinks = () => {
         <p className="text-gray-400">No custom links found</p>
       ) : (
         <>
-          <div className="flex gap-6 overflow-hidden">
+          {/* Carousel navigation - moved above cards */}
+          {totalPages > 1 && (
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <button 
+                onClick={prevPage} 
+                className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
+                aria-label="Previous page"
+              >
+                <FaChevronLeft />
+              </button>
+              
+              <div className="flex gap-2">
+                {Array.from({ length: totalPages }).map((_, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentPage(index)}
+                    className={`text-xs ${currentPage === index ? 'text-blue-400' : 'text-gray-500'}`}
+                    aria-label={`Go to page ${index + 1}`}
+                  >
+                    <FaCircle />
+                  </button>
+                ))}
+              </div>
+              
+              <button 
+                onClick={nextPage} 
+                className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
+                aria-label="Next page"
+              >
+                <FaChevronRight />
+              </button>
+            </div>
+          )}
+          
+          <div ref={containerRef} className="flex gap-6 overflow-hidden">
             {visibleCategories.map(category => (
-              <div key={category} className="bg-gray-800 rounded-lg p-4 min-w-[300px] max-w-[350px] flex-1">
+              <div key={category} className="bg-gray-800 rounded-lg p-4 min-w-[280px] max-w-[350px] flex-1">
                 <h3 className="text-lg font-semibold text-blue-400 mb-3 pb-2 border-b border-gray-700">{category}</h3>
                 <div className="flex flex-col space-y-4">
                   {linksByCategory[category].map(link => (
@@ -160,40 +265,6 @@ const CustomLinks = () => {
               </div>
             ))}
           </div>
-          
-          {/* Carousel navigation */}
-          {totalPages > 1 && (
-            <div className="mt-4 flex items-center justify-center gap-4">
-              <button 
-                onClick={prevPage} 
-                className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
-                aria-label="Previous page"
-              >
-                <FaChevronLeft />
-              </button>
-              
-              <div className="flex gap-2">
-                {Array.from({ length: totalPages }).map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentPage(index)}
-                    className={`text-xs ${currentPage === index ? 'text-blue-400' : 'text-gray-500'}`}
-                    aria-label={`Go to page ${index + 1}`}
-                  >
-                    <FaCircle />
-                  </button>
-                ))}
-              </div>
-              
-              <button 
-                onClick={nextPage} 
-                className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
-                aria-label="Next page"
-              >
-                <FaChevronRight />
-              </button>
-            </div>
-          )}
         </>
       )}
     </div>
