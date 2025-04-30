@@ -5,11 +5,8 @@ import { iconMap, getIconForLink } from './icons/iconMapping';
 import { FaChevronLeft, FaChevronRight, FaCircle, FaPlus } from 'react-icons/fa';
 
 const CustomLinks = () => {
-  // Store links in state - initially with some examples
-  const [links, setLinks] = useState([
-    { id: 1, name: 'GitHub', url: 'https://github.com', category: 'Development' },
-    { id: 2, name: 'Docker Hub', url: 'https://hub.docker.com', category: 'Docker' },
-  ]);
+  // Initialize with empty array - we'll load from localStorage first
+  const [links, setLinks] = useState([]);
   
   const [newLink, setNewLink] = useState({ name: '', url: '', category: '' });
   const [isAdding, setIsAdding] = useState(false);
@@ -25,6 +22,12 @@ const CustomLinks = () => {
     const savedLinks = localStorage.getItem('customLinks');
     if (savedLinks) {
       setLinks(JSON.parse(savedLinks));
+    } else {
+      // Only set default examples if no saved links exist
+      setLinks([
+        { id: 1, name: 'GitHub', url: 'https://github.com', category: 'Development' },
+        { id: 2, name: 'Docker Hub', url: 'https://hub.docker.com', category: 'Docker' },
+      ]);
     }
   }, []);
   
