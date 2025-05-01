@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { FaChevronDown, FaChevronUp, FaTrash, FaEdit, FaEllipsisV } from "react-icons/fa";
+import { FaChevronDown, FaChevronUp, FaTrash, FaEdit, FaEllipsisV, FaTerminal } from "react-icons/fa";
 import { format } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 import DeviceModal from "./devicemodal"; // Import the new modal component
+import SSHTerminal from "./sshterminal";
 
 export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData }) {
     const [scanHistory, setScanHistory] = useState([]);
@@ -14,6 +15,11 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     const [editingIndex, setEditingIndex] = useState(null);
     const [newName, setNewName] = useState("");
     const [menuOpenIndex, setMenuOpenIndex] = useState(null);
+    const [sshModalVisible, setSSHModalVisible] = useState(false);
+    const [sshTarget, setSSHTarget] = useState(null);
+    const [sshUsername, setSSHUsername] = useState("");
+    const [sshPassword, setSSHPassword] = useState("");
+    const [showTerminal, setShowTerminal] = useState(false);
 
     useEffect(() => {
         const savedHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
@@ -142,6 +148,47 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         });
     };
 
+    const openSSHModal = (device) => {
+        setSSHTarget(device);
+        setSSHUsername(""); // Reset username
+        setSSHPassword(""); // Reset password
+        setSSHModalVisible(true);
+    };
+
+    const isSSHAvailable = (device) => {
+        if (!device || !device.ports) return false;
+        
+        // Check various possible formats for SSH port
+        if (Array.isArray(device.ports)) {
+            return device.ports.some(port => 
+                (typeof port === 'string' && 
+                 (port.includes('22/tcp') || 
+                  port.includes('ssh') || 
+                  port === '22')
+                ) ||
+                port === 22
+            );
+        }
+        
+        // If ports is an object
+        if (typeof device.ports === 'object') {
+            return Object.keys(device.ports).some(key => 
+                key === '22' || key === 22 || 
+                (device.ports[key] && device.ports[key].toLowerCase().includes('ssh'))
+            );
+        }
+        
+        return false;
+    };
+
+    const handleKeyPress = (e) => {
+        if (e.key === 'Enter' && sshTarget) {
+            // Same action as the Connect button
+            setSSHModalVisible(false);
+            setShowTerminal(true);
+        }
+    };
+
     return (
         <div className="mt-6">
             <h3 className="text-lg font-bold mb-4">Scan History</h3>
@@ -224,13 +271,31 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                             <h5 className="text-sm font-bold mb-2">Devices:</h5>
                                             <ul className="text-sm text-gray-300">
                                                 {Object.values(entry.data || {}).flat().map((device, i) => (
-                                                    <li key={i} className="mb-1">
+                                                    <li key={i} className="mb-1 flex items-center justify-between">
                                                         <button
                                                             onClick={() => openModal(device)}
                                                             className="text-blue-400 hover:underline"
                                                         >
                                                             {device.ip}
                                                         </button>
+                                                        {/* <button
+                                                            onClick={() => console.log("Device data:", device)}
+                                                            className="ml-2 text-xs text-gray-400"
+                                                            title="Debug device data"
+                                                        >
+                                                            [debug]
+                                                        </button> */}
+                                                        <div className="flex gap-3 items-center ml-2">
+                                                            {isSSHAvailable(device) && (
+                                                                <button
+                                                                    onClick={() => openSSHModal(device)}
+                                                                    className="bg-green-600 hover:bg-green-700 px-2 py-1 rounded text-xs flex items-center"
+                                                                    title="SSH into device"
+                                                                >
+                                                                    <FaTerminal />
+                                                                </button>
+                                                            )}
+                                                        </div>
                                                     </li>
                                                 ))}
                                             </ul>
@@ -268,6 +333,64 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                 setModalDevice={setModalDevice}
                 onSave={saveDeviceChanges}
             />
+
+            {sshModalVisible && sshTarget && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 rounded-lg p-4 w-96">
+                        <h2 className="text-white text-xl mb-4">SSH to {sshTarget.ip}</h2>
+                        <div className="mb-4">
+                            <label className="block text-sm text-gray-300 mb-1">Username</label>
+                            <input
+                                type="text"
+                                value={sshUsername}
+                                onChange={(e) => setSSHUsername(e.target.value)}
+                                onKeyDown={handleKeyPress}
+                                className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                            />
+                        </div>
+                        <div className="mb-4">
+                            <label className="block text-sm text-gray-300 mb-1">Password</label>
+                            <input
+                                type="password"
+                                value={sshPassword}
+                                onChange={(e) => setSSHPassword(e.target.value)}
+                                onKeyDown={handleKeyPress}
+                                className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                            />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <button
+                                onClick={() => setSSHModalVisible(false)}
+                                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => {
+                                    // Close the credentials modal
+                                    setSSHModalVisible(false);
+                                    // Open the terminal
+                                    setShowTerminal(true);
+                                }}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                            >
+                                Connect
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* If using the embedded terminal approach: */}
+            {showTerminal && sshTarget && (
+                <SSHTerminal
+                    ip={sshTarget.ip}
+                    username={sshUsername}
+                    password={sshPassword}
+                    visible={showTerminal}
+                    onClose={() => setShowTerminal(false)}
+                />
+            )}
         </div>
     );
 }

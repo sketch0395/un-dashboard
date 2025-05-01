@@ -6,6 +6,7 @@ const cors = require('cors');
 const socketIo = require('socket.io');
 const http = require('http');
 const Docker = require('dockerode');
+const SSH2 = require('ssh2');
 
 const app = express();
 const server = http.createServer(app);
@@ -232,6 +233,60 @@ io.on('connection', (socket) => {
             console.error('[ERROR] startNetworkScan:', error.message);
             socket.emit('networkScanStatus', { status: 'Error', error: error.message });
         }
+    });
+
+    socket.on('sshConnect', (data) => {
+        const { ip, username, password } = data;
+        console.log(`Attempting SSH connection to ${username}@${ip}`);
+        
+        const conn = new SSH2.Client();
+        
+        conn.on('ready', () => {
+            socket.emit('sshData', 'Connected to SSH server\r\n');
+            
+            conn.shell((err, stream) => {
+                if (err) {
+                    socket.emit('sshData', `\r\nSSH Error: ${err.message}\r\n`);
+                    socket.emit('sshClose');
+                    return;
+                }
+
+                stream.on('data', (data) => {
+                    socket.emit('sshData', data.toString('utf-8'));
+                });
+
+                stream.stderr.on('data', (data) => {
+                    socket.emit('sshData', data.toString('utf-8'));
+                });
+
+                stream.on('close', () => {
+                    conn.end();
+                    socket.emit('sshClose');
+                });
+
+                socket.on('sshData', (data) => {
+                    stream.write(data);
+                });
+
+                socket.on('disconnect', () => {
+                    conn.end();
+                });
+            });
+        });
+
+        conn.on('error', (err) => {
+            socket.emit('sshData', `\r\nConnection error: ${err.message}\r\n`);
+            socket.emit('sshClose');
+        });
+
+        conn.connect({
+            host: ip,
+            port: 22,
+            username: username,
+            password: password,
+            readyTimeout: 5000,
+            keepaliveInterval: 5000
+        });
     });
 
     socket.on('disconnect', () => {
