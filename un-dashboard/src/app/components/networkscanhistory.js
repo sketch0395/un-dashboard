@@ -58,13 +58,25 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
 
     const handleAddZones = () => {
         const selectedZones = selectedScans.map((index) => scanHistory[index]);
-        const combinedDevices = selectedZones.reduce((acc, zone) => {
-            return [...acc, ...Object.values(zone.data || {}).flat()];
-        }, []);
+        let combinedDevices = [];
+        
+        // Add scan source information to each device
+        selectedZones.forEach((zone, zoneIndex) => {
+            const devicesWithSource = Object.values(zone.data || {}).flat().map(device => ({
+                ...device,
+                scanSource: {
+                    id: zone.id || `scan-${zoneIndex}`,
+                    name: zone.name || `Scan ${zoneIndex + 1}`,
+                    index: zoneIndex
+                }
+            }));
+            combinedDevices = [...combinedDevices, ...devicesWithSource];
+        });
+        
         const combinedData = {
             devices: combinedDevices,
-            vendorColors: {}, // Add vendor color mapping if needed
-            customNames: {}, // Add custom names if needed
+            vendorColors: {},
+            customNames: {},
         };
         addZonesToTopology(combinedData);
         setSelectedScans([]);
@@ -158,8 +170,18 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     const isSSHAvailable = (device) => {
         if (!device || !device.ports) return false;
         
-        // Check various possible formats for SSH port
+        // Check if port 22 is specifically marked as closed
         if (Array.isArray(device.ports)) {
+            // Check for "closed" status in port description
+            const hasClosedSSH = device.ports.some(port => 
+                typeof port === 'string' && 
+                (port.includes('22/tcp closed') || port.includes('closed ssh'))
+            );
+            
+            // If explicitly closed, return false
+            if (hasClosedSSH) return false;
+            
+            // Otherwise check for open SSH as before
             return device.ports.some(port => 
                 (typeof port === 'string' && 
                  (port.includes('22/tcp') || 
@@ -172,9 +194,22 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         
         // If ports is an object
         if (typeof device.ports === 'object') {
+            // Check for closed status
+            const hasClosedSSH = Object.entries(device.ports).some(([key, value]) => 
+                (key === '22' || key === 22) && 
+                typeof value === 'string' && 
+                value.toLowerCase().includes('closed')
+            );
+            
+            // If explicitly closed, return false
+            if (hasClosedSSH) return false;
+            
+            // Otherwise check for open SSH
             return Object.keys(device.ports).some(key => 
                 key === '22' || key === 22 || 
-                (device.ports[key] && device.ports[key].toLowerCase().includes('ssh'))
+                (device.ports[key] && 
+                 device.ports[key].toLowerCase().includes('ssh') && 
+                 !device.ports[key].toLowerCase().includes('closed'))
             );
         }
         
@@ -217,12 +252,34 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                                 className="form-checkbox h-5 w-5 text-blue-600"
                                             />
                                             {editingIndex === originalIndex ? (
-                                                <input
-                                                    type="text"
-                                                    value={newName}
-                                                    onChange={(e) => setNewName(e.target.value)}
-                                                    className="bg-gray-600 text-white px-2 py-1 rounded"
-                                                />
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={newName}
+                                                        onChange={(e) => setNewName(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                saveRename(originalIndex);
+                                                            }
+                                                        }}
+                                                        className="bg-gray-600 text-white px-2 py-1 rounded"
+                                                        autoFocus
+                                                    />
+                                                    <button
+                                                        onClick={() => saveRename(originalIndex)}
+                                                        className="bg-green-600 hover:bg-green-700 text-white p-1 rounded text-xs"
+                                                        title="Save name"
+                                                    >
+                                                        Save
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setEditingIndex(null)}
+                                                        className="bg-gray-600 hover:bg-gray-700 text-white p-1 rounded text-xs"
+                                                        title="Cancel"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                </div>
                                             ) : (
                                                 <h4 className="text-md font-bold">
                                                     {entry.name || `Scan ${originalIndex + 1}`}

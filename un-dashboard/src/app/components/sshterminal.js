@@ -38,9 +38,23 @@ export default function SSHTerminal({ ip, username, password, visible, onClose }
         if (!visible || !terminalRef.current) return;
         
         const resizeObserver = new ResizeObserver(() => {
-            if (fitAddonRef.current) {
+            if (fitAddonRef.current && terminalInstanceRef.current) {
                 try {
+                    const term = terminalInstanceRef.current;
+                    
+                    // Clear terminal before resizing to prevent artifacts
+                    term.clear();
+                    
+                    // Fit terminal to container
                     fitAddonRef.current.fit();
+                    
+                    // Force a complete refresh after resize
+                    term.refresh(0, term.rows - 1);
+                    
+                    // Always scroll to bottom after resize
+                    setTimeout(() => {
+                        term.scrollToBottom();
+                    }, 0);
                 } catch (e) {
                     console.error("Resize observer error:", e);
                 }
@@ -68,20 +82,57 @@ export default function SSHTerminal({ ip, username, password, visible, onClose }
                 const { Terminal, FitAddon, WebLinksAddon } = await loadXterm();
                 if (!Terminal) return;
                 
-                // Initialize terminal with constrained dimensions
+                // Add CSS to ensure proper rendering
+                const style = document.createElement('style');
+                style.textContent = `
+                    .xterm-viewport::-webkit-scrollbar {
+                        width: 5px;
+                    }
+                    .xterm-viewport::-webkit-scrollbar-thumb {
+                        background: #666;
+                        border-radius: 5px;
+                    }
+                    .xterm-screen {
+                        width: 100% !important;
+                    }
+                    .xterm-viewport {
+                        overflow-y: auto !important;
+                        background-color: #1e1e1e !important;
+                    }
+                    .terminal.xterm {
+                        height: 100%;
+                        padding: 0;
+                    }
+                    .xterm .xterm-screen canvas {
+                        display: block !important;
+                    }
+                `;
+                document.head.appendChild(style);
+                
+                // Initialize terminal with optimized settings
                 term = new Terminal({
                     cursorBlink: true,
                     theme: {
                         background: '#1e1e1e',
                         foreground: '#f0f0f0',
+                        cursor: '#ffffff',
+                        cursorAccent: '#000000'
                     },
-                    cols: 80,  // Start with standard dimensions
-                    rows: 24,  // Start with standard dimensions
+                    scrollback: 5000,
+                    fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+                    fontSize: 14,
+                    fontWeight: 'normal',
+                    rendererType: 'canvas',
+                    convertEol: true,
+                    letterSpacing: 0,
+                    lineHeight: 1.2,
+                    disableStdin: false,
+                    screenReaderMode: false,
                     allowProposedApi: true
                 });
                 
                 fitAddon = new FitAddon();
-                fitAddonRef.current = fitAddon; // Store reference for resize observer
+                fitAddonRef.current = fitAddon;
                 
                 term.loadAddon(fitAddon);
                 term.loadAddon(new WebLinksAddon());
@@ -90,6 +141,7 @@ export default function SSHTerminal({ ip, username, password, visible, onClose }
                 try {
                     term.open(terminalRef.current);
                     terminalInstanceRef.current = term;
+                    term.clear();
                 } catch (e) {
                     console.error("Error opening terminal:", e);
                     return;
@@ -103,11 +155,14 @@ export default function SSHTerminal({ ip, username, password, visible, onClose }
                     if (terminalRef.current && fitAddon) {
                         try {
                             fitAddon.fit();
+                            term.clear();
+                            term.refresh(0, term.rows - 1);
+                            term.scrollToBottom();
                         } catch (e) {
                             console.error("Error fitting terminal:", e);
                         }
                     }
-                }, 300); // Increase timeout to ensure DOM is fully rendered
+                }, 300);
                 
                 try {
                     term.focus();
@@ -122,18 +177,50 @@ export default function SSHTerminal({ ip, username, password, visible, onClose }
                 socket.emit('sshConnect', { ip, username, password });
                 
                 socket.on('sshData', (data) => {
-                    if (term && !term.element.isConnected) {
+                    if (!term || !term.element || !term.element.isConnected) {
                         console.error("Terminal not connected to DOM");
                         return;
                     }
+                    
                     try {
+                        // Write data to terminal
                         term.write(data);
+                        
+                        // Force full refresh
+                        term.refresh(0, term.rows - 1);
+                        
+                        // Always scroll to bottom for new data
+                        term.scrollToBottom();
                     } catch (e) {
                         console.error("Error writing to terminal:", e);
                     }
                 });
                 
-                // Rest of socket event handlers
+                // Add event handler for user input
+                term.onData(data => {
+                    try {
+                        socket.emit('sshData', data);
+                    } catch (e) {
+                        console.error("Error sending terminal input:", e);
+                    }
+                });
+                
+                // Add connection status handlers
+                socket.on('connect', () => {
+                    console.log('Socket connected');
+                });
+                
+                socket.on('disconnect', () => {
+                    console.log('Socket disconnected');
+                    term.writeln('\r\n\nConnection closed\r\n');
+                    term.scrollToBottom();
+                });
+                
+                socket.on('error', (err) => {
+                    console.error('Socket error:', err);
+                    term.writeln(`\r\n\nError: ${err}\r\n`);
+                    term.scrollToBottom();
+                });
             } catch (error) {
                 console.error("Terminal initialization error:", error);
                 onClose();
@@ -163,7 +250,6 @@ export default function SSHTerminal({ ip, username, password, visible, onClose }
 
     return (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-            {/* Adjust the modal size here */}
             <div className="bg-gray-800 rounded-lg p-4 w-10/12 md:w-4/5 h-5/6 max-h-[85vh] flex flex-col overflow-hidden">
                 <div className="flex justify-between items-center mb-2">
                     <h2 className="text-white">SSH: {username}@{ip}</h2>
@@ -182,7 +268,7 @@ export default function SSHTerminal({ ip, username, password, visible, onClose }
                 <div 
                     className={`flex-1 bg-gray-900 rounded ${!terminalLoaded ? 'hidden' : ''} overflow-hidden`} 
                     ref={terminalRef}
-                    style={{ width: '100%', height: '100%' }}
+                    style={{ width: '100%', height: '100%', backgroundColor: '#1e1e1e' }}
                 ></div>
             </div>
         </div>

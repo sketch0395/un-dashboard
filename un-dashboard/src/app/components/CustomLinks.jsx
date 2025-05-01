@@ -4,6 +4,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { iconMap, getIconForLink } from './icons/iconMapping';
 import { FaChevronLeft, FaChevronRight, FaCircle, FaPlus } from 'react-icons/fa';
 
+// Define default links outside component to keep them consistent
+const DEFAULT_LINKS = [
+  { id: 'default-1', name: 'GitHub', url: 'https://github.com', category: 'Development', isDefault: true },
+  { id: 'default-2', name: 'Docker Hub', url: 'https://hub.docker.com', category: 'Docker', isDefault: true },
+];
+
 const CustomLinks = () => {
   // Initialize with empty array - we'll load from localStorage first
   const [links, setLinks] = useState([]);
@@ -20,14 +26,25 @@ const CustomLinks = () => {
   // Load links from localStorage on component mount
   useEffect(() => {
     const savedLinks = localStorage.getItem('customLinks');
+    
     if (savedLinks) {
-      setLinks(JSON.parse(savedLinks));
+      const parsedLinks = JSON.parse(savedLinks);
+      
+      // Get IDs of saved default links to check which ones were deleted
+      const savedDefaultIds = parsedLinks
+        .filter(link => link.isDefault)
+        .map(link => link.id);
+      
+      // Include default links that aren't in the saved list (weren't deleted)
+      const defaultLinksToAdd = DEFAULT_LINKS.filter(
+        defaultLink => !savedDefaultIds.includes(defaultLink.id)
+      );
+      
+      // Combine saved links with any missing default links
+      setLinks([...parsedLinks, ...defaultLinksToAdd]);
     } else {
-      // Only set default examples if no saved links exist
-      setLinks([
-        { id: 1, name: 'GitHub', url: 'https://github.com', category: 'Development' },
-        { id: 2, name: 'Docker Hub', url: 'https://hub.docker.com', category: 'Docker' },
-      ]);
+      // No saved links, use all default links
+      setLinks(DEFAULT_LINKS);
     }
   }, []);
   
