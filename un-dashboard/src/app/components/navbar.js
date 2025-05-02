@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, memo } from "react";
 import { useRouter } from "next/navigation";
 
-const Navbar = () => {
+const Navbar = memo(() => {
     const router = useRouter();
     const [hostInfo, setHostInfo] = useState({
         hostname: "Loading...",
@@ -103,6 +103,6 @@ const Navbar = () => {
             </div>
         </nav>
     );
-};
+});
 
 export default Navbar;

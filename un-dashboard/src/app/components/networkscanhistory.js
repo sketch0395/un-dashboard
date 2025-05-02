@@ -1,14 +1,66 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { lazy, Suspense, useState, useEffect, memo } from "react";
 import { FaChevronDown, FaChevronUp, FaTrash, FaEdit, FaEllipsisV, FaTerminal } from "react-icons/fa";
 import { format } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
-import DeviceModal from "./devicemodal"; // Import the new modal component
-import SSHTerminal from "./sshterminal";
+import { createContext, useContext } from "react";
+import { FixedSizeList as List } from "react-window";
+
+const DeviceModal = lazy(() => import("./devicemodal"));
+const SSHTerminal = lazy(() => import("./sshterminal"));
+const MemoizedDeviceList = lazy(() => import("./networkscanhistory").then(module => ({ default: module.MemoizedDeviceList })));
+
+const ScanHistoryContext = createContext();
+
+export const ScanHistoryProvider = ({ children }) => {
+    const [scanHistory, setScanHistory] = useState([]);
+
+    useEffect(() => {
+        const savedHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
+        setScanHistory(savedHistory);
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem("scanHistory", JSON.stringify(scanHistory));
+    }, [scanHistory]);
+
+    const saveScanHistory = (data, ipRange) => {
+        const newEntry = {
+            id: uuidv4(),
+            timestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+            ipRange,
+            devices: Object.values(data).flat().length,
+            data,
+        };
+        setScanHistory((prev) => [...prev, newEntry]);
+    };
+
+    const deleteScan = (index) => {
+        setScanHistory((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    const updateScanName = (index, newName) => {
+        setScanHistory((prev) => {
+            const updated = [...prev];
+            updated[index].name = newName;
+            return updated;
+        });
+    };
+
+    return (
+        <ScanHistoryContext.Provider
+            value={{ scanHistory, saveScanHistory, deleteScan, updateScanName }}
+        >
+            {children}
+        </ScanHistoryContext.Provider>
+    );
+};
+
+export const useScanHistory = () => useContext(ScanHistoryContext);
 
 export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData }) {
-    const [scanHistory, setScanHistory] = useState([]);
+    const { scanHistory, saveScanHistory, deleteScan, updateScanName } = useScanHistory();
     const [selectedScans, setSelectedScans] = useState([]);
     const [expandedIndex, setExpandedIndex] = useState(null);
     const [modalDevice, setModalDevice] = useState(null);
@@ -22,31 +74,11 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     const [showTerminal, setShowTerminal] = useState(false);
 
     useEffect(() => {
-        const savedHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
-        setScanHistory(savedHistory);
-    }, []);
-
-    useEffect(() => {
-        localStorage.setItem("scanHistory", JSON.stringify(scanHistory));
-    }, [scanHistory]);
-
-    useEffect(() => {
         if (scanHistoryData) {
             const { data, ipRange } = scanHistoryData;
             saveScanHistory(data, ipRange);
         }
     }, [scanHistoryData]);
-
-    const saveScanHistory = (data, ipRange) => {
-        const newEntry = {
-            id: uuidv4(),
-            timestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
-            ipRange,
-            devices: Object.values(data).flat().length,
-            data,
-        };
-        setScanHistory((prev) => [...prev, newEntry]);
-    };
 
     const handleCheckboxChange = (index) => {
         setSelectedScans((prev) =>
@@ -103,11 +135,6 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         addZonesToTopology(combinedData);
     };
 
-    const deleteScan = (index) => {
-        const updatedHistory = scanHistory.filter((_, i) => i !== index);
-        setScanHistory(updatedHistory);
-    };
-
     const startRenaming = (index) => {
         setEditingIndex(index);
         setNewName(scanHistory[index].name || `Scan ${index + 1}`);
@@ -115,9 +142,7 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     };
 
     const saveRename = (index) => {
-        const updatedHistory = [...scanHistory];
-        updatedHistory[index].name = newName;
-        setScanHistory(updatedHistory);
+        updateScanName(index, newName);
         setEditingIndex(null);
         setNewName("");
     };
@@ -152,7 +177,6 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             });
         });
 
-        setScanHistory(updatedHistory);
         addZonesToTopology({
             devices: Object.values(updatedHistory.map((entry) => entry.data || {})).flat(),
             vendorColors: {}, // Add vendor color mapping if needed
@@ -160,60 +184,41 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         });
     };
 
+    const checkPortStatus = (ports, portNumber, status) => {
+        if (Array.isArray(ports)) {
+            return ports.some(port => 
+                typeof port === 'string' && 
+                port.includes(`${portNumber}/tcp ${status}`)
+            );
+        }
+    
+        if (typeof ports === 'object') {
+            return Object.entries(ports).some(([key, value]) => 
+                (key === portNumber.toString() || key === portNumber) && 
+                typeof value === 'string' && 
+                value.toLowerCase().includes(status)
+            );
+        }
+    
+        return false;
+    };
+    
+    const isSSHAvailable = (device) => {
+        if (!device || !device.ports) return false;
+    
+        // Check if port 22 is specifically marked as closed
+        const hasClosedSSH = checkPortStatus(device.ports, 22, 'closed');
+        if (hasClosedSSH) return false;
+    
+        // Otherwise check for open SSH
+        return checkPortStatus(device.ports, 22, 'open') || checkPortStatus(device.ports, 22, 'ssh');
+    };
+
     const openSSHModal = (device) => {
         setSSHTarget(device);
         setSSHUsername(""); // Reset username
         setSSHPassword(""); // Reset password
         setSSHModalVisible(true);
-    };
-
-    const isSSHAvailable = (device) => {
-        if (!device || !device.ports) return false;
-        
-        // Check if port 22 is specifically marked as closed
-        if (Array.isArray(device.ports)) {
-            // Check for "closed" status in port description
-            const hasClosedSSH = device.ports.some(port => 
-                typeof port === 'string' && 
-                (port.includes('22/tcp closed') || port.includes('closed ssh'))
-            );
-            
-            // If explicitly closed, return false
-            if (hasClosedSSH) return false;
-            
-            // Otherwise check for open SSH as before
-            return device.ports.some(port => 
-                (typeof port === 'string' && 
-                 (port.includes('22/tcp') || 
-                  port.includes('ssh') || 
-                  port === '22')
-                ) ||
-                port === 22
-            );
-        }
-        
-        // If ports is an object
-        if (typeof device.ports === 'object') {
-            // Check for closed status
-            const hasClosedSSH = Object.entries(device.ports).some(([key, value]) => 
-                (key === '22' || key === 22) && 
-                typeof value === 'string' && 
-                value.toLowerCase().includes('closed')
-            );
-            
-            // If explicitly closed, return false
-            if (hasClosedSSH) return false;
-            
-            // Otherwise check for open SSH
-            return Object.keys(device.ports).some(key => 
-                key === '22' || key === 22 || 
-                (device.ports[key] && 
-                 device.ports[key].toLowerCase().includes('ssh') && 
-                 !device.ports[key].toLowerCase().includes('closed'))
-            );
-        }
-        
-        return false;
     };
 
     const handleKeyPress = (e) => {
@@ -326,36 +331,14 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                     {isExpanded && (
                                         <div className="mt-4 bg-gray-800 p-3 rounded">
                                             <h5 className="text-sm font-bold mb-2">Devices:</h5>
-                                            <ul className="text-sm text-gray-300">
-                                                {Object.values(entry.data || {}).flat().map((device, i) => (
-                                                    <li key={i} className="mb-1 flex items-center justify-between">
-                                                        <button
-                                                            onClick={() => openModal(device)}
-                                                            className="text-blue-400 hover:underline"
-                                                        >
-                                                            {device.ip}
-                                                        </button>
-                                                        {/* <button
-                                                            onClick={() => console.log("Device data:", device)}
-                                                            className="ml-2 text-xs text-gray-400"
-                                                            title="Debug device data"
-                                                        >
-                                                            [debug]
-                                                        </button> */}
-                                                        <div className="flex gap-3 items-center ml-2">
-                                                            {isSSHAvailable(device) && (
-                                                                <button
-                                                                    onClick={() => openSSHModal(device)}
-                                                                    className="bg-green-600 hover:bg-green-700 px-2 py-1 rounded text-xs flex items-center"
-                                                                    title="SSH into device"
-                                                                >
-                                                                    <FaTerminal />
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    </li>
-                                                ))}
-                                            </ul>
+                                            <Suspense fallback={<div>Loading devices...</div>}>
+                                                <MemoizedDeviceList
+                                                    devices={Object.values(entry.data || {}).flat()}
+                                                    openModal={openModal}
+                                                    isSSHAvailable={isSSHAvailable}
+                                                    openSSHModal={openSSHModal}
+                                                />
+                                            </Suspense>
                                             <button
                                                 onClick={() => visualizeOnTopology(entry)}
                                                 className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
@@ -384,12 +367,13 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                 </button>
             )}
 
-            {/* Use the new DeviceModal component */}
-            <DeviceModal
-                modalDevice={modalDevice}
-                setModalDevice={setModalDevice}
-                onSave={saveDeviceChanges}
-            />
+            <Suspense fallback={<div>Loading modal...</div>}>
+                <DeviceModal
+                    modalDevice={modalDevice}
+                    setModalDevice={setModalDevice}
+                    onSave={saveDeviceChanges}
+                />
+            </Suspense>
 
             {sshModalVisible && sshTarget && (
                 <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
@@ -438,15 +422,16 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                 </div>
             )}
 
-            {/* If using the embedded terminal approach: */}
             {showTerminal && sshTarget && (
-                <SSHTerminal
-                    ip={sshTarget.ip}
-                    username={sshUsername}
-                    password={sshPassword}
-                    visible={showTerminal}
-                    onClose={() => setShowTerminal(false)}
-                />
+                <Suspense fallback={<div>Loading SSH terminal...</div>}>
+                    <SSHTerminal
+                        ip={sshTarget.ip}
+                        username={sshUsername}
+                        password={sshPassword}
+                        visible={showTerminal}
+                        onClose={() => setShowTerminal(false)}
+                    />
+                </Suspense>
             )}
         </div>
     );
