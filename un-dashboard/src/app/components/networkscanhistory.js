@@ -9,7 +9,7 @@ import { FixedSizeList as List } from "react-window";
 
 const DeviceModal = lazy(() => import("./devicemodal"));
 const SSHTerminal = lazy(() => import("./sshterminal"));
-const MemoizedDeviceList = lazy(() => import("./networkscanhistory").then(module => ({ default: module.MemoizedDeviceList })));
+const MemoizedDeviceList = lazy(() => import("./MemoizedDeviceList"));
 
 const ScanHistoryContext = createContext();
 
@@ -47,10 +47,58 @@ export const ScanHistoryProvider = ({ children }) => {
             return updated;
         });
     };
+    
+    // Add a function to clear all scan history
+    const clearHistory = () => {
+        setScanHistory([]);
+        localStorage.removeItem("scanHistory");
+    };
+
+    // Add a function to update device data in scan history
+    const updateDeviceInHistory = (deviceIP, updatedDeviceData) => {
+        setScanHistory((prev) => {
+            const updated = prev.map(entry => {
+                // Skip entries without data
+                if (!entry.data) return entry;
+                
+                // Create a new copy of the entry
+                const newEntry = { ...entry };
+                newEntry.data = { ...entry.data };
+                
+                // Update matching devices in all categories
+                Object.keys(newEntry.data).forEach(key => {
+                    if (Array.isArray(newEntry.data[key])) {
+                        newEntry.data[key] = newEntry.data[key].map(device => {
+                            if (device.ip === deviceIP) {
+                                return {
+                                    ...device,
+                                    name: updatedDeviceData.name,
+                                    color: updatedDeviceData.color,
+                                    icon: updatedDeviceData.icon
+                                };
+                            }
+                            return device;
+                        });
+                    }
+                });
+                
+                return newEntry;
+            });
+            
+            return updated;
+        });
+    };
 
     return (
         <ScanHistoryContext.Provider
-            value={{ scanHistory, saveScanHistory, deleteScan, updateScanName }}
+            value={{ 
+                scanHistory, 
+                saveScanHistory, 
+                deleteScan, 
+                updateScanName, 
+                clearHistory,
+                updateDeviceInHistory 
+            }}
         >
             {children}
         </ScanHistoryContext.Provider>
@@ -60,7 +108,7 @@ export const ScanHistoryProvider = ({ children }) => {
 export const useScanHistory = () => useContext(ScanHistoryContext);
 
 export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData }) {
-    const { scanHistory, saveScanHistory, deleteScan, updateScanName } = useScanHistory();
+    const { scanHistory, saveScanHistory, deleteScan, updateScanName, clearHistory, updateDeviceInHistory } = useScanHistory();
     const [selectedScans, setSelectedScans] = useState([]);
     const [expandedIndex, setExpandedIndex] = useState(null);
     const [modalDevice, setModalDevice] = useState(null);
@@ -72,6 +120,23 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     const [sshUsername, setSSHUsername] = useState("");
     const [sshPassword, setSSHPassword] = useState("");
     const [showTerminal, setShowTerminal] = useState(false);
+    // Add a state variable to persist custom device properties
+    const [persistentCustomNames, setPersistentCustomNames] = useState({});
+    // Add state for confirmation modal
+    const [showConfirmClear, setShowConfirmClear] = useState(false);
+    
+    // Load any previously saved custom device properties from localStorage
+    useEffect(() => {
+        const savedCustomNames = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
+        setPersistentCustomNames(savedCustomNames);
+    }, []);
+    
+    // Update localStorage whenever custom device properties change
+    useEffect(() => {
+        if (Object.keys(persistentCustomNames).length > 0) {
+            localStorage.setItem("customDeviceProperties", JSON.stringify(persistentCustomNames));
+        }
+    }, [persistentCustomNames]);
 
     useEffect(() => {
         if (scanHistoryData) {
@@ -92,23 +157,67 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         const selectedZones = selectedScans.map((index) => scanHistory[index]);
         let combinedDevices = [];
         
+        // Build a customNames object that properly combines:
+        // 1. Our persistent custom names from localStorage
+        // 2. Any custom properties from all scan history
+        const customNames = { ...persistentCustomNames };
+        
+        // First, gather all custom properties from scan history
+        scanHistory.forEach(entry => {
+            if (entry.data) {
+                Object.values(entry.data).flat().forEach(device => {
+                    if (device.ip && (device.name || device.color || device.icon)) {
+                        // If this IP already exists in customNames, merge the properties
+                        if (customNames[device.ip]) {
+                            customNames[device.ip] = {
+                                ...customNames[device.ip],
+                                ...(device.name && { name: device.name }),
+                                ...(device.color && { color: device.color }),
+                                ...(device.icon && { icon: device.icon })
+                            };
+                        } else {
+                            customNames[device.ip] = {
+                                name: device.name,
+                                color: device.color,
+                                icon: device.icon
+                            };
+                        }
+                    }
+                });
+            }
+        });
+        
         // Add scan source information to each device
         selectedZones.forEach((zone, zoneIndex) => {
-            const devicesWithSource = Object.values(zone.data || {}).flat().map(device => ({
-                ...device,
-                scanSource: {
-                    id: zone.id || `scan-${zoneIndex}`,
-                    name: zone.name || `Scan ${zoneIndex + 1}`,
-                    index: zoneIndex
-                }
-            }));
+            const devicesWithSource = Object.values(zone.data || {}).flat().map(device => {
+                // Apply any saved custom properties to this device from our customNames object
+                const customDevice = customNames[device.ip];
+                
+                return {
+                    ...device,
+                    // Apply saved custom properties if they exist
+                    name: customDevice?.name || device.name,
+                    color: customDevice?.color || device.color,
+                    icon: customDevice?.icon || device.icon,
+                    // Add scan source information
+                    scanSource: {
+                        id: zone.id || `scan-${zoneIndex}`,
+                        name: zone.name || `Scan ${zoneIndex + 1}`,
+                        index: zoneIndex
+                    }
+                };
+            });
             combinedDevices = [...combinedDevices, ...devicesWithSource];
         });
+        
+        // Log count of devices with custom names for debugging
+        const namedDevices = combinedDevices.filter(d => d.name).length;
+        console.log(`Combined ${combinedDevices.length} devices, including ${namedDevices} with custom names`);
         
         const combinedData = {
             devices: combinedDevices,
             vendorColors: {},
-            customNames: {},
+            customNames: customNames,
         };
         addZonesToTopology(combinedData);
         setSelectedScans([]);
@@ -125,12 +234,36 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     const closeModal = () => {
         setModalDevice(null);
     };
+    
+    const openSSHModal = (device) => {
+        setSSHTarget(device);
+        setSSHUsername(""); // Reset username
+        setSSHPassword(""); // Reset password
+        setSSHModalVisible(true);
+    };
 
     const visualizeOnTopology = (entry) => {
+        // Build a customNames object that combines:
+        // 1. Our persistent custom names from localStorage
+        // 2. Any custom properties in the current entry
+        const customNames = { ...persistentCustomNames };
+        
+        Object.values(entry.data || {}).flat().forEach((device) => {
+            // Only add to customNames if the device has custom properties
+            if (device.name || device.color || device.icon) {
+                customNames[device.ip] = {
+                    ...customNames[device.ip], // Keep any existing properties
+                    ...(device.name && { name: device.name }),
+                    ...(device.color && { color: device.color }),
+                    ...(device.icon && { icon: device.icon }),
+                };
+            }
+        });
+
         const combinedData = {
             devices: Object.values(entry.data || {}).flat(),
             vendorColors: {}, // Add vendor color mapping if needed
-            customNames: {}, // Add custom names if needed
+            customNames: customNames,
         };
         addZonesToTopology(combinedData);
     };
@@ -151,74 +284,49 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         setMenuOpenIndex((prev) => (prev === index ? null : index));
     };
 
-    const saveDeviceChanges = (updatedDevice) => {
-        const updatedHistory = scanHistory.map((entry) => {
-            if (entry.data) {
-                Object.values(entry.data).flat().forEach((device) => {
-                    if (device.ip === updatedDevice.ip) {
-                        device.name = updatedDevice.name;
-                        device.color = updatedDevice.color;
-                        device.icon = updatedDevice.icon;
-                    }
-                });
-            }
-            return entry;
-        });
-
-        // Update the customNames object for the topology map
-        const updatedCustomNames = {};
-        updatedHistory.forEach((entry) => {
-            Object.values(entry.data || {}).flat().forEach((device) => {
-                updatedCustomNames[device.ip] = {
-                    name: device.name,
-                    color: device.color,
-                    icon: device.icon,
-                };
-            });
-        });
-
-        addZonesToTopology({
-            devices: Object.values(updatedHistory.map((entry) => entry.data || {})).flat(),
-            vendorColors: {}, // Add vendor color mapping if needed
-            customNames: updatedCustomNames, // Pass updated custom names
-        });
-    };
-
-    const checkPortStatus = (ports, portNumber, status) => {
-        if (Array.isArray(ports)) {
-            return ports.some(port => 
-                typeof port === 'string' && 
-                port.includes(`${portNumber}/tcp ${status}`)
-            );
-        }
-    
-        if (typeof ports === 'object') {
-            return Object.entries(ports).some(([key, value]) => 
-                (key === portNumber.toString() || key === portNumber) && 
-                typeof value === 'string' && 
-                value.toLowerCase().includes(status)
-            );
-        }
-    
-        return false;
-    };
-    
     const isSSHAvailable = (device) => {
         if (!device || !device.ports) return false;
-    
-        // Check if port 22 is specifically marked as closed
-        const hasClosedSSH = checkPortStatus(device.ports, 22, 'closed');
-        if (hasClosedSSH) return false;
-    
-        // Otherwise check for open SSH
-        return checkPortStatus(device.ports, 22, 'open') || checkPortStatus(device.ports, 22, 'ssh');
+
+        // Check if port 22 is not marked as "filtered" or "closed"
+        if (Array.isArray(device.ports)) {
+            return device.ports.some(port =>
+                typeof port === 'string' &&
+                port.includes('22/tcp') &&
+                !port.includes('filtered') &&
+                !port.includes('closed')
+            );
+        }
+
+        if (typeof device.ports === 'object') {
+            return Object.entries(device.ports).some(([key, value]) =>
+                (key === '22' || key === 22) &&
+                typeof value === 'string' &&
+                !value.toLowerCase().includes('filtered') &&
+                !value.toLowerCase().includes('closed')
+            );
+        }
+
+        return false;
     };
 
-    const openSSHModal = (device) => {
-        setSSHTarget(device);
-        setSSHUsername(""); // Reset username
-        setSSHPassword(""); // Reset password
-        setSSHModalVisible(true);
+    // Add clearDeviceHistory function to handle clearing all scan history and device customizations
+    const clearDeviceHistory = () => {
+        // Clear scan history through context
+        clearHistory();
+        
+        // Clear custom device properties
+        setPersistentCustomNames({});
+        localStorage.removeItem("customDeviceProperties");
+        
+        // Clear the topology map
+        addZonesToTopology({
+            devices: [],
+            vendorColors: {},
+            customNames: {}
+        });
+        
+        // Close the confirmation modal
+        setShowConfirmClear(false);
     };
 
     const handleKeyPress = (e) => {
@@ -229,9 +337,100 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         }
     };
 
+    const saveDeviceChanges = (updatedDevice) => {
+        console.log("Saving device changes:", updatedDevice);
+        
+        // Check if this is an SSH request
+        if (updatedDevice._requestSSH) {
+            // Remove the special flag
+            const { _requestSSH, ...deviceWithoutFlag } = updatedDevice;
+            
+            // Open the SSH modal for this device
+            setSSHTarget(deviceWithoutFlag);
+            setSSHUsername(""); // Reset username
+            setSSHPassword(""); // Reset password
+            setSSHModalVisible(true);
+            return; // Exit early, no need to save other changes
+        }
+        
+        // First, update our persistent custom names in localStorage
+        const updatedCustomNames = {
+            ...persistentCustomNames,
+            [updatedDevice.ip]: {
+                name: updatedDevice.name,
+                color: updatedDevice.color,
+                icon: updatedDevice.icon
+            }
+        };
+        
+        // Update the state
+        setPersistentCustomNames(updatedCustomNames);
+        
+        // Update localStorage directly to ensure it persists
+        localStorage.setItem("customDeviceProperties", JSON.stringify(updatedCustomNames));
+        
+        // Update the device in scan history using the context function
+        updateDeviceInHistory(updatedDevice.ip, {
+            name: updatedDevice.name,
+            color: updatedDevice.color,
+            icon: updatedDevice.icon
+        });
+        
+        // Re-visualize current topology with updated device info
+        
+        // If we have an active entry, visualize just that one
+        if (expandedIndex !== null) {
+            const activeEntry = scanHistory[expandedIndex];
+            console.log("Visualizing updated active entry");
+            visualizeOnTopology(activeEntry);
+        } 
+        // Otherwise, if we have selected scans, visualize those
+        else if (selectedScans.length > 0) {
+            console.log("Visualizing selected scans with updated device");
+            handleAddZones();
+        }
+        // Otherwise refresh the current view
+        else if (scanHistory.length > 0) {
+            console.log("Refreshing topology with all scans and updated device");
+            // Combine all devices from all scans
+            const allDevices = scanHistory.flatMap(entry => 
+                Object.values(entry.data || {}).flat().map(device => {
+                    // Apply custom properties
+                    const customDevice = updatedCustomNames[device.ip];
+                    if (customDevice && device.ip === updatedDevice.ip) {
+                        return {
+                            ...device,
+                            name: customDevice.name,
+                            color: customDevice.color,
+                            icon: customDevice.icon
+                        };
+                    }
+                    return device;
+                })
+            );
+            
+            addZonesToTopology({
+                devices: allDevices,
+                vendorColors: {},
+                customNames: updatedCustomNames
+            });
+        }
+    };
+
     return (
         <div className="mt-6">
-            <h3 className="text-lg font-bold mb-4">Scan History</h3>
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-bold">Scan History</h3>
+                {scanHistory.length > 0 && (
+                    <button
+                        onClick={() => setShowConfirmClear(true)}
+                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
+                    >
+                        Clear All History
+                    </button>
+                )}
+            </div>
+            
             {scanHistory.length === 0 ? (
                 <p className="text-sm text-gray-400">No scans completed yet.</p>
             ) : (
@@ -295,9 +494,7 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                             <button
                                                 onClick={() => toggleMenu(originalIndex)}
                                                 className="text-gray-400 hover:text-white"
-                                            >
-                                                <FaEllipsisV />
-                                            </button>
+                                            ></button>
                                             {menuOpenIndex === originalIndex && (
                                                 <div className="absolute right-0 mt-2 bg-gray-800 text-white rounded shadow-lg z-10">
                                                     <button
@@ -432,6 +629,33 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                         onClose={() => setShowTerminal(false)}
                     />
                 </Suspense>
+            )}
+            
+            {/* Confirmation Modal for Clearing All History */}
+            {showConfirmClear && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 rounded-lg p-6 w-96">
+                        <h2 className="text-white text-xl mb-4">Confirm Clear History</h2>
+                        <p className="text-gray-300 mb-6">
+                            Are you sure you want to clear all scan history and custom device names? 
+                            This action cannot be undone.
+                        </p>
+                        <div className="flex justify-end gap-3">
+                            <button
+                                onClick={() => setShowConfirmClear(false)}
+                                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={clearDeviceHistory}
+                                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
+                            >
+                                Clear All History
+                            </button>
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

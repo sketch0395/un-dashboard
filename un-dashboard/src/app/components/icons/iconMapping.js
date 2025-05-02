@@ -3,9 +3,9 @@ import { DiGithubBadge, DiDocker, DiNpm, DiCode, DiReact, DiMongodb, DiPostgresq
 
 // Service & platform icons
 import { 
-  SiNetlify, SiVercel, SiFirebase, SiAmazonaws, SiMicrosoftazure, SiGooglecloud, 
-  SiJira, SiConfluence, SiTrello, SiNotion, SiAsana, SiSlack, SiDiscord, SiMicrosoftteams,
-  SiVisualstudiocode, SiIntellijidea, SiGitlab, SiStackoverflow, SiPostman,
+  SiNetlify, SiVercel, SiFirebase, SiGooglecloud, 
+  SiJira, SiConfluence, SiTrello, SiNotion, SiAsana, SiSlack, SiDiscord,
+  SiIntellijidea, SiGitlab, SiStackoverflow, SiPostman,
   SiFigma, SiAdobexd, SiAdobephotoshop, SiAdobeillustrator,
   SiJenkins, SiCircleci, SiTravisci, SiKubernetes, SiGrafana, SiKibana,
   SiGooglechrome, SiFirefox, SiMicrosoftedge, SiNgrok, SiUbuntu, SiLinux,
@@ -16,7 +16,7 @@ import {
 import { 
   FaDatabase, FaServer, FaToolbox, FaLink, FaGlobe, FaGoogle, FaMicrosoft, 
   FaCode, FaTerminal, FaFile, FaTable, FaChartBar, FaBook, FaCalendar, 
-  FaEnvelope, FaSearch, FaCloud, FaVideo, FaMusic, FaLaptopCode
+  FaEnvelope, FaSearch, FaCloud, FaVideo, FaMusic, FaLaptopCode, FaDesktop, FaNetworkWired, FaMobileAlt, FaWifi
 } from 'react-icons/fa';
 
 // Icon mapping for common services and applications
@@ -40,8 +40,8 @@ export const iconMap = {
   'netlify': <SiNetlify />,
   'vercel': <SiVercel />,
   'firebase': <SiFirebase />,
-  'aws': <SiAmazonaws />,
-  'azure': <SiMicrosoftazure />,
+  'aws': <FaCloud />,
+  'azure': <FaCloud />,
   'gcp': <SiGooglecloud />,
   
   // Project management & documentation
@@ -56,13 +56,13 @@ export const iconMap = {
   // Communication
   'slack': <SiSlack />,
   'discord': <SiDiscord />,
-  'teams': <SiMicrosoftteams />,
-  'microsoft teams': <SiMicrosoftteams />,
+  'teams': <FaCloud />,
+  'microsoft teams': <FaCloud />,
   'email': <FaEnvelope />,
   
   // Development tools
-  'vscode': <SiVisualstudiocode />,
-  'visual studio code': <SiVisualstudiocode />,
+  'vscode': <FaCloud />,
+  'visual studio code': <FaCloud />,
   'visual studio': <DiVisualstudio />,
   'intellij': <SiIntellijidea />,
   'stackoverflow': <SiStackoverflow />,
@@ -118,7 +118,13 @@ export const iconMap = {
   'development': <FaLaptopCode />,
   'video': <FaVideo />,
   'music': <FaMusic />,
-  'default': <FaLink />
+  'default': <FaLink />,
+  
+  // Device-related icons
+  'computer': <FaDesktop />,
+  'network': <FaNetworkWired />,
+  'mobile': <FaMobileAlt />,
+  'router': <FaWifi />
 };
 
 // Helper function to determine icon

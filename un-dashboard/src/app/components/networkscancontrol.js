@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import NetworkScanHistory from "./networkscanhistory";
 
-export default function NetworkScanControl({ devices, setDevices }) {
+export default function NetworkScanControl({ devices, setDevices, customNames, setCustomNames }) {
     const socketRef = useRef(null);
 
     const [ipRange, setIpRange] = useState("10.5.1.130-255");
@@ -14,8 +14,15 @@ export default function NetworkScanControl({ devices, setDevices }) {
     const [scanHistoryData, setScanHistoryData] = useState(null);
 
     const addZonesToTopology = (data) => {
+        console.log("addZonesToTopology called with:", data);
         console.log("Adding zones to topology:", data);
         setDevices(data.devices); // Update the devices state in NetworkDashboard
+        
+        // Also update the customNames state if provided
+        if (data.customNames) {
+            console.log("Updating custom names:", data.customNames);
+            setCustomNames(data.customNames);
+        }
     };
 
     useEffect(() => {

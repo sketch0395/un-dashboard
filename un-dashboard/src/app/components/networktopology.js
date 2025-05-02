@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import * as d3 from "d3";
 import { FaNetworkWired, FaTerminal, FaTimes } from "react-icons/fa";
 import { createRoot } from "react-dom/client";
+import { iconMap } from './icons/iconMapping'; // Import the iconMap directly
 
-export default function TopologyMap({ devices, vendorColors, customNames }) {
+export default function TopologyMap({ devices, vendorColors, customNames, openSSHModal }) {
     const svgRef = useRef();
     const [contextMenu, setContextMenu] = useState({
         visible: false,
@@ -23,9 +24,14 @@ export default function TopologyMap({ devices, vendorColors, customNames }) {
     }, [contextMenu]);
     
     useEffect(() => {
+        console.log("Devices prop received in TopologyMap:", devices);
         if (!devices || Object.keys(devices).length === 0) return;
 
+        // Log devices to verify updates
+        console.log("Devices updated:", devices);
+
         const flattenedDevices = Array.isArray(devices) ? devices : Object.values(devices).flat();
+        console.log("Flattened devices for rendering:", flattenedDevices);
         const width = svgRef.current.clientWidth || 1000;
         const height = svgRef.current.clientHeight || 600;
         
@@ -304,7 +310,18 @@ export default function TopologyMap({ devices, vendorColors, customNames }) {
                     ipFontSize = Math.max(8, fontSize - 2);
                 }
                 
-                const customIcon = customNames?.[d.id]?.icon || <FaNetworkWired />;
+                // Get the icon from iconMap if a string is stored, or use default
+                let customIcon = <FaNetworkWired />;
+                if (customNames?.[d.id]?.icon) {
+                    if (typeof customNames[d.id].icon === 'string') {
+                        // Convert string icon name to React component
+                        customIcon = iconMap[customNames[d.id].icon] || <FaNetworkWired />;
+                    } else {
+                        // If it's already a component, use it directly
+                        customIcon = customNames[d.id].icon;
+                    }
+                }
+                
                 const customName = customNames?.[d.id]?.name;
 
                 const container = document.createElement("div");
@@ -319,7 +336,7 @@ export default function TopologyMap({ devices, vendorColors, customNames }) {
                         justifyContent: "center",
                         height: "100%"
                     }}>
-                        {/* IP address above the icon with more space */}
+                        {/* Display custom name or IP address based on availability */}
                         <div style={{ 
                             whiteSpace: "nowrap",
                             overflow: "hidden", 
@@ -331,7 +348,7 @@ export default function TopologyMap({ devices, vendorColors, customNames }) {
                             padding: "1px 2px",
                             backgroundColor: "rgba(0,0,0,0.3)", // Semi-transparent background for better readability
                             borderRadius: "3px"
-                        }}>{d.ip}</div>
+                        }}>{customName || d.ip}</div>
                         
                         {/* Icon in the middle */}
                         <div style={{ 
@@ -340,7 +357,7 @@ export default function TopologyMap({ devices, vendorColors, customNames }) {
                             lineHeight: 1
                         }}>{customIcon}</div>
                         
-                        {/* Custom name (if any) below the icon */}
+                        {/* Only show IP below if custom name is displayed above */}
                         {customName && <div style={{ 
                             whiteSpace: "nowrap",
                             overflow: "hidden", 
@@ -349,7 +366,7 @@ export default function TopologyMap({ devices, vendorColors, customNames }) {
                             fontSize: `${Math.max(7, fontSize - 1)}px`,
                             opacity: 0.9,
                             marginTop: "4px" // Increased space
-                        }}>{customName}</div>}
+                        }}>{d.ip}</div>}
                     </div>
                 );
                 this.appendChild(container);
@@ -365,55 +382,31 @@ export default function TopologyMap({ devices, vendorColors, customNames }) {
                 });
             });
 
-    }, [devices, vendorColors, customNames]);
+    }, [JSON.stringify(devices), vendorColors, customNames]);
 
     // Helper function to check if SSH is available
     const isSSHAvailable = (device) => {
         if (!device || !device.ports) return false;
-        
-        // Check if port 22 is specifically marked as closed
+
+        // Check if port 22 is not marked as "filtered" or "closed"
         if (Array.isArray(device.ports)) {
-            // Check for "closed" status in port description
-            const hasClosedSSH = device.ports.some(port => 
-                typeof port === 'string' && 
-                (port.includes('22/tcp closed') || port.includes('closed ssh'))
-            );
-            
-            // If explicitly closed, return false
-            if (hasClosedSSH) return false;
-            
-            // Otherwise check for open SSH as before
-            return device.ports.some(port => 
-                (typeof port === 'string' && 
-                 (port.includes('22/tcp') || 
-                  port.includes('ssh') || 
-                  port === '22')
-                ) &&
-                !port.includes('closed') &&
-                port === 22
+            return device.ports.some(port =>
+                typeof port === 'string' &&
+                port.includes('22/tcp') &&
+                !port.includes('filtered') &&
+                !port.includes('closed')
             );
         }
-        
-        // If ports is an object
+
         if (typeof device.ports === 'object') {
-            // Check for closed status
-            const hasClosedSSH = Object.entries(device.ports).some(([key, value]) => 
-                (key === '22' || key === 22) && 
-                typeof value === 'string' && 
-                value.toLowerCase().includes('closed')
-            );
-            
-            // If explicitly closed, return false
-            if (hasClosedSSH) return false;
-            
-            return Object.keys(device.ports).some(key => 
-                key === '22' || key === 22 || 
-                (device.ports[key] && 
-                 device.ports[key].toLowerCase().includes('ssh') && 
-                 !device.ports[key].toLowerCase().includes('closed'))
+            return Object.entries(device.ports).some(([key, value]) =>
+                (key === '22' || key === 22) &&
+                typeof value === 'string' &&
+                !value.toLowerCase().includes('filtered') &&
+                !value.toLowerCase().includes('closed')
             );
         }
-        
+
         return false;
     };
 
@@ -485,8 +478,23 @@ export default function TopologyMap({ devices, vendorColors, customNames }) {
                             <span className="font-semibold">Open Ports:</span> {formatPorts(contextMenu.device.ports)}
                         </div>
                         
+                        {/* SSH Status Indicator */}
+                        <div className="flex items-center justify-between mt-2 border-t border-gray-700 pt-2">
+                            <div className="font-semibold flex items-center gap-2">
+                                SSH Status: 
+                                <span 
+                                    className={`inline-block w-2 h-2 rounded-full ${
+                                        isSSHAvailable(contextMenu.device) ? "bg-green-500" : "bg-red-500"
+                                    }`}
+                                ></span>
+                                <span className="text-xs">
+                                    {isSSHAvailable(contextMenu.device) ? "Available" : "Not available"}
+                                </span>
+                            </div>
+                        </div>
+                        
                         {contextMenu.device.scanSource && (
-                            <div>
+                            <div className="text-xs text-gray-400 mt-2">
                                 <span className="font-semibold">Scan Source:</span> {contextMenu.device.scanSource.name}
                             </div>
                         )}
@@ -495,14 +503,19 @@ export default function TopologyMap({ devices, vendorColors, customNames }) {
                     <div className="mt-4 flex justify-end gap-2">
                         {isSSHAvailable(contextMenu.device) && (
                             <button
-                                className="bg-green-600 hover:bg-green-700 px-3 py-1 rounded text-sm flex items-center gap-1"
+                                className="bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded text-sm flex items-center gap-1"
                                 onClick={() => {
-                                    // Here you would trigger the SSH modal
-                                    console.log("SSH to:", contextMenu.device.ip);
-                                    setContextMenu({...contextMenu, visible: false});
+                                    // Pass the device to the parent's openSSHModal function
+                                    if (openSSHModal && typeof openSSHModal === 'function') {
+                                        openSSHModal(contextMenu.device);
+                                        // Close the context menu after clicking
+                                        setContextMenu({...contextMenu, visible: false});
+                                    } else {
+                                        console.warn("SSH functionality not available");
+                                    }
                                 }}
                             >
-                                <FaTerminal /> SSH
+                                <FaTerminal /> SSH Connect
                             </button>
                         )}
                     </div>
