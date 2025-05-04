@@ -6,6 +6,7 @@ import TopologyMap from "./networktopology";
 import DeviceModal from "./devicemodal";
 import NetworkPerformance from "./networkperformance";
 import { FaNetworkWired, FaChartLine, FaChevronLeft, FaChevronRight, FaCog } from "react-icons/fa";
+import { format } from "date-fns";
 
 // Lazy load the SSH terminal component
 const SSHTerminal = lazy(() => import("./sshterminal"));
@@ -74,6 +75,17 @@ export default function NetworkDashboard() {
         }
     }, [devices]);
 
+    // Helper function to identify what's changed in the device
+    const getDeviceChanges = (oldDevice, newDevice) => {
+        const changes = {};
+        if (oldDevice.name !== newDevice.name) changes.name = newDevice.name;
+        if (oldDevice.color !== newDevice.color) changes.color = newDevice.color;
+        if (oldDevice.icon !== newDevice.icon) changes.icon = newDevice.icon;
+        if (oldDevice.category !== newDevice.category) changes.category = newDevice.category;
+        if (oldDevice.notes !== newDevice.notes) changes.notes = newDevice.notes;
+        return changes;
+    };
+
     const handleSaveDevice = (updatedDevice) => {
         // Check if this is an SSH request from the device modal
         if (updatedDevice._requestSSH) {
@@ -87,6 +99,10 @@ export default function NetworkDashboard() {
         
         // Update both devices and customNames state to ensure re-rendering
         if (updatedDevice.ip) {
+            // Get existing custom properties from localStorage
+            const savedCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
+            const oldDeviceData = savedCustomProperties[updatedDevice.ip] || {};
+            
             // First update the custom names tracking
             const newCustomNames = { ...customNames };
             newCustomNames[updatedDevice.ip] = {
@@ -95,9 +111,21 @@ export default function NetworkDashboard() {
                 category: updatedDevice.category,
                 color: updatedDevice.color,
                 icon: updatedDevice.icon,
-                notes: updatedDevice.notes
+                notes: updatedDevice.notes,
+                // Track change history with timestamp
+                history: [
+                    ...(oldDeviceData.history || []),
+                    {
+                        timestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+                        changes: getDeviceChanges(oldDeviceData, updatedDevice)
+                    }
+                ].slice(-10) // Keep last 10 history entries
             };
             setCustomNames(newCustomNames);
+            
+            // Update localStorage directly to ensure persistence between components
+            savedCustomProperties[updatedDevice.ip] = newCustomNames[updatedDevice.ip];
+            localStorage.setItem("customDeviceProperties", JSON.stringify(savedCustomProperties));
             
             // Then update devices state with merged data
             setDevices(prevDevices => {

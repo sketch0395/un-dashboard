@@ -156,7 +156,10 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     };
 
     const handleAddZones = () => {
-        console.log("Adding zones from selected scans with custom names:", persistentCustomNames);
+        console.log("Adding zones from selected scans with custom names");
+        
+        // First, make sure we have the latest customNames data from localStorage
+        const latestCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
         
         // Get the selected scan entries
         const selectedZones = selectedScans.map((index) => scanHistory[index]);
@@ -174,15 +177,17 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                 // Start with the original device
                 const enhancedDevice = { ...device };
                 
-                // Apply custom properties from persistentCustomNames if they exist
-                if (device.ip && persistentCustomNames[device.ip]) {
-                    const customProps = persistentCustomNames[device.ip];
-                    // Apply all custom properties
+                // Apply custom properties from the latest localStorage data if they exist
+                if (device.ip && latestCustomProperties[device.ip]) {
+                    const customProps = latestCustomProperties[device.ip];
+                    // Apply all custom properties including history
                     enhancedDevice.name = customProps.name || enhancedDevice.name;
                     enhancedDevice.color = customProps.color || enhancedDevice.color;
                     enhancedDevice.icon = customProps.icon || enhancedDevice.icon;
                     enhancedDevice.category = customProps.category || enhancedDevice.category;
                     enhancedDevice.notes = customProps.notes || enhancedDevice.notes;
+                    // Make sure we preserve history entries
+                    enhancedDevice.history = customProps.history || [];
                 }
                 
                 // Add scan source information (important for grouping in the visualization)
@@ -200,6 +205,12 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             combinedDevices = [...combinedDevices, ...enhancedDevices];
         });
         
+        // Update our local state to match localStorage (ensuring consistency)
+        if (JSON.stringify(latestCustomProperties) !== JSON.stringify(persistentCustomNames)) {
+            console.log("Updating persistent custom names with latest data from localStorage");
+            setPersistentCustomNames(latestCustomProperties);
+        }
+        
         // Log count of devices with custom names for debugging
         const namedDevices = combinedDevices.filter(d => d.name).length;
         console.log(`Combined ${combinedDevices.length} devices from ${selectedZones.length} scans, including ${namedDevices} with custom names`);
@@ -208,7 +219,7 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         const combinedData = {
             devices: combinedDevices,
             vendorColors: {},
-            customNames: persistentCustomNames, // Pass the complete customNames object
+            customNames: latestCustomProperties, // Use the latest data from localStorage
         };
         
         addZonesToTopology(combinedData);
@@ -237,6 +248,9 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     const visualizeOnTopology = (entry) => {
         console.log("Visualizing entry with custom names:", persistentCustomNames);
         
+        // First, make sure we have the latest customNames data from localStorage
+        const latestCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
+        
         // Get all devices from the scan entry
         const entryDevices = Object.values(entry.data || {}).flat();
         
@@ -245,15 +259,17 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             // Start with the original device
             const enhancedDevice = { ...device };
             
-            // Apply custom properties from persistentCustomNames if they exist
-            if (device.ip && persistentCustomNames[device.ip]) {
-                const customProps = persistentCustomNames[device.ip];
-                // Apply all custom properties
+            // Apply custom properties from the latest localStorage data if they exist
+            if (device.ip && latestCustomProperties[device.ip]) {
+                const customProps = latestCustomProperties[device.ip];
+                // Apply all custom properties (including history)
                 enhancedDevice.name = customProps.name || enhancedDevice.name;
                 enhancedDevice.color = customProps.color || enhancedDevice.color;
                 enhancedDevice.icon = customProps.icon || enhancedDevice.icon;
                 enhancedDevice.category = customProps.category || enhancedDevice.category;
                 enhancedDevice.notes = customProps.notes || enhancedDevice.notes;
+                // Make sure we preserve history entries
+                enhancedDevice.history = customProps.history || [];
             }
             
             // Add scan source information
@@ -266,16 +282,22 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             return enhancedDevice;
         });
 
+        // Update our local state to match localStorage (ensuring consistency)
+        if (JSON.stringify(latestCustomProperties) !== JSON.stringify(persistentCustomNames)) {
+            console.log("Updating persistent custom names with latest data from localStorage");
+            setPersistentCustomNames(latestCustomProperties);
+        }
+        
         // Visualize on the topology with properly enhanced devices
         const combinedData = {
             devices: devicesWithCustomProperties,
             vendorColors: {}, // Add vendor color mapping if needed
-            customNames: persistentCustomNames, // Pass the complete customNames object
+            customNames: latestCustomProperties, // Use the latest data from localStorage
         };
         
         console.log("Sending to topology:", 
                    `${devicesWithCustomProperties.length} devices with`, 
-                   `${Object.keys(persistentCustomNames).length} custom properties`);
+                   `${Object.keys(latestCustomProperties).length} custom properties`);
         
         addZonesToTopology(combinedData);
     };
@@ -432,12 +454,15 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                 Object.values(entry.data || {}).flat().map(device => {
                     // Apply custom properties
                     const customDevice = updatedCustomNames[device.ip];
-                    if (customDevice && device.ip === updatedDevice.ip) {
+                    if (customDevice) {
                         return {
                             ...device,
                             name: customDevice.name,
                             color: customDevice.color,
-                            icon: customDevice.icon
+                            icon: customDevice.icon,
+                            category: customDevice.category,
+                            notes: customDevice.notes,
+                            history: customDevice.history || []
                         };
                     }
                     return device;
