@@ -1,11 +1,38 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Modal from "./Modal";
 import { iconMap } from "./icons/iconMapping";
-import { FaChevronDown, FaChevronUp, FaTerminal } from "react-icons/fa";
+import { FaChevronDown, FaChevronUp, FaTerminal, FaHistory } from "react-icons/fa";
 
 const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
     const [colorAccordionOpen, setColorAccordionOpen] = useState(false);
     const [iconAccordionOpen, setIconAccordionOpen] = useState(false);
+    const [historyAccordionOpen, setHistoryAccordionOpen] = useState(false);
+    const [deviceHistory, setDeviceHistory] = useState([]);
+    
+    // Pre-defined device categories
+    const deviceCategories = [
+        "Production Server",
+        "Development Server",
+        "Database",
+        "Router",
+        "Switch",
+        "Firewall",
+        "IoT Device",
+        "Workstation",
+        "Mobile Device",
+        "Printer",
+        "Camera",
+        "Other"
+    ];
+    
+    useEffect(() => {
+        // Load device history from localStorage when modal opens with a device
+        if (modalDevice?.ip) {
+            const savedCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
+            const deviceData = savedCustomProperties[modalDevice.ip] || {};
+            setDeviceHistory(deviceData.history || []);
+        }
+    }, [modalDevice?.ip]);
     
     const handleSave = () => {
         onSave(modalDevice);
@@ -49,6 +76,17 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
         }
         return String(ports);
     };
+    
+    // Format change history for display
+    const formatChanges = (changes) => {
+        if (!changes || Object.keys(changes).length === 0) return "No changes recorded";
+        
+        return Object.entries(changes).map(([key, value]) => (
+            <div key={key}>
+                <span className="font-semibold capitalize">{key}:</span> {value || "(cleared)"}
+            </div>
+        ));
+    };
 
     return (
         <Modal isVisible={!!modalDevice} onClose={() => setModalDevice(null)}>
@@ -66,6 +104,23 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                             className="w-full bg-gray-700 text-white px-3 py-2 rounded"
                         />
                     </div>
+                </div>
+                
+                {/* Category Selection */}
+                <div className="mb-4">
+                    <label className="block text-sm text-gray-300 mb-1">Category</label>
+                    <select
+                        value={modalDevice?.category || ""}
+                        onChange={(e) =>
+                            setModalDevice((prev) => ({ ...prev, category: e.target.value }))
+                        }
+                        className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                    >
+                        <option value="">Select a category</option>
+                        {deviceCategories.map(category => (
+                            <option key={category} value={category}>{category}</option>
+                        ))}
+                    </select>
                 </div>
                 
                 <div className="mb-3">
@@ -124,6 +179,20 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                     </div>
                 </div>
                 
+                {/* Notes Field */}
+                <div className="mb-4">
+                    <label className="block text-sm text-gray-300 mb-1">Notes</label>
+                    <textarea
+                        value={modalDevice?.notes || ""}
+                        onChange={(e) =>
+                            setModalDevice((prev) => ({ ...prev, notes: e.target.value }))
+                        }
+                        placeholder="Add notes about this device..."
+                        rows="3"
+                        className="w-full bg-gray-700 text-white px-3 py-2 rounded resize-none"
+                    />
+                </div>
+                
                 {/* Color Selection Accordion */}
                 <div className="mb-4 border border-gray-700 rounded">
                     <button 
@@ -178,6 +247,35 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                         </div>
                     )}
                 </div>
+                
+                {/* Change History Accordion */}
+                {deviceHistory.length > 0 && (
+                    <div className="mb-4 border border-gray-700 rounded">
+                        <button 
+                            onClick={() => setHistoryAccordionOpen(!historyAccordionOpen)}
+                            className="flex justify-between items-center w-full bg-gray-700 px-4 py-2 rounded-t text-left"
+                        >
+                            <div className="flex items-center">
+                                <FaHistory className="mr-2" />
+                                <span className="text-sm text-gray-300">Change History</span>
+                            </div>
+                            <span>{historyAccordionOpen ? <FaChevronUp /> : <FaChevronDown />}</span>
+                        </button>
+                        
+                        {historyAccordionOpen && (
+                            <div className="p-3 border-t border-gray-700 max-h-48 overflow-y-auto">
+                                {deviceHistory.map((entry, index) => (
+                                    <div key={index} className="mb-2 pb-2 border-b border-gray-700 last:border-b-0 last:mb-0 last:pb-0">
+                                        <p className="text-xs text-gray-400">{entry.timestamp}</p>
+                                        <div className="text-xs mt-1 text-gray-300">
+                                            {formatChanges(entry.changes)}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
                 
                 <div className="flex justify-end gap-2 sticky bottom-0 bg-gray-800 py-3">
                     <button

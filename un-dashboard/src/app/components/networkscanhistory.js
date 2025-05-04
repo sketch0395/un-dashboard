@@ -74,7 +74,9 @@ export const ScanHistoryProvider = ({ children }) => {
                                     ...device,
                                     name: updatedDeviceData.name,
                                     color: updatedDeviceData.color,
-                                    icon: updatedDeviceData.icon
+                                    icon: updatedDeviceData.icon,
+                                    category: updatedDeviceData.category,
+                                    notes: updatedDeviceData.notes
                                 };
                             }
                             return device;
@@ -337,6 +339,16 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         }
     };
 
+    const getDeviceChanges = (oldDevice, newDevice) => {
+        const changes = {};
+        if (oldDevice.name !== newDevice.name) changes.name = newDevice.name;
+        if (oldDevice.color !== newDevice.color) changes.color = newDevice.color;
+        if (oldDevice.icon !== newDevice.icon) changes.icon = newDevice.icon;
+        if (oldDevice.category !== newDevice.category) changes.category = newDevice.category;
+        if (oldDevice.notes !== newDevice.notes) changes.notes = newDevice.notes;
+        return changes;
+    };
+
     const saveDeviceChanges = (updatedDevice) => {
         console.log("Saving device changes:", updatedDevice);
         
@@ -359,7 +371,18 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             [updatedDevice.ip]: {
                 name: updatedDevice.name,
                 color: updatedDevice.color,
-                icon: updatedDevice.icon
+                icon: updatedDevice.icon,
+                // Add support for new device properties
+                category: updatedDevice.category || '',
+                notes: updatedDevice.notes || '',
+                // Track change history with timestamp
+                history: [
+                    ...(persistentCustomNames[updatedDevice.ip]?.history || []),
+                    {
+                        timestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
+                        changes: getDeviceChanges(persistentCustomNames[updatedDevice.ip] || {}, updatedDevice)
+                    }
+                ].slice(-10) // Keep last 10 history entries
             }
         };
         
@@ -373,7 +396,9 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         updateDeviceInHistory(updatedDevice.ip, {
             name: updatedDevice.name,
             color: updatedDevice.color,
-            icon: updatedDevice.icon
+            icon: updatedDevice.icon,
+            category: updatedDevice.category,
+            notes: updatedDevice.notes
         });
         
         // Re-visualize current topology with updated device info

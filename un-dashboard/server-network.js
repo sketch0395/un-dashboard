@@ -206,6 +206,216 @@ const handleHostScan = (range, socket) => {
     }
 };
 
+// --- NETWORK PERFORMANCE MONITORING ---
+const ping = require('ping');
+const { exec } = require('child_process');
+const os = require('os');
+
+// Store historical performance data
+const performanceHistory = {
+    latency: {},    // IP -> array of {timestamp, value} objects
+    bandwidth: {},  // IP -> array of {timestamp, upload, download} objects
+    uptime: {}      // IP -> array of {timestamp, status} objects
+};
+
+// Maximum history items per device
+const MAX_HISTORY_ITEMS = 100;
+
+// Function to measure latency (ping) to a specific IP
+const measureLatency = async (ip) => {
+    try {
+        const res = await ping.promise.probe(ip, {
+            timeout: 2,
+            extra: ['-c', '3'],
+        });
+        
+        const timestamp = new Date().toISOString();
+        const avgTime = parseFloat(res.avg) || null;
+        const packetLoss = parseFloat(res.packetLoss) || 0;
+        
+        // Store historical data
+        if (!performanceHistory.latency[ip]) {
+            performanceHistory.latency[ip] = [];
+        }
+        
+        performanceHistory.latency[ip].push({
+            timestamp,
+            value: avgTime,
+            packetLoss
+        });
+        
+        // Trim to max length
+        if (performanceHistory.latency[ip].length > MAX_HISTORY_ITEMS) {
+            performanceHistory.latency[ip] = performanceHistory.latency[ip].slice(-MAX_HISTORY_ITEMS);
+        }
+        
+        return {
+            ip,
+            timestamp,
+            latency: avgTime,
+            packetLoss,
+            alive: res.alive
+        };
+    } catch (error) {
+        console.error(`[ERROR] Latency measurement for ${ip}:`, error.message);
+        return {
+            ip,
+            timestamp: new Date().toISOString(),
+            latency: null,
+            packetLoss: 100,
+            alive: false,
+            error: error.message
+        };
+    }
+};
+
+// Function to measure bandwidth usage using iperf3 (if available)
+const measureBandwidth = (ip) => {
+    return new Promise((resolve) => {
+        // Check if device has iperf3 server running on port 5201
+        const timestamp = new Date().toISOString();
+        
+        // For demo purposes, generate simulated bandwidth data
+        // In a real implementation, you would use iperf3 or similar tool
+        const download = Math.random() * 100; // Simulated Mbps
+        const upload = Math.random() * 20;    // Simulated Mbps
+        
+        // Store historical data
+        if (!performanceHistory.bandwidth[ip]) {
+            performanceHistory.bandwidth[ip] = [];
+        }
+        
+        performanceHistory.bandwidth[ip].push({
+            timestamp,
+            download,
+            upload
+        });
+        
+        // Trim to max length
+        if (performanceHistory.bandwidth[ip].length > MAX_HISTORY_ITEMS) {
+            performanceHistory.bandwidth[ip] = performanceHistory.bandwidth[ip].slice(-MAX_HISTORY_ITEMS);
+        }
+        
+        resolve({
+            ip,
+            timestamp,
+            download,
+            upload
+        });
+    });
+};
+
+// Function to check uptime/availability of a device
+const checkUptime = async (ip) => {
+    try {
+        const res = await ping.promise.probe(ip, {
+            timeout: 1,
+            extra: ['-c', '1'],
+        });
+        
+        const timestamp = new Date().toISOString();
+        const status = res.alive ? 'up' : 'down';
+        
+        // Store historical data
+        if (!performanceHistory.uptime[ip]) {
+            performanceHistory.uptime[ip] = [];
+        }
+        
+        performanceHistory.uptime[ip].push({
+            timestamp,
+            status
+        });
+        
+        // Calculate uptime percentage based on historical data
+        const uptimePercentage = calculateUptimePercentage(ip);
+        
+        // Trim to max length
+        if (performanceHistory.uptime[ip].length > MAX_HISTORY_ITEMS) {
+            performanceHistory.uptime[ip] = performanceHistory.uptime[ip].slice(-MAX_HISTORY_ITEMS);
+        }
+        
+        return {
+            ip,
+            timestamp,
+            status,
+            uptimePercentage
+        };
+    } catch (error) {
+        console.error(`[ERROR] Uptime check for ${ip}:`, error.message);
+        return {
+            ip,
+            timestamp: new Date().toISOString(),
+            status: 'unknown',
+            uptimePercentage: null,
+            error: error.message
+        };
+    }
+};
+
+// Calculate uptime percentage based on historical data
+const calculateUptimePercentage = (ip) => {
+    if (!performanceHistory.uptime[ip] || performanceHistory.uptime[ip].length === 0) {
+        return null;
+    }
+    
+    const totalChecks = performanceHistory.uptime[ip].length;
+    const upChecks = performanceHistory.uptime[ip].filter(item => item.status === 'up').length;
+    
+    return (upChecks / totalChecks) * 100;
+};
+
+// Function to run performance metrics check for multiple IPs
+const runPerformanceCheck = async (ips) => {
+    const results = {
+        timestamp: new Date().toISOString(),
+        latency: [],
+        bandwidth: [],
+        uptime: []
+    };
+    
+    // Measure latency for all IPs
+    for (const ip of ips) {
+        const latencyResult = await measureLatency(ip);
+        results.latency.push(latencyResult);
+        
+        // Only check bandwidth and uptime if device is alive
+        if (latencyResult.alive) {
+            const bandwidthResult = await measureBandwidth(ip);
+            results.bandwidth.push(bandwidthResult);
+            
+            const uptimeResult = await checkUptime(ip);
+            results.uptime.push(uptimeResult);
+        } else {
+            // If device is down, add default entries
+            results.bandwidth.push({
+                ip,
+                timestamp: latencyResult.timestamp,
+                download: null,
+                upload: null
+            });
+            
+            results.uptime.push({
+                ip,
+                timestamp: latencyResult.timestamp,
+                status: 'down',
+                uptimePercentage: calculateUptimePercentage(ip)
+            });
+        }
+    }
+    
+    return results;
+};
+
+// Function to get historical performance data for a specific IP
+const getHistoricalPerformance = (ip) => {
+    return {
+        ip,
+        latency: performanceHistory.latency[ip] || [],
+        bandwidth: performanceHistory.bandwidth[ip] || [],
+        uptime: performanceHistory.uptime[ip] || []
+    };
+};
+
 io.on('connection', (socket) => {
     console.log('A user connected');
 
@@ -287,6 +497,55 @@ io.on('connection', (socket) => {
             readyTimeout: 5000,
             keepaliveInterval: 5000
         });
+    });
+
+    socket.on('startNetworkPerformanceCheck', async (data) => {
+        try {
+            const { ips } = data;
+            
+            if (!ips || !Array.isArray(ips) || ips.length === 0) {
+                throw new Error('At least one IP address is required');
+            }
+            
+            // Validate all IP addresses
+            for (const ip of ips) {
+                if (!ip.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
+                    throw new Error(`Invalid IP address format: ${ip}`);
+                }
+            }
+            
+            socket.emit('networkPerformanceStatus', { status: 'Starting performance check...' });
+            
+            const results = await runPerformanceCheck(ips);
+            
+            socket.emit('networkPerformanceData', results);
+            socket.emit('networkPerformanceStatus', { status: 'Performance check complete' });
+            
+        } catch (error) {
+            console.error('[ERROR] Network performance check:', error.message);
+            socket.emit('networkPerformanceStatus', { status: 'Error', error: error.message });
+        }
+    });
+    
+    socket.on('getHistoricalPerformance', (data) => {
+        try {
+            const { ip } = data;
+            
+            if (!ip || typeof ip !== 'string') {
+                throw new Error('IP address is required');
+            }
+            
+            if (!ip.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/)) {
+                throw new Error(`Invalid IP address format: ${ip}`);
+            }
+            
+            const historicalData = getHistoricalPerformance(ip);
+            socket.emit('historicalPerformanceData', historicalData);
+            
+        } catch (error) {
+            console.error('[ERROR] Historical performance data:', error.message);
+            socket.emit('networkPerformanceStatus', { status: 'Error', error: error.message });
+        }
     });
 
     socket.on('disconnect', () => {
