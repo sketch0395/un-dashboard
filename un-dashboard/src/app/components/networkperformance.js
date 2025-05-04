@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import { Line } from "react-chartjs-2";
-import { FaWifi, FaServer, FaChartLine, FaExclamationTriangle, FaCheck, FaTimes, FaInfoCircle, FaNetworkWired, FaSave } from "react-icons/fa";
+import { FaWifi, FaServer, FaChartLine, FaExclamationTriangle, FaCheck, FaTimes, FaInfoCircle, FaNetworkWired, FaDocker } from "react-icons/fa";
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -42,6 +42,11 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
     const [isMonitoring, setIsMonitoring] = useState(false);
     const intervalRef = useRef(null);
     const [deviceNameMap, setDeviceNameMap] = useState({});
+    const [useDockerTools, setUseDockerTools] = useState(false);
+    const [dockerHost, setDockerHost] = useState("10.5.1.212");
+    const [showDockerConfig, setShowDockerConfig] = useState(false);
+    const [ipStatus, setIpStatus] = useState({});
+    const [overallProgress, setOverallProgress] = useState(0);
 
     // Create map of IP to device name
     useEffect(() => {
@@ -67,6 +72,35 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
             if (data.error) {
                 setError(data.error);
                 setIsLoading(false);
+                
+                // Update status for specific IP if provided
+                if (data.ip) {
+                    setIpStatus(prev => ({
+                        ...prev,
+                        [data.ip]: {
+                            status: 'error',
+                            message: data.error,
+                            progress: data.progress || 0
+                        }
+                    }));
+                }
+            } else {
+                // Update overall progress if provided
+                if (data.progress !== undefined) {
+                    setOverallProgress(data.progress);
+                }
+                
+                // Update status for specific IP if provided
+                if (data.ip) {
+                    setIpStatus(prev => ({
+                        ...prev,
+                        [data.ip]: {
+                            status: data.complete ? 'complete' : 'checking',
+                            message: data.status,
+                            progress: data.progress || 0
+                        }
+                    }));
+                }
             }
         });
 
@@ -77,6 +111,30 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
                 uptime: data.uptime || [],
             });
             setIsLoading(false);
+        });
+        
+        // Handle partial updates for individual IPs
+        socket.on("networkPerformancePartialUpdate", (data) => {
+            if (!data.ip || !data.data) return;
+            
+            setPerformanceData(prev => {
+                // Function to merge arrays without duplicates
+                const mergeArrays = (existingArr, newArr) => {
+                    if (!newArr || newArr.length === 0) return existingArr;
+                    
+                    // Remove any existing data for this IP
+                    const filtered = existingArr.filter(item => item.ip !== data.ip);
+                    
+                    // Add the new data
+                    return [...filtered, ...newArr];
+                };
+                
+                return {
+                    latency: mergeArrays(prev.latency, data.data.latency),
+                    bandwidth: mergeArrays(prev.bandwidth, data.data.bandwidth),
+                    uptime: mergeArrays(prev.uptime, data.data.uptime)
+                };
+            });
         });
 
         socket.on("historicalPerformanceData", (data) => {
@@ -125,10 +183,20 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
 
         setIsLoading(true);
         setError(null);
+        setOverallProgress(0);
+        
+        // Reset IP status for all selected devices
+        const initialStatus = {};
+        selectedDevices.forEach(ip => {
+            initialStatus[ip] = { status: 'pending', message: 'Waiting to start...', progress: 0 };
+        });
+        setIpStatus(initialStatus);
         
         // Emit event to server to start performance check
         socketRef.current.emit("startNetworkPerformanceCheck", {
-            ips: selectedDevices
+            ips: selectedDevices,
+            useDockerTools,
+            dockerHost: dockerHost
         });
     };
 
@@ -307,6 +375,40 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
         );
     };
 
+    // Get device status indicator
+    const getStatusIndicator = (ip) => {
+        const status = ipStatus[ip];
+        if (!status) return null;
+        
+        let color, icon;
+        switch(status.status) {
+            case 'complete':
+                color = 'bg-green-500';
+                icon = <FaCheck className="text-white" />;
+                break;
+            case 'error':
+                color = 'bg-red-500';
+                icon = <FaExclamationTriangle className="text-white" />;
+                break;
+            case 'checking':
+                color = 'bg-blue-500';
+                icon = <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>;
+                break;
+            default:
+                color = 'bg-gray-500';
+                icon = <FaInfoCircle className="text-white" />;
+        }
+        
+        return (
+            <div className="flex items-center space-x-1">
+                <div className={`flex items-center justify-center w-5 h-5 rounded-full ${color}`}>
+                    {icon}
+                </div>
+                <div className="text-xs truncate max-w-[120px]">{status.message}</div>
+            </div>
+        );
+    };
+
     return (
         <div className="relative bg-gray-800 rounded-lg p-4 text-white">
             {/* View tabs - positioned in the top-right corner with identical styling as topology view */}
@@ -325,13 +427,6 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
                 >
                     <FaChartLine /> Performance
                 </button>
-                <button
-                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-700 text-gray-300 hover:bg-gray-600"
-                    onClick={() => window.location.reload()}
-                    style={{ paddingTop: '0.5rem', paddingBottom: '0.5rem' }} /* Fixed padding to match topology tabs */
-                >
-                    <FaSave /> Save
-                </button>
             </div>
 
             <h2 className="text-xl font-bold mb-4 mt-12">Network Performance Monitoring</h2>
@@ -343,21 +438,30 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
                     {devices && devices.map((device, index) => (
                         <div 
                             key={index}
-                            className={`cursor-pointer p-2 rounded flex items-center ${
+                            className={`cursor-pointer p-2 rounded ${
                                 selectedDevices.includes(device.ip) 
                                     ? "bg-blue-600" 
                                     : "bg-gray-700 hover:bg-gray-600"
                             }`}
                             onClick={() => toggleDeviceSelection(device.ip)}
                         >
-                            <div className={`w-4 h-4 mr-2 rounded-full flex items-center justify-center ${
-                                selectedDevices.includes(device.ip) ? "bg-blue-300" : "bg-gray-500"
-                            }`}>
-                                {selectedDevices.includes(device.ip) && <FaCheck className="text-xs text-blue-800" />}
+                            <div className="flex justify-between items-center mb-1">
+                                <div className={`w-4 h-4 mr-2 rounded-full flex items-center justify-center ${
+                                    selectedDevices.includes(device.ip) ? "bg-blue-300" : "bg-gray-500"
+                                }`}>
+                                    {selectedDevices.includes(device.ip) && <FaCheck className="text-xs text-blue-800" />}
+                                </div>
+                                <span className="text-sm truncate flex-1">
+                                    {device.name || device.hostname || device.ip}
+                                </span>
                             </div>
-                            <span className="text-sm truncate">
-                                {device.name || device.hostname || device.ip}
-                            </span>
+                            
+                            {/* Show status indicator for this IP when selected */}
+                            {selectedDevices.includes(device.ip) && ipStatus[device.ip] && (
+                                <div className="mt-1">
+                                    {getStatusIndicator(device.ip)}
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>
@@ -404,11 +508,79 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
                 </div>
             </div>
             
-            {error && (
+            {/* Overall progress bar */}
+            {isLoading && (
+                <div className="mb-4">
+                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                        <span>Progress</span>
+                        <span>{Math.round(overallProgress)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-700 rounded-full h-2.5">
+                        <div 
+                            className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-in-out" 
+                            style={{width: `${overallProgress}%`}}
+                        ></div>
+                    </div>
+                </div>
+            )}
+
+            {/* Docker Tools Option */}
+            <div className="mb-4">
+                <div className="flex items-center mb-2">
+                    <input
+                        type="checkbox"
+                        checked={useDockerTools}
+                        onChange={(e) => {
+                            setUseDockerTools(e.target.checked);
+                            setShowDockerConfig(e.target.checked);
+                        }}
+                        className="form-checkbox h-4 w-4 text-blue-600"
+                        id="useDockerTools"
+                    />
+                    <label htmlFor="useDockerTools" className="ml-2 flex items-center text-sm text-gray-300">
+                        <FaDocker className="mr-2 text-blue-400" /> Use Docker Network Tools (jonlabelle/network-tools)
+                    </label>
+                    <button 
+                        className="ml-2 text-xs text-blue-400 hover:text-blue-300"
+                        onClick={() => setShowDockerConfig(!showDockerConfig)}>
+                        {showDockerConfig ? "Hide settings" : "Show settings"}
+                    </button>
+                </div>
+                
+                {showDockerConfig && (
+                    <div className="bg-gray-700 p-3 rounded mb-3 text-sm">
+                        <div className="mb-2">
+                            <label className="block text-xs text-gray-400 mb-1">Docker Host IP</label>
+                            <input
+                                type="text"
+                                value={dockerHost}
+                                onChange={(e) => setDockerHost(e.target.value)}
+                                className="w-full bg-gray-800 text-white px-3 py-1 rounded text-sm"
+                                placeholder="e.g., 10.5.1.212"
+                            />
+                        </div>
+                        <div className="text-xs text-gray-400">
+                            <p>Using jonlabelle/network-tools container for network diagnostics.</p>
+                            <p>If devices are shown as unreachable, try adjusting Docker network settings.</p>
+                        </div>
+                    </div>
+                )}
+            </div>
+            
+            {error && !hasPerformanceData() && (
                 <div className="bg-gray-700 text-white p-3 rounded mb-4 flex items-center">
                     <FaInfoCircle className="mr-2 text-blue-400" /> 
                     <span>
                         No performance data available. Select devices and click "Check Now" to start monitoring.
+                    </span>
+                </div>
+            )}
+
+            {error && hasPerformanceData() && (
+                <div className="bg-yellow-700 text-white p-3 rounded mb-4 flex items-center">
+                    <FaExclamationTriangle className="mr-2 text-yellow-400" /> 
+                    <span>
+                        {error}
                     </span>
                 </div>
             )}
@@ -498,9 +670,24 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
                                         )}
                                     </div>
                                     {item.download !== null && item.upload !== null ? (
-                                        <div className="text-xs mt-1 grid grid-cols-2">
-                                            <span>↓ {item.download.toFixed(2)} Mbps</span>
-                                            <span>↑ {item.upload.toFixed(2)} Mbps</span>
+                                        <div className="text-xs mt-1">
+                                            <div className="grid grid-cols-2">
+                                                <span>↓ {item.download.toFixed(2)} Mbps</span>
+                                                <span>↑ {item.upload.toFixed(2)} Mbps</span>
+                                            </div>
+                                            {item.source && (
+                                                <div className="mt-1">
+                                                    <span className={`text-xs px-1 rounded ${
+                                                        item.source === 'iperf3' ? 'bg-green-800 text-green-200' :
+                                                        item.source === 'curl-fallback' ? 'bg-yellow-800 text-yellow-200' :
+                                                        'bg-gray-800 text-gray-200'
+                                                    }`}>
+                                                        {item.source === 'iperf3' ? 'iperf3 measurement' :
+                                                         item.source === 'curl-fallback' ? 'HTTP fallback' :
+                                                         'simulated data'}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     ) : (
                                         <div className="text-xs text-gray-400 mt-1">
