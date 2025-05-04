@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import { Line } from "react-chartjs-2";
-import { FaWifi, FaServer, FaChartLine, FaExclamationTriangle, FaCheck, FaTimes, FaInfoCircle } from "react-icons/fa";
+import { FaWifi, FaServer, FaChartLine, FaExclamationTriangle, FaCheck, FaTimes, FaInfoCircle, FaNetworkWired, FaSave } from "react-icons/fa";
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -26,9 +26,8 @@ ChartJS.register(
     Legend
 );
 
-export default function NetworkPerformance({ devices }) {
+export default function NetworkPerformance({ devices, activeTab, setActiveTab }) {
     const socketRef = useRef(null);
-    const [activeTab, setActiveTab] = useState('latency');
     const [selectedDevices, setSelectedDevices] = useState([]);
     const [performanceData, setPerformanceData] = useState({
         latency: [],
@@ -309,8 +308,33 @@ export default function NetworkPerformance({ devices }) {
     };
 
     return (
-        <div className="bg-gray-800 rounded-lg p-4 text-white">
-            <h2 className="text-xl font-bold mb-4">Network Performance Monitoring</h2>
+        <div className="relative bg-gray-800 rounded-lg p-4 text-white">
+            {/* View tabs - positioned in the top-right corner with identical styling as topology view */}
+            <div className="absolute top-4 right-4 z-10 flex gap-2">
+                <button
+                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-700 text-gray-300 hover:bg-gray-600"
+                    onClick={() => setActiveTab('topology')}
+                    style={{ paddingTop: '0.5rem', paddingBottom: '0.5rem' }} /* Fixed padding to match topology tabs */
+                >
+                    <FaNetworkWired /> Topology
+                </button>
+                <button
+                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-800 text-blue-400"
+                    onClick={() => setActiveTab('performance')}
+                    style={{ paddingTop: '0.5rem', paddingBottom: '0.5rem' }} /* Fixed padding to match topology tabs */
+                >
+                    <FaChartLine /> Performance
+                </button>
+                <button
+                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-700 text-gray-300 hover:bg-gray-600"
+                    onClick={() => window.location.reload()}
+                    style={{ paddingTop: '0.5rem', paddingBottom: '0.5rem' }} /* Fixed padding to match topology tabs */
+                >
+                    <FaSave /> Save
+                </button>
+            </div>
+
+            <h2 className="text-xl font-bold mb-4 mt-12">Network Performance Monitoring</h2>
             
             {/* Device Selection */}
             <div className="mb-4">
@@ -381,13 +405,6 @@ export default function NetworkPerformance({ devices }) {
             </div>
             
             {error && (
-                <div className="bg-red-600 text-white p-3 rounded mb-4 flex items-center">
-                    <FaExclamationTriangle className="mr-2" /> {error}
-                </div>
-            )}
-            
-            {/* No Data Message */}
-            {!hasPerformanceData() && !isLoading && (
                 <div className="bg-gray-700 text-white p-3 rounded mb-4 flex items-center">
                     <FaInfoCircle className="mr-2 text-blue-400" /> 
                     <span>

@@ -30,6 +30,9 @@ export default function NetworkDashboard() {
     const [controlsMinimized, setControlsMinimized] = useState(false);
     const [contentDimensions, setContentDimensions] = useState({ width: 0, height: 0 });
     
+    // Add ref for the topology map component
+    const topologyMapRef = useRef(null);
+    
     // Track content dimensions for responsive layout
     useEffect(() => {
         if (!contentRef.current) return;
@@ -82,17 +85,40 @@ export default function NetworkDashboard() {
             return; // Exit early, no need to save other changes
         }
         
-        setDevices((prevDevices) => {
-            const newDevices = { ...prevDevices };
-            if (updatedDevice.ip) {
-                newDevices[updatedDevice.ip] = {
-                    ...prevDevices[updatedDevice.ip],
-                    ...updatedDevice
-                };
+        // Update both devices and customNames state to ensure re-rendering
+        if (updatedDevice.ip) {
+            // First update the custom names tracking
+            const newCustomNames = { ...customNames };
+            newCustomNames[updatedDevice.ip] = {
+                ...(customNames[updatedDevice.ip] || {}),
+                name: updatedDevice.name,
+                category: updatedDevice.category,
+                color: updatedDevice.color,
+                icon: updatedDevice.icon,
+                notes: updatedDevice.notes
+            };
+            setCustomNames(newCustomNames);
+            
+            // Then update devices state with merged data
+            setDevices(prevDevices => {
+                const newDevices = { ...prevDevices };
+                // Find the scan that contains this device
+                Object.keys(newDevices).forEach(scanKey => {
+                    if (Array.isArray(newDevices[scanKey])) {
+                        // Update the device in the array
+                        newDevices[scanKey] = newDevices[scanKey].map(device => 
+                            device.ip === updatedDevice.ip ? { ...device, ...updatedDevice } : device
+                        );
+                    }
+                });
+                return newDevices;
+            });
+            
+            // Refresh the network topology when a device is saved
+            if (topologyMapRef.current && typeof topologyMapRef.current.refresh === 'function') {
+                topologyMapRef.current.refresh();
             }
-            console.log("Updated devices after save:", newDevices);
-            return newDevices;
-        });
+        }
     };
     
     // Handle SSH connection request
@@ -188,7 +214,7 @@ export default function NetworkDashboard() {
             {/* Right Panel - Expanded to fill available space */}
             <div className="flex-1 flex flex-col p-4 overflow-hidden">
                 {/* Tabs */}
-                <div className="flex gap-2 mb-2">
+                {/* <div className="flex gap-2 mb-2">
                     <button
                         className={`flex items-center gap-2 px-4 py-2 rounded-t ${
                             activeTab === 'topology' ? 'bg-gray-800 text-blue-400' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -205,7 +231,7 @@ export default function NetworkDashboard() {
                     >
                         <FaChartLine /> Performance
                     </button>
-                </div>
+                </div> */}
                 
                 {/* Content based on active tab */}
                 <div 
@@ -215,19 +241,26 @@ export default function NetworkDashboard() {
                     {activeTab === 'topology' && (
                         <div className="w-full h-full overflow-hidden">
                             <TopologyMap
+                                ref={topologyMapRef}
                                 devices={devices}
                                 vendorColors={vendorColors}
                                 customNames={customNames}
                                 openSSHModal={handleOpenSSH}
                                 contentDimensions={contentDimensions}
                                 setModalDevice={setModalDevice}
+                                activeTab={activeTab}
+                                setActiveTab={setActiveTab}
                             />
                         </div>
                     )}
                     
                     {activeTab === 'performance' && (
                         <div className="h-full overflow-y-auto p-4">
-                            <NetworkPerformance devices={getAllDevices()} />
+                            <NetworkPerformance 
+                                devices={getAllDevices()} 
+                                activeTab={activeTab}
+                                setActiveTab={setActiveTab}
+                            />
                         </div>
                     )}
                 </div>

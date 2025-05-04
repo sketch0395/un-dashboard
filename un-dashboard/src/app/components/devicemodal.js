@@ -232,14 +232,14 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                     {iconAccordionOpen && (
                         <div className="p-3 border-t border-gray-700">
                             <div className="grid grid-cols-5 gap-2">
-                                {Object.entries(iconMap).filter(([key]) => ["computer", "network", "mobile", "server", "router"].includes(key)).map(([key, component]) => (
+                                {Object.entries(iconMap).filter(([key]) => ["computer", "network", "mobile", "server", "router"].includes(key)).map(([key, IconComponent]) => (
                                     <button
                                         key={key}
                                         className={`w-8 h-8 rounded-full border-2 ${modalDevice?.icon === key ? 'border-white' : 'border-transparent'}`}
                                         onClick={() => setModalDevice((prev) => ({ ...prev, icon: key }))}
                                     >
                                         <div className="w-full h-full flex items-center justify-center text-white">
-                                            {component}
+                                            {React.createElement(IconComponent, { size: 16 })}
                                         </div>
                                     </button>
                                 ))}

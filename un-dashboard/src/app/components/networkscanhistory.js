@@ -156,73 +156,63 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     };
 
     const handleAddZones = () => {
+        console.log("Adding zones from selected scans with custom names:", persistentCustomNames);
+        
+        // Get the selected scan entries
         const selectedZones = selectedScans.map((index) => scanHistory[index]);
+        
+        // Create a combined array of enhanced devices
         let combinedDevices = [];
         
-        // Build a customNames object that properly combines:
-        // 1. Our persistent custom names from localStorage
-        // 2. Any custom properties from all scan history
-        const customNames = { ...persistentCustomNames };
-        
-        // First, gather all custom properties from scan history
-        scanHistory.forEach(entry => {
-            if (entry.data) {
-                Object.values(entry.data).flat().forEach(device => {
-                    if (device.ip && (device.name || device.color || device.icon)) {
-                        // If this IP already exists in customNames, merge the properties
-                        if (customNames[device.ip]) {
-                            customNames[device.ip] = {
-                                ...customNames[device.ip],
-                                ...(device.name && { name: device.name }),
-                                ...(device.color && { color: device.color }),
-                                ...(device.icon && { icon: device.icon })
-                            };
-                        } else {
-                            customNames[device.ip] = {
-                                name: device.name,
-                                color: device.color,
-                                icon: device.icon
-                            };
-                        }
-                    }
-                });
-            }
-        });
-        
-        // Add scan source information to each device
+        // Process each selected zone/scan
         selectedZones.forEach((zone, zoneIndex) => {
-            const devicesWithSource = Object.values(zone.data || {}).flat().map(device => {
-                // Apply any saved custom properties to this device from our customNames object
-                const customDevice = customNames[device.ip];
+            // Get all devices from this scan
+            const zoneDevices = Object.values(zone.data || {}).flat();
+            
+            // Create enhanced devices with proper custom properties and scan source info
+            const enhancedDevices = zoneDevices.map(device => {
+                // Start with the original device
+                const enhancedDevice = { ...device };
                 
-                return {
-                    ...device,
-                    // Apply saved custom properties if they exist
-                    name: customDevice?.name || device.name,
-                    color: customDevice?.color || device.color,
-                    icon: customDevice?.icon || device.icon,
-                    // Add scan source information
-                    scanSource: {
-                        id: zone.id || `scan-${zoneIndex}`,
-                        name: zone.name || `Scan ${zoneIndex + 1}`,
-                        index: zoneIndex
-                    }
+                // Apply custom properties from persistentCustomNames if they exist
+                if (device.ip && persistentCustomNames[device.ip]) {
+                    const customProps = persistentCustomNames[device.ip];
+                    // Apply all custom properties
+                    enhancedDevice.name = customProps.name || enhancedDevice.name;
+                    enhancedDevice.color = customProps.color || enhancedDevice.color;
+                    enhancedDevice.icon = customProps.icon || enhancedDevice.icon;
+                    enhancedDevice.category = customProps.category || enhancedDevice.category;
+                    enhancedDevice.notes = customProps.notes || enhancedDevice.notes;
+                }
+                
+                // Add scan source information (important for grouping in the visualization)
+                enhancedDevice.scanSource = {
+                    id: zone.id || `scan-${zoneIndex}`,
+                    name: zone.name || `Scan ${zoneIndex + 1}`,
+                    index: zoneIndex,
+                    timestamp: zone.timestamp
                 };
+                
+                return enhancedDevice;
             });
-            combinedDevices = [...combinedDevices, ...devicesWithSource];
+            
+            // Add these enhanced devices to the combined array
+            combinedDevices = [...combinedDevices, ...enhancedDevices];
         });
         
         // Log count of devices with custom names for debugging
         const namedDevices = combinedDevices.filter(d => d.name).length;
-        console.log(`Combined ${combinedDevices.length} devices, including ${namedDevices} with custom names`);
+        console.log(`Combined ${combinedDevices.length} devices from ${selectedZones.length} scans, including ${namedDevices} with custom names`);
         
+        // Send data to the topology map
         const combinedData = {
             devices: combinedDevices,
             vendorColors: {},
-            customNames: customNames,
+            customNames: persistentCustomNames, // Pass the complete customNames object
         };
+        
         addZonesToTopology(combinedData);
-        setSelectedScans([]);
+        setSelectedScans([]); // Clear selections after adding to topology
     };
 
     const toggleAccordion = (index) => {
@@ -245,28 +235,48 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     };
 
     const visualizeOnTopology = (entry) => {
-        // Build a customNames object that combines:
-        // 1. Our persistent custom names from localStorage
-        // 2. Any custom properties in the current entry
-        const customNames = { ...persistentCustomNames };
+        console.log("Visualizing entry with custom names:", persistentCustomNames);
         
-        Object.values(entry.data || {}).flat().forEach((device) => {
-            // Only add to customNames if the device has custom properties
-            if (device.name || device.color || device.icon) {
-                customNames[device.ip] = {
-                    ...customNames[device.ip], // Keep any existing properties
-                    ...(device.name && { name: device.name }),
-                    ...(device.color && { color: device.color }),
-                    ...(device.icon && { icon: device.icon }),
-                };
+        // Get all devices from the scan entry
+        const entryDevices = Object.values(entry.data || {}).flat();
+        
+        // Create a deep copy of the devices to avoid modifying the original data
+        const devicesWithCustomProperties = entryDevices.map(device => {
+            // Start with the original device
+            const enhancedDevice = { ...device };
+            
+            // Apply custom properties from persistentCustomNames if they exist
+            if (device.ip && persistentCustomNames[device.ip]) {
+                const customProps = persistentCustomNames[device.ip];
+                // Apply all custom properties
+                enhancedDevice.name = customProps.name || enhancedDevice.name;
+                enhancedDevice.color = customProps.color || enhancedDevice.color;
+                enhancedDevice.icon = customProps.icon || enhancedDevice.icon;
+                enhancedDevice.category = customProps.category || enhancedDevice.category;
+                enhancedDevice.notes = customProps.notes || enhancedDevice.notes;
             }
+            
+            // Add scan source information
+            enhancedDevice.scanSource = {
+                id: entry.id || `scan-custom`,
+                name: entry.name || `Scan`,
+                timestamp: entry.timestamp
+            };
+            
+            return enhancedDevice;
         });
 
+        // Visualize on the topology with properly enhanced devices
         const combinedData = {
-            devices: Object.values(entry.data || {}).flat(),
+            devices: devicesWithCustomProperties,
             vendorColors: {}, // Add vendor color mapping if needed
-            customNames: customNames,
+            customNames: persistentCustomNames, // Pass the complete customNames object
         };
+        
+        console.log("Sending to topology:", 
+                   `${devicesWithCustomProperties.length} devices with`, 
+                   `${Object.keys(persistentCustomNames).length} custom properties`);
+        
         addZonesToTopology(combinedData);
     };
 
@@ -472,7 +482,7 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                     key={originalIndex}
                                     className="bg-gray-700 text-white p-4 rounded-lg shadow-md"
                                 >
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between mb-2">
                                         <div className="flex items-center gap-2">
                                             <input
                                                 type="checkbox"
@@ -515,29 +525,44 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                                 </h4>
                                             )}
                                         </div>
-                                        <div className="relative">
+                                        <div className="flex items-center gap-2">
+                                            {/* Show/hide button moved to the top */}
                                             <button
-                                                onClick={() => toggleMenu(originalIndex)}
-                                                className="text-gray-400 hover:text-white"
-                                            ></button>
-                                            {menuOpenIndex === originalIndex && (
-                                                <div className="absolute right-0 mt-2 bg-gray-800 text-white rounded shadow-lg z-10">
-                                                    <button
-                                                        onClick={() => startRenaming(originalIndex)}
-                                                        className="block px-4 py-2 text-sm hover:bg-gray-700 w-full text-left"
-                                                    >
-                                                        <FaEdit className="inline mr-2" />
-                                                        Rename
-                                                    </button>
-                                                    <button
-                                                        onClick={() => deleteScan(originalIndex)}
-                                                        className="block px-4 py-2 text-sm hover:bg-gray-700 w-full text-left text-red-500"
-                                                    >
-                                                        <FaTrash className="inline mr-2" />
-                                                        Delete
-                                                    </button>
-                                                </div>
-                                            )}
+                                                onClick={() => toggleAccordion(originalIndex)}
+                                                className="text-blue-400 hover:underline flex items-center"
+                                            >
+                                                {isExpanded ? (
+                                                    <>Hide Devices <FaChevronUp className="ml-1" /></>
+                                                ) : (
+                                                    <>View Devices <FaChevronDown className="ml-1" /></>
+                                                )}
+                                            </button>
+                                            <div className="relative">
+                                                <button
+                                                    onClick={() => toggleMenu(originalIndex)}
+                                                    className="text-gray-400 hover:text-white"
+                                                >
+                                                    <FaEllipsisV />
+                                                </button>
+                                                {menuOpenIndex === originalIndex && (
+                                                    <div className="absolute right-0 mt-2 bg-gray-800 text-white rounded shadow-lg z-10">
+                                                        <button
+                                                            onClick={() => startRenaming(originalIndex)}
+                                                            className="block px-4 py-2 text-sm hover:bg-gray-700 w-full text-left"
+                                                        >
+                                                            <FaEdit className="inline mr-2" />
+                                                            Rename
+                                                        </button>
+                                                        <button
+                                                            onClick={() => deleteScan(originalIndex)}
+                                                            className="block px-4 py-2 text-sm hover:bg-gray-700 w-full text-left text-red-500"
+                                                        >
+                                                            <FaTrash className="inline mr-2" />
+                                                            Delete
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                     <p className="text-sm">
@@ -550,6 +575,16 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                         <strong>Devices Found:</strong> {entry.devices}
                                     </p>
 
+                                    {/* Visualize button outside of the list */}
+                                    <div className="mt-2 flex justify-end">
+                                        <button
+                                            onClick={() => visualizeOnTopology(entry)}
+                                            className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 text-sm rounded"
+                                        >
+                                            Visualize on Topology
+                                        </button>
+                                    </div>
+
                                     {isExpanded && (
                                         <div className="mt-4 bg-gray-800 p-3 rounded">
                                             <h5 className="text-sm font-bold mb-2">Devices:</h5>
@@ -561,20 +596,9 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                                     openSSHModal={openSSHModal}
                                                 />
                                             </Suspense>
-                                            <button
-                                                onClick={() => visualizeOnTopology(entry)}
-                                                className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-                                            >
-                                                Visualize on Topology
-                                            </button>
                                         </div>
                                     )}
-                                    <button
-                                        onClick={() => toggleAccordion(originalIndex)}
-                                        className="mt-2 text-blue-400 hover:underline"
-                                    >
-                                        {isExpanded ? "Hide Devices" : "View Devices"}
-                                    </button>
+                                    {/* Remove the show/hide button from here as it's now at the top */}
                                 </div>
                             );
                         })}

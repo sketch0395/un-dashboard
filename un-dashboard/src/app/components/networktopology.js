@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState, useLayoutEffect } from "react";
+import React, { useEffect, useRef, useState, useLayoutEffect, forwardRef, useImperativeHandle } from "react";
 import * as d3 from "d3";
-import { FaNetworkWired, FaTerminal, FaTimes, FaStickyNote, FaChevronDown, FaFilter, FaCheck } from "react-icons/fa";
+import { FaNetworkWired, FaTerminal, FaTimes, FaStickyNote, FaChevronDown, FaFilter, FaCheck, FaChartLine } from "react-icons/fa";
 import { createRoot } from "react-dom/client";
 import { iconMap } from './icons/iconMapping'; // Import the iconMap directly
 
-export default function TopologyMap({ devices, vendorColors, customNames, openSSHModal, setModalDevice }) {
+// Wrap component with forwardRef to expose refresh method
+const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHModal, setModalDevice, activeTab, setActiveTab }, ref) => {
     const svgRef = useRef();
     const containerRef = useRef();
     const [contextMenu, setContextMenu] = useState({
@@ -23,6 +24,18 @@ export default function TopologyMap({ devices, vendorColors, customNames, openSS
     const [dropdownOpen, setDropdownOpen] = useState(false);
     // Track container dimensions
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+
+    // Add state to trigger refreshes
+    const [refreshTrigger, setRefreshTrigger] = useState(0);
+    
+    // Expose the refresh method via ref
+    useImperativeHandle(ref, () => ({
+        refresh: () => {
+            console.log("Topology refresh triggered by save");
+            // Increment the refreshTrigger to force re-render
+            setRefreshTrigger(prev => prev + 1);
+        }
+    }));
 
     // Handle container resize
     useLayoutEffect(() => {
@@ -103,6 +116,8 @@ export default function TopologyMap({ devices, vendorColors, customNames, openSS
         if (!devices || Object.keys(devices).length === 0) return;
         if (!dimensions.width || !dimensions.height) return;
 
+        console.log("Re-rendering topology with customNames:", customNames);
+        
         const flattenedDevices = Array.isArray(devices) ? devices : Object.values(devices).flat();
         
         // Apply filtering if a group is selected
@@ -433,18 +448,18 @@ export default function TopologyMap({ devices, vendorColors, customNames, openSS
             .attr("stroke-width", 1.5)
             .attr("cursor", "pointer");
 
-        // Add device IP as text
+        // Add device IP/name as text below node
         nodeGroup.append("text")
             .attr("text-anchor", "middle")
             .attr("dy", d => (d.size || 12) + 12)
             .attr("fill", "white")
             .attr("font-size", "10px")
             .text(d => {
-                // Use custom name from customNames if available
+                // Use custom name from customNames if available, otherwise show IP
                 if (customNames?.[d.ip]?.name) {
                     return customNames[d.ip].name;
                 }
-                // Otherwise show the IP
+                // If no custom name, show the IP
                 return d.ip;
             })
             .attr("pointer-events", "none"); // Make text non-interactive to avoid capturing clicks
@@ -452,7 +467,8 @@ export default function TopologyMap({ devices, vendorColors, customNames, openSS
         // Add icons to devices
         nodeGroup.each(function(d) {
             const group = d3.select(this);
-            const iconSize = ((d.size || 12) * 0.7);
+            // Increase icon size - using 1.2x the previous size
+            const iconSize = ((d.size || 12) * 1.2);
             
             try {
                 // Get icon from customNames or use default based on device vendor
@@ -485,13 +501,14 @@ export default function TopologyMap({ devices, vendorColors, customNames, openSS
                 }
                 
                 if (iconComponent) {
+                    // Create a centered container for the icon
                     const iconContainer = document.createElement('div');
                     iconContainer.style.position = 'absolute';
-                    iconContainer.style.top = '0px';
-                    iconContainer.style.left = '0px';
+                    iconContainer.style.top = '50%';
+                    iconContainer.style.left = '50%';
                     iconContainer.style.width = `${iconSize * 2}px`;
                     iconContainer.style.height = `${iconSize * 2}px`;
-                    iconContainer.style.transform = `translate(-${iconSize}px, -${iconSize}px)`;
+                    iconContainer.style.transform = 'translate(-50%, -50%)';
                     iconContainer.style.display = 'flex';
                     iconContainer.style.justifyContent = 'center';
                     iconContainer.style.alignItems = 'center';
@@ -509,6 +526,9 @@ export default function TopologyMap({ devices, vendorColors, customNames, openSS
                         .attr('x', -iconSize)
                         .attr('y', -iconSize)
                         .node().appendChild(iconContainer);
+                    
+                    // We've removed the duplicate name display inside the node
+                    // since we're already showing name/IP below the node
                 }
             } catch (error) {
                 console.error('Error rendering icon:', error);
@@ -523,7 +543,7 @@ export default function TopologyMap({ devices, vendorColors, customNames, openSS
             }
         });
 
-    }, [JSON.stringify(devices), vendorColors, customNames, groupBy, selectedGroup, dimensions]);
+    }, [JSON.stringify(devices), vendorColors, JSON.stringify(customNames), groupBy, selectedGroup, dimensions, refreshTrigger]);
 
     // Helper functions
     const isSSHAvailable = (device) => {
@@ -550,7 +570,10 @@ export default function TopologyMap({ devices, vendorColors, customNames, openSS
     };
 
     return (
-        <div className="relative w-full h-full overflow-hidden" ref={containerRef}>
+        <div className="relative w-full h-full overflow-hidden" 
+             ref={containerRef}
+             style={{ height: "calc(100vh - 8rem)" }} // Increased from 6rem to 8rem to account for navbar
+        >
             {/* Grouping controls with dropdown */}
             <div className="absolute top-4 left-4 z-10 bg-gray-800 bg-opacity-80 p-2 rounded shadow-lg">
                 <div className="flex flex-col gap-2">
@@ -633,10 +656,26 @@ export default function TopologyMap({ devices, vendorColors, customNames, openSS
                 </div>
             </div>
             
-            {/* Selected filter indicator */}
+            {/* View tabs - positioned in the top-right corner of the map itself */}
+            <div className="absolute top-4 right-4 z-10 flex gap-2">
+                <button
+                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-800 text-blue-400"
+                    onClick={() => setActiveTab('topology')}
+                >
+                    <FaNetworkWired /> Topology
+                </button>
+                <button
+                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-700 text-gray-300 hover:bg-gray-600"
+                    onClick={() => setActiveTab('performance')}
+                >
+                    <FaChartLine /> Performance
+                </button>
+            </div>
+            
+            {/* Selected filter indicator - moved below the tabs */}
             {selectedGroup && (
                 <div 
-                    className="absolute top-4 right-4 z-10 bg-gray-800 bg-opacity-80 px-3 py-1 rounded shadow-lg text-sm flex items-center"
+                    className="absolute top-16 right-4 z-10 bg-gray-800 bg-opacity-80 px-3 py-1 rounded shadow-lg text-sm flex items-center"
                     style={{
                         borderLeft: `3px solid ${groupColors[selectedGroup.toLowerCase()] || '#9CA3AF'}`
                     }}
@@ -752,9 +791,34 @@ export default function TopologyMap({ devices, vendorColors, customNames, openSS
                                 <FaTerminal /> SSH Connect
                             </button>
                         )}
+                        
+                        {/* Add Save button to open the device modal */}
+                        <button
+                            className="bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded text-sm"
+                            onClick={() => {
+                                // Close the context menu
+                                setContextMenu({...contextMenu, visible: false});
+                                
+                                // Open the device modal with this device data
+                                if (setModalDevice && typeof setModalDevice === 'function') {
+                                    // Merge any existing custom properties from customNames
+                                    const customProps = customNames?.[contextMenu.device.ip] || {};
+                                    
+                                    // Set the modal device with merged data
+                                    setModalDevice({
+                                        ...contextMenu.device,
+                                        ...customProps
+                                    });
+                                }
+                            }}
+                        >
+                            Save
+                        </button>
                     </div>
                 </div>
             )}
         </div>
     );
-}
+});
+
+export default TopologyMap;

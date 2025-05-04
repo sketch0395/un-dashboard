@@ -255,7 +255,7 @@ const CustomLinks = () => {
                       <div className="flex justify-between items-center">
                         <div className="flex items-center">
                           <span className="text-2xl mr-2 text-blue-400">
-                            {getIconForLink(link)}
+                            {React.createElement(getIconForLink(link))}
                           </span>
                           <h3 className="text-lg font-bold">{link.name}</h3>
                         </div>
