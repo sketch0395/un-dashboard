@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState, useLayoutEffect, forwardRef, useImperativeHandle } from "react";
 import * as d3 from "d3";
-import { FaNetworkWired, FaTerminal, FaTimes, FaStickyNote, FaChevronDown, FaFilter, FaCheck, FaChartLine } from "react-icons/fa";
+import { FaNetworkWired, FaTerminal, FaTimes, FaStickyNote, FaChevronDown, FaFilter, FaCheck, FaChartLine, 
+         FaSitemap, FaGlobe, FaHistory, FaCircle, FaLayerGroup, FaRegularMap } from "react-icons/fa";
+import { FaLayerGroup as FaLayerIcon } from "react-icons/fa6"; 
+import { GiEarthAmerica } from "react-icons/gi";
+import { MdTimeline } from "react-icons/md";
 import { createRoot } from "react-dom/client";
 import { iconMap } from './icons/iconMapping'; // Import the iconMap directly
 
@@ -25,6 +29,12 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
     // Track container dimensions
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
+    // Add state for advanced visualization options
+    const [visualizationType, setVisualizationType] = useState("circular"); // Options: circular, hierarchical, geographic, timeline
+    const [visualizationMenuOpen, setVisualizationMenuOpen] = useState(false);
+    const [timelineData, setTimelineData] = useState([]); // For time-based visualization
+    const [subnetGroups, setSubnetGroups] = useState({}); // For subnet grouping
+    
     // Add state to trigger refreshes
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     
@@ -116,7 +126,7 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
         if (!devices || Object.keys(devices).length === 0) return;
         if (!dimensions.width || !dimensions.height) return;
 
-        console.log("Re-rendering topology with customNames:", customNames);
+        console.log("Re-rendering topology with visualizationType:", visualizationType);
         
         const flattenedDevices = Array.isArray(devices) ? devices : Object.values(devices).flat();
         
@@ -164,6 +174,81 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                   .call(zoomBehavior.transform, d3.zoomIdentity);
            });
            
+        // Choose the appropriate visualization type
+        switch (visualizationType) {
+            case "hierarchical":
+                renderHierarchicalView(svg, zoomLayer, filteredDevices, width, height);
+                break;
+            case "timeline":
+                renderTimelineView(svg, zoomLayer, filteredDevices, width, height);
+                break;
+            case "circular":
+            default:
+                renderCircularView(svg, zoomLayer, filteredDevices, width, height);
+                break;
+        }
+
+    }, [JSON.stringify(devices), vendorColors, JSON.stringify(customNames), groupBy, selectedGroup, dimensions, refreshTrigger, visualizationType, JSON.stringify(subnetGroups)]);
+
+    // Helper functions
+    const isSSHAvailable = (device) => {
+        if (!device || !device.ports) return false;
+        
+        // Check if there's any port entry that contains port 22 (SSH)
+        const ports = Array.isArray(device.ports) ? device.ports : [];
+        return ports.some(port => port.includes('22/tcp') && port.includes('open'));
+    };
+
+    // Group devices by subnet (extract subnet from IP)
+    const groupDevicesBySubnet = (devices) => {
+        const subnets = {};
+        
+        // Helper to extract subnet from IP
+        const getSubnet = (ip) => {
+            if (!ip) return "Unknown";
+            // Extract the first three octets to get the /24 subnet
+            const match = ip.match(/^(\d+\.\d+\.\d+)\.\d+$/);
+            return match ? `${match[1]}.0/24` : "Unknown";
+        };
+        
+        // Group devices by subnet
+        devices.forEach(device => {
+            const subnet = getSubnet(device.ip);
+            
+            if (!subnets[subnet]) {
+                subnets[subnet] = {
+                    name: subnet,
+                    devices: []
+                };
+            }
+            
+            subnets[subnet].devices.push(device);
+        });
+        
+        return subnets;
+    };
+
+    // Calculate optimal node size based on device counts with clear ranges
+    const calculateNodeSize = (count) => {
+        // Implement sizing ranges as requested in requirements
+        if (count <= 48) return 22; // Small (1-48 devices)
+        if (count <= 96) return 18; // Medium (49-96 devices)
+        if (count <= 128) return 14; // Large (97-128 devices)
+        if (count <= 256) return 10; // Extra large (129-256 devices)
+        return 8; // Fallback for extremely large networks (>256)
+    };
+    
+    // Determine minimum distance between nodes based on total count
+    const calculateMinDistance = (count) => {
+        if (count <= 48) return 60;
+        if (count <= 96) return 45;
+        if (count <= 128) return 35; 
+        if (count <= 256) return 25;
+        return 20;
+    };
+
+    // Render the default circular view
+    const renderCircularView = (svg, zoomLayer, filteredDevices, width, height) => {
         // When filtering by a specific category or vendor, we want to show them as a single group
         // instead of maintaining the scan groups
         const useOverrideGrouping = selectedGroup && (groupBy === "category" || groupBy === "vendor");
@@ -171,39 +256,58 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
         // Group devices based on groupBy setting
         const deviceGroups = {};
         
-        filteredDevices.forEach(device => {
-            let groupKey;
-            let groupName;
-            
-            // When filtering is active for category or vendor, just place everything in a single group
-            if (useOverrideGrouping) {
-                groupKey = 'filtered';
-                groupName = selectedGroup; // The name of category or vendor
-            }
-            else if (groupBy === "category") {
-                // Get category from customNames or default to "Uncategorized"
-                const category = customNames?.[device.ip]?.category || "Uncategorized";
-                groupKey = category;
-                groupName = category;
-            } else if (groupBy === "vendor") {
-                // Group by vendor, default to "Unknown"
-                groupKey = device.vendor?.toLowerCase() || "unknown";
-                groupName = device.vendor || "Unknown Vendor";
-            } else {
-                // Default grouping by scan source
-                groupKey = device.scanSource?.id || 'default';
-                groupName = device.scanSource?.name || `Scan Group`;
-            }
-            
-            if (!deviceGroups[groupKey]) {
-                deviceGroups[groupKey] = {
-                    devices: [],
-                    name: groupName
-                };
-            }
-            
-            deviceGroups[groupKey].devices.push(device);
-        });
+        // If subnet grouping is enabled, use that instead of the regular grouping
+        if (Object.keys(subnetGroups).length > 0) {
+            // Use subnet-based groups
+            Object.entries(subnetGroups).forEach(([subnet, group]) => {
+                // Filter devices to only include those in the filtered set
+                const subnetDevices = group.devices.filter(device => 
+                    filteredDevices.some(fd => fd.ip === device.ip)
+                );
+                
+                if (subnetDevices.length > 0) {
+                    deviceGroups[subnet] = {
+                        devices: subnetDevices,
+                        name: group.name
+                    };
+                }
+            });
+        } else {
+            // Use regular grouping (by scan, category or vendor)
+            filteredDevices.forEach(device => {
+                let groupKey;
+                let groupName;
+                
+                // When filtering is active for category or vendor, just place everything in a single group
+                if (useOverrideGrouping) {
+                    groupKey = 'filtered';
+                    groupName = selectedGroup; // The name of category or vendor
+                }
+                else if (groupBy === "category") {
+                    // Get category from customNames or default to "Uncategorized"
+                    const category = customNames?.[device.ip]?.category || "Uncategorized";
+                    groupKey = category;
+                    groupName = category;
+                } else if (groupBy === "vendor") {
+                    // Group by vendor, default to "Unknown"
+                    groupKey = device.vendor?.toLowerCase() || "unknown";
+                    groupName = device.vendor || "Unknown Vendor";
+                } else {
+                    // Default grouping by scan source
+                    groupKey = device.scanSource?.id || 'default';
+                    groupName = device.scanSource?.name || `Scan Group`;
+                }
+                
+                if (!deviceGroups[groupKey]) {
+                    deviceGroups[groupKey] = {
+                        devices: [],
+                        name: groupName
+                    };
+                }
+                
+                deviceGroups[groupKey].devices.push(device);
+            });
+        }
 
         const groupKeys = Object.keys(deviceGroups);
         const hasScanGroups = groupKeys.length > 1 && !useOverrideGrouping; // Don't use scan groups when filtering
@@ -220,25 +324,6 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
 
         // Create nodes with positioning based on groups
         let nodes = [];
-
-        // Calculate optimal node size based on device counts with clear ranges
-        const calculateNodeSize = (count) => {
-            // Implement sizing ranges as requested in requirements
-            if (count <= 48) return 22; // Small (1-48 devices)
-            if (count <= 96) return 18; // Medium (49-96 devices)
-            if (count <= 128) return 14; // Large (97-128 devices)
-            if (count <= 256) return 10; // Extra large (129-256 devices)
-            return 8; // Fallback for extremely large networks (>256)
-        };
-        
-        // Determine minimum distance between nodes based on total count
-        const calculateMinDistance = (count) => {
-            if (count <= 48) return 60;
-            if (count <= 96) return 45;
-            if (count <= 128) return 35; 
-            if (count <= 256) return 25;
-            return 20;
-        };
 
         if (hasScanGroups) {
             // Multiple scan groups - organize in clusters
@@ -391,6 +476,589 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
             }
         }
         
+        // Draw device nodes
+        renderDeviceNodes(zoomLayer, nodes);
+    };
+
+    // Render hierarchical tree visualization
+    const renderHierarchicalView = (svg, zoomLayer, filteredDevices, width, height) => {
+        // Title at the top
+        zoomLayer.append("text")
+            .attr("x", width / 2)
+            .attr("y", 30)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#FFFFFF")
+            .attr("font-size", "20px")
+            .attr("font-weight", "bold")
+            .text("Hierarchical Network Topology");
+        
+        // When using subnet grouping, we create a different hierarchical structure
+        const useSubnetGrouping = Object.keys(subnetGroups).length > 0;
+        
+        // Create hierarchical data structure for D3 tree layout
+        const createHierarchy = () => {
+            // Root node of the hierarchy
+            const root = {
+                name: "Network",
+                children: []
+            };
+            
+            if (useSubnetGrouping) {
+                // Group by subnets first
+                Object.entries(subnetGroups).forEach(([subnet, group]) => {
+                    // Filter to include only devices that are in the filtered set
+                    const subnetDevices = group.devices.filter(device => 
+                        filteredDevices.some(fd => fd.ip === device.ip)
+                    );
+                    
+                    if (subnetDevices.length > 0) {
+                        const subnetNode = {
+                            name: subnet,
+                            type: "subnet",
+                            children: []
+                        };
+                        
+                        // Further group by category if available
+                        const devicesByCategory = {};
+                        subnetDevices.forEach(device => {
+                            const category = customNames?.[device.ip]?.category || "Uncategorized";
+                            if (!devicesByCategory[category]) {
+                                devicesByCategory[category] = [];
+                            }
+                            devicesByCategory[category].push(device);
+                        });
+                        
+                        // Add category nodes
+                        Object.entries(devicesByCategory).forEach(([category, devices]) => {
+                            const categoryNode = {
+                                name: category,
+                                type: "category",
+                                children: devices.map(device => ({
+                                    ...device,
+                                    name: customNames?.[device.ip]?.name || device.ip,
+                                    type: "device",
+                                }))
+                            };
+                            subnetNode.children.push(categoryNode);
+                        });
+                        
+                        root.children.push(subnetNode);
+                    }
+                });
+            } else {
+                // Create hierarchy based on categories or vendors
+                const groupKey = groupBy === "vendor" ? "vendor" : "category";
+                const deviceGroups = {};
+                
+                filteredDevices.forEach(device => {
+                    let groupValue;
+                    
+                    if (groupKey === "category") {
+                        groupValue = customNames?.[device.ip]?.category || "Uncategorized";
+                    } else {
+                        groupValue = device.vendor || "Unknown";
+                    }
+                    
+                    if (!deviceGroups[groupValue]) {
+                        deviceGroups[groupValue] = [];
+                    }
+                    
+                    deviceGroups[groupValue].push(device);
+                });
+                
+                // Add groups to the hierarchy
+                Object.entries(deviceGroups).forEach(([groupValue, devices]) => {
+                    const groupNode = {
+                        name: groupValue,
+                        type: groupKey,
+                        children: devices.map(device => ({
+                            ...device,
+                            name: customNames?.[device.ip]?.name || device.ip,
+                            type: "device",
+                        }))
+                    };
+                    
+                    root.children.push(groupNode);
+                });
+            }
+            
+            return d3.hierarchy(root);
+        };
+        
+        const hierarchyRoot = createHierarchy();
+        
+        // Calculate the tree layout - HORIZONTAL layout
+        // Swap width and height for horizontal layout
+        const treeLayout = d3.tree()
+            .size([height - 100, width - 200]); // Swap dimensions for horizontal layout
+        
+        // Apply the layout to the hierarchy
+        const treeData = treeLayout(hierarchyRoot);
+        
+        // Add connecting links - use vertical link for horizontal tree
+        zoomLayer.append("g")
+            .attr("fill", "none")
+            .attr("stroke", "#555")
+            .attr("stroke-opacity", 0.6)
+            .attr("stroke-width", 1.5)
+            .selectAll("path")
+            .data(treeData.links())
+            .join("path")
+            .attr("d", d3.linkHorizontal()
+                .x(d => d.y) // No offset needed
+                .y(d => d.x)  // Swap x and y for horizontal layout
+            );
+        
+        // Create node groups - Position for horizontal layout
+        const nodeGroups = zoomLayer.append("g")
+            .attr("class", "nodes")
+            .selectAll("g")
+            .data(treeData.descendants())
+            .join("g")
+            .attr("transform", d => `translate(${d.y},${d.x})`); // Swap x and y for horizontal layout
+        
+        // Add different styling based on node type
+        nodeGroups.each(function(d) {
+            const node = d3.select(this);
+            
+            // Different styling based on node depth and type
+            if (d.depth === 0) {
+                // Root node (Network) - position at left side for horizontal layout
+                node.append("circle")
+                    .attr("r", 25)
+                    .attr("fill", "#1d4ed8")
+                    .attr("stroke", "white")
+                    .attr("stroke-width", 2);
+                    
+                // Add network icon
+                const iconContainer = document.createElement('div');
+                iconContainer.style.position = 'absolute';
+                iconContainer.style.top = '50%';
+                iconContainer.style.left = '50%';
+                iconContainer.style.width = '40px';
+                iconContainer.style.height = '40px';
+                iconContainer.style.transform = 'translate(-50%, -50%)';
+                iconContainer.style.display = 'flex';
+                iconContainer.style.justifyContent = 'center';
+                iconContainer.style.alignItems = 'center';
+                iconContainer.style.pointerEvents = 'none';
+                iconContainer.style.color = 'white';
+                
+                const root = createRoot(iconContainer);
+                root.render(React.createElement(iconMap.network, { size: 20 }));
+                
+                // Use D3's append function for foreign objects
+                node.append('foreignObject')
+                    .attr('width', 40)
+                    .attr('height', 40)
+                    .attr('x', -20)
+                    .attr('y', -20)
+                    .node().appendChild(iconContainer);
+            } 
+            else if (d.data.type === "device") {
+                // Device nodes
+                const nodeSize = 18;
+                
+                // Add circle for devices with higher z-index
+                const deviceCircle = node.append("circle")
+                    .attr("r", nodeSize)
+                    .attr("fill", d => {
+                        // Use custom color if available
+                        if (customNames?.[d.data.ip]?.color) {
+                            return customNames[d.data.ip].color;
+                        }
+                        // Default colors based on vendor or category
+                        if (d.data.vendor?.toLowerCase().includes('cisco')) return "#00BCEB"; 
+                        if (d.data.vendor?.toLowerCase().includes('apple')) return "#A2AAAD"; 
+                        return "#6366f1"; // Default purple
+                    })
+                    .attr("stroke", "white")
+                    .attr("stroke-width", 1.5)
+                    .attr("cursor", "pointer");
+                
+                // Add event handlers to the circle (both left and right click)
+                deviceCircle
+                    .on("click", (event, d) => {
+                        event.stopPropagation();
+                        setContextMenu({
+                            visible: true,
+                            device: d.data,
+                            x: event.clientX,
+                            y: event.clientY
+                        });
+                    })
+                    .on("contextmenu", (event, d) => {
+                        // Prevent default context menu
+                        event.preventDefault();
+                        event.stopPropagation();
+                        
+                        console.log("Right click on device:", d.data.ip || d.data.name);
+                        
+                        // Open the device modal with this device data
+                        if (setModalDevice && typeof setModalDevice === 'function') {
+                            // Merge any existing custom properties from customNames
+                            const customProps = customNames?.[d.data.ip] || {};
+                            
+                            // Set the modal device with merged data
+                            setModalDevice({
+                                ...d.data,
+                                ...customProps
+                            });
+                        }
+                    });
+                
+                // Add icon for the device
+                try {
+                    // Determine which icon to use
+                    let iconComponent;
+                    
+                    if (customNames?.[d.data.ip]?.icon) {
+                        // Use custom icon if specified
+                        const iconName = customNames[d.data.ip].icon;
+                        iconComponent = iconMap[iconName];
+                    } else {
+                        // Use default icon based on vendor
+                        const vendor = d.data.vendor?.toLowerCase() || '';
+                        
+                        if (vendor.includes('cisco')) {
+                            iconComponent = iconMap.cisco;
+                        } else if (vendor.includes('raspberry')) {
+                            iconComponent = iconMap.raspberry;
+                        } else if (vendor.includes('apple')) {
+                            iconComponent = iconMap.apple;
+                        } else if (vendor.includes('intel')) {
+                            iconComponent = iconMap.intel;
+                        } else if (vendor.includes('nvidia')) {
+                            iconComponent = iconMap.nvidia;
+                        } else if (vendor.includes('samsung')) {
+                            iconComponent = iconMap.samsung;
+                        } else {
+                            // Default to network icon
+                            iconComponent = iconMap.network;
+                        }
+                    }
+                    
+                    if (iconComponent) {
+                        const iconContainer = document.createElement('div');
+                        iconContainer.style.position = 'absolute';
+                        iconContainer.style.top = '50%';
+                        iconContainer.style.left = '50%';
+                        iconContainer.style.width = `${nodeSize * 2}px`;
+                        iconContainer.style.height = `${nodeSize * 2}px`;
+                        iconContainer.style.transform = 'translate(-50%, -50%)';
+                        iconContainer.style.display = 'flex';
+                        iconContainer.style.justifyContent = 'center';
+                        iconContainer.style.alignItems = 'center';
+                        iconContainer.style.pointerEvents = 'none'; // Make icon absolutely non-interactive
+                        
+                        const root = createRoot(iconContainer);
+                        root.render(React.createElement(iconComponent, { size: nodeSize }));
+                        
+                        // Use D3's append function for foreign objects with pointer-events disabled
+                        const foreignObject = node.append('foreignObject')
+                            .attr('width', nodeSize * 2)
+                            .attr('height', nodeSize * 2)
+                            .attr('x', -nodeSize)
+                            .attr('y', -nodeSize)
+                            .style('pointer-events', 'none'); // Critical: disable pointer events on the foreignObject too
+                            
+                        foreignObject.node().appendChild(iconContainer);
+                    }
+                } catch (error) {
+                    console.error("Error rendering device icon:", error);
+                }
+            } 
+            else if (d.data.type === "subnet") {
+                // Subnet group nodes
+                node.append("rect")
+                    .attr("width", 50)
+                    .attr("height", 30)
+                    .attr("x", -25)
+                    .attr("y", -15)
+                    .attr("rx", 5)
+                    .attr("ry", 5)
+                    .attr("fill", "#2563eb")
+                    .attr("stroke", "white")
+                    .attr("stroke-width", 1);
+            } 
+            else if (d.data.type === "category") {
+                // Category group nodes
+                node.append("rect")
+                    .attr("width", 50)
+                    .attr("height", 30)
+                    .attr("x", -25)
+                    .attr("y", -15)
+                    .attr("rx", 5)
+                    .attr("ry", 5)
+                    .attr("fill", "#059669")
+                    .attr("stroke", "white")
+                    .attr("stroke-width", 1);
+            } 
+            else {
+                // Other group nodes (vendor, etc.)
+                node.append("rect")
+                    .attr("width", 50)
+                    .attr("height", 30)
+                    .attr("x", -25)
+                    .attr("y", -15)
+                    .attr("rx", 5)
+                    .attr("ry", 5)
+                    .attr("fill", "#7c3aed")
+                    .attr("stroke", "white")
+                    .attr("stroke-width", 1);
+            }
+            
+            // Add labels - adjust for horizontal layout
+            node.append("text")
+                .attr("dy", 30) // Position labels below nodes for horizontal layout
+                .attr("text-anchor", "middle")
+                .attr("fill", "white")
+                .attr("font-size", d => d.depth === 0 ? "16px" : "12px")
+                .text(d => {
+                    if (d.data.type === "device") {
+                        // For devices, show name or IP
+                        return d.data.name;
+                    } else {
+                        // For other nodes, show the node name
+                        return d.data.name;
+                    }
+                });
+            
+            // Add child count for non-device nodes that have children
+            if (d.data.type !== "device" && d.children) {
+                node.append("text")
+                    .attr("dy", -20) // Position count above nodes for horizontal layout
+                    .attr("text-anchor", "middle")
+                    .attr("fill", "white")
+                    .attr("font-size", "10px")
+                    .text(`${d.children.length} ${d.children.length === 1 ? 'item' : 'items'}`);
+            }
+        });
+        
+        // Position the entire tree with some padding
+        zoomLayer.attr("transform", "translate(100, 60)");
+    };
+
+    // Render Geographic Map View
+    const renderGeographicView = (svg, zoomLayer, filteredDevices, width, height) => {
+        // Title at the top
+        zoomLayer.append("text")
+            .attr("x", width / 2)
+            .attr("y", 30)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#FFFFFF")
+            .attr("font-size", "20px")
+            .attr("font-weight", "bold")
+            .text("Geographic Network Topology");
+        
+        // World map features - simplified world map outline
+        const projection = d3.geoMercator()
+            .scale((width + 1) / 2 / Math.PI)
+            .translate([width / 2, height / 2])
+            .center([0, 20]);
+            
+        // Create a path generator
+        const pathGenerator = d3.geoPath().projection(projection);
+
+        // Add world map outline
+        zoomLayer.append("path")
+            .attr("d", "M53.4,109.4c-0.8-0.9-1.8-1.6-2.8-2.2c-0.2-0.1-0.4,0-0.6,0.1c-0.5,0.3-1.1,0.6-1.6,0.9 c-0.3,0.2-0.7,0.1-1-0.1c-1-0.9-2-1.8-3-2.7c-0.3-0.3-0.7-0.3-1-0.1c-0.6,0.3-1.1,0.7-1.7,1c-0.3,0.2-0.7,0.1-1-0.1 c-0.4-0.4-0.8-0.8-1.2-1.2c-0.3-0.3-0.6-0.4-1-0.3c-0.6,0.2-1.1,0.4-1.7,0.6c-0.4,0.1-0.8,0-1.1-0.3c-0.5-0.6-1.1-1.2-1.6-1.8 c-0.3-0.3-0.6-0.4-1-0.3c-0.6,0.2-1.2,0.4-1.8,0.6c-0.3,0.1-0.7,0-1-0.2c-0.6-0.6-1.3-1.1-1.9-1.7c-0.3-0.3-0.6-0.3-1-0.1 c-0.5,0.2-1,0.5-1.5,0.7c-0.3,0.2-0.7,0.1-1-0.1c-0.6-0.6-1.3-1.1-1.9-1.7c-0.3-0.2-0.6-0.3-0.9-0.1c-0.6,0.3-1.2,0.5-1.9,0.8 c-0.3,0.1-0.7,0-1-0.2c-0.6-0.6-1.2-1.2-1.9-1.8c-0.3-0.3-0.6-0.3-1-0.1c-0.5,0.2-1,0.4-1.5,0.7c-0.3,0.2-0.7,0.1-1-0.1 c-0.9-0.8-1.8-1.6-2.6-2.4c-0.3-0.2-0.6-0.3-0.9-0.1c-0.6,0.3-1.1,0.5-1.7,0.8c-0.3,0.1-0.7,0.1-1-0.1c-0.7-0.6-1.4-1.3-2.1-1.9 c-0.3-0.3-0.6-0.3-1-0.1c-0.5,0.2-1,0.4-1.5,0.6c-0.3,0.1-0.7,0.1-1-0.2c-0.6-0.6-1.3-1.2-1.9-1.8c-0.3-0.3-0.6-0.3-0.9-0.1 c-0.6,0.2-1.1,0.5-1.7,0.7c-0.4,0.1-0.7,0-1-0.2c-0.5-0.6-1.1-1.1-1.6-1.6c-0.3-0.3-0.7-0.3-1-0.1c-0.4,0.3-0.9,0.5-1.3,0.8 c-0.3,0.2-0.6,0.1-0.9-0.1c-0.2-0.2-0.4-0.5-0.6-0.7c-0.5-0.5-1-0.9-1.5-1.4c-0.3-0.2-0.6-0.3-0.9-0.1c-0.3,0.2-0.6,0.3-0.9,0.5")
+            .attr("fill", "none")
+            .attr("stroke", "#3b82f6")
+            .attr("stroke-opacity", 0.3)
+            .attr("stroke-width", 0.5);
+
+        // Add a simplified world map outline for visual context
+        zoomLayer.append("rect")
+            .attr("x", width * 0.1)
+            .attr("y", height * 0.15)
+            .attr("width", width * 0.8)
+            .attr("height", height * 0.7)
+            .attr("rx", 10)
+            .attr("ry", 10)
+            .attr("fill", "transparent")
+            .attr("stroke", "#3b82f6")
+            .attr("stroke-opacity", 0.3)
+            .attr("stroke-width", 1);
+            
+        // Draw continents as simplified shapes
+        const continents = [
+            { name: "North America", path: "M150,120 L250,120 L290,200 L200,250 L120,210 Z", color: "#3b82f6" },
+            { name: "South America", path: "M220,250 L250,350 L200,400 L170,320 Z", color: "#8b5cf6" },
+            { name: "Europe", path: "M350,120 L420,120 L430,170 L380,190 L350,150 Z", color: "#ec4899" },
+            { name: "Africa", path: "M350,200 L450,200 L430,350 L350,320 L320,250 Z", color: "#f59e0b" },
+            { name: "Asia", path: "M430,120 L600,150 L580,300 L430,250 L420,170 Z", color: "#10b981" },
+            { name: "Oceania", path: "M550,320 L650,320 L630,380 L550,380 Z", color: "#6366f1" }
+        ];
+        
+        // Draw continents
+        continents.forEach(continent => {
+            zoomLayer.append("path")
+                .attr("d", continent.path)
+                .attr("fill", continent.color)
+                .attr("fill-opacity", 0.15)
+                .attr("stroke", continent.color)
+                .attr("stroke-opacity", 0.5)
+                .attr("stroke-width", 1);
+                
+            // Add continent labels
+            const centroid = getBoundingBoxCenter(continent.path);
+            zoomLayer.append("text")
+                .attr("x", centroid.x)
+                .attr("y", centroid.y)
+                .attr("text-anchor", "middle")
+                .attr("fill", "white")
+                .attr("font-size", "12px")
+                .attr("opacity", 0.8)
+                .text(continent.name);
+        });
+        
+        // Group devices by region - using some simple logic to assign regions
+        const devicesByRegion = {};
+        
+        // Assign mock geo locations based on IP ranges or set locations
+        filteredDevices.forEach(device => {
+            let region = "Unknown";
+            // In a real implementation, this would use actual geo-location data
+            // Here we're just doing a simple simulation based on the first octet of IP
+            
+            const ip = device.ip || "";
+            const firstOctet = parseInt(ip.split('.')[0]);
+            
+            // Simple mock geo-assignment
+            if (firstOctet < 100) region = "North America";
+            else if (firstOctet < 130) region = "South America";
+            else if (firstOctet < 160) region = "Europe";
+            else if (firstOctet < 190) region = "Africa";
+            else if (firstOctet < 220) region = "Asia";
+            else region = "Oceania";
+            
+            // Use custom location if available
+            if (customNames?.[device.ip]?.location) {
+                region = customNames[device.ip].location;
+            }
+            
+            if (!devicesByRegion[region]) {
+                devicesByRegion[region] = [];
+            }
+            
+            devicesByRegion[region].push(device);
+        });
+        
+        // Coordinates for each region (center points)
+        const regionCoordinates = {
+            "North America": { x: 200, y: 180 },
+            "South America": { x: 210, y: 320 },
+            "Europe": { x: 380, y: 150 },
+            "Africa": { x: 380, y: 270 },
+            "Asia": { x: 500, y: 200 },
+            "Oceania": { x: 600, y: 350 },
+            "Unknown": { x: width / 2, y: height / 2 }
+        };
+        
+        // Create nodes for each region
+        const nodes = [];
+        Object.entries(devicesByRegion).forEach(([region, devices]) => {
+            const baseCoords = regionCoordinates[region];
+            
+            if (devices.length === 1) {
+                // Single device, place at region center
+                const device = devices[0];
+                nodes.push({
+                    ...device,
+                    id: device.ip || `device-${region}-0`,
+                    x: baseCoords.x,
+                    y: baseCoords.y,
+                    size: 18,
+                    groupColor: getRegionColor(region)
+                });
+            } else {
+                // Multiple devices, arrange in a circle
+                const radius = Math.min(30 + devices.length * 5, 80);
+                const nodeSize = calculateNodeSize(devices.length);
+                
+                devices.forEach((device, index) => {
+                    const angle = (2 * Math.PI * index) / devices.length;
+                    const x = baseCoords.x + radius * Math.cos(angle);
+                    const y = baseCoords.y + radius * Math.sin(angle);
+                    
+                    nodes.push({
+                        ...device,
+                        id: device.ip || `device-${region}-${index}`,
+                        x,
+                        y,
+                        size: nodeSize,
+                        groupColor: getRegionColor(region)
+                    });
+                });
+                
+                // Add a label for the region
+                zoomLayer.append("text")
+                    .attr("x", baseCoords.x)
+                    .attr("y", baseCoords.y - radius - 15)
+                    .attr("text-anchor", "middle")
+                    .attr("fill", "white")
+                    .attr("font-size", "14px")
+                    .attr("font-weight", "bold")
+                    .text(`${region} (${devices.length})`);
+                
+                // Add a subtle background circle
+                zoomLayer.append("circle")
+                    .attr("cx", baseCoords.x)
+                    .attr("cy", baseCoords.y)
+                    .attr("r", radius + nodeSize)
+                    .attr("fill", getRegionColor(region))
+                    .attr("opacity", 0.1)
+                    .attr("stroke", getRegionColor(region))
+                    .attr("stroke-width", 1)
+                    .attr("stroke-opacity", 0.3);
+            }
+        });
+        
+        // Draw device nodes
+        renderDeviceNodes(zoomLayer, nodes);
+    };
+    
+    // Helper function to get region color
+    const getRegionColor = (region) => {
+        const regionColors = {
+            "North America": "#3b82f6",
+            "South America": "#8b5cf6",
+            "Europe": "#ec4899",
+            "Africa": "#f59e0b",
+            "Asia": "#10b981",
+            "Oceania": "#6366f1",
+            "Unknown": "#6b7280"
+        };
+        return regionColors[region] || "#6b7280";
+    };
+    
+    // Helper function to estimate the center of an SVG path
+    const getBoundingBoxCenter = (path) => {
+        // This is a simplified approach - in a real app, you would compute the actual centroid
+        const matches = path.match(/\d+/g);
+        if (!matches) return { x: 0, y: 0 };
+        
+        // Extract all numbers and compute an average
+        const numbers = matches.map(Number);
+        let sumX = 0, sumY = 0, count = 0;
+        
+        for (let i = 0; i < numbers.length; i += 2) {
+            if (i + 1 < numbers.length) {
+                sumX += numbers[i];
+                sumY += numbers[i + 1];
+                count++;
+            }
+        }
+        
+        return {
+            x: sumX / count,
+            y: sumY / count
+        };
+    };
+
+    // Render device nodes - shared between all visualization types
+    const renderDeviceNodes = (zoomLayer, nodes) => {
         // Add nodes (circles) to the SVG
         const nodeGroup = zoomLayer
             .selectAll(".node-group")
@@ -526,9 +1194,6 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                         .attr('x', -iconSize)
                         .attr('y', -iconSize)
                         .node().appendChild(iconContainer);
-                    
-                    // We've removed the duplicate name display inside the node
-                    // since we're already showing name/IP below the node
                 }
             } catch (error) {
                 console.error('Error rendering icon:', error);
@@ -542,16 +1207,413 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                     .text("?");
             }
         });
+    };
 
-    }, [JSON.stringify(devices), vendorColors, JSON.stringify(customNames), groupBy, selectedGroup, dimensions, refreshTrigger]);
-
-    // Helper functions
-    const isSSHAvailable = (device) => {
-        if (!device || !device.ports) return false;
+    // Render Timeline View to show network changes over time
+    const renderTimelineView = (svg, zoomLayer, filteredDevices, width, height) => {
+        // Title at the top
+        zoomLayer.append("text")
+            .attr("x", width / 2)
+            .attr("y", 30)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#FFFFFF")
+            .attr("font-size", "20px")
+            .attr("font-weight", "bold")
+            .text("Network Timeline Visualization");
         
-        // Check if there's any port entry that contains port 22 (SSH)
-        const ports = Array.isArray(device.ports) ? device.ports : [];
-        return ports.some(port => port.includes('22/tcp') && port.includes('open'));
+        // Group devices by their scan source (timestamp)
+        const devicesByTime = {};
+        const timePoints = new Set();
+        
+        // Extract time data from devices
+        filteredDevices.forEach(device => {
+            let timeKey = "Unknown";
+            let timestamp = null;
+            
+            if (device.scanSource?.timestamp) {
+                timestamp = new Date(device.scanSource.timestamp);
+                timeKey = timestamp.toISOString();
+                timePoints.add(timeKey);
+            }
+            
+            if (!devicesByTime[timeKey]) {
+                devicesByTime[timeKey] = {
+                    devices: [],
+                    timestamp: timestamp,
+                    name: device.scanSource?.name || "Unknown Scan"
+                };
+            }
+            
+            devicesByTime[timeKey].devices.push(device);
+        });
+        
+        // If we don't have enough time data, show a message
+        const sortedTimePoints = Array.from(timePoints).sort();
+        if (sortedTimePoints.length < 2) {
+            zoomLayer.append("text")
+                .attr("x", width / 2)
+                .attr("y", height / 2)
+                .attr("text-anchor", "middle")
+                .attr("fill", "#FFFFFF")
+                .attr("font-size", "16px")
+                .text("Not enough time data available for timeline visualization");
+                
+            zoomLayer.append("text")
+                .attr("x", width / 2)
+                .attr("y", height / 2 + 30)
+                .attr("text-anchor", "middle")
+                .attr("fill", "#FFFFFF")
+                .attr("font-size", "14px")
+                .text("Run multiple scans or add scan zones to visualize changes over time");
+                
+            return;
+        }
+        
+        // Calculate the range of timestamps
+        const minTime = new Date(sortedTimePoints[0]).getTime();
+        const maxTime = new Date(sortedTimePoints[sortedTimePoints.length - 1]).getTime();
+        const timeRange = maxTime - minTime;
+        
+        // Keep track of which devices are new or changed at each time point
+        const deviceStatus = {};
+        
+        // First scan is the baseline - all devices are "new"
+        const baselineDevices = devicesByTime[sortedTimePoints[0]].devices;
+        baselineDevices.forEach(device => {
+            const deviceId = device.ip || device.mac;
+            if (!deviceId) return;
+            
+            deviceStatus[deviceId] = {
+                firstSeen: minTime,
+                lastSeen: minTime,
+                status: "new",
+                changes: []
+            };
+        });
+        
+        // Analyze subsequent scans to detect changes
+        for (let i = 1; i < sortedTimePoints.length; i++) {
+            const timePoint = sortedTimePoints[i];
+            const scanTime = new Date(timePoint).getTime();
+            const scanDevices = devicesByTime[timePoint].devices;
+            
+            scanDevices.forEach(device => {
+                const deviceId = device.ip || device.mac;
+                if (!deviceId) return;
+                
+                if (!deviceStatus[deviceId]) {
+                    // New device that wasn't in previous scans
+                    deviceStatus[deviceId] = {
+                        firstSeen: scanTime,
+                        lastSeen: scanTime,
+                        status: "new",
+                        changes: []
+                    };
+                } else {
+                    // Existing device - check for changes
+                    const status = deviceStatus[deviceId];
+                    status.lastSeen = scanTime;
+                    
+                    // Check for property changes from previous scans
+                    // This is a simplified change detection - in a real app you would do more detailed comparison
+                    const hasChanges = checkDeviceChanges(device, deviceId, scanTime);
+                    
+                    if (hasChanges) {
+                        status.status = "changed";
+                        status.changes.push({
+                            time: scanTime,
+                            type: "property_change"
+                        });
+                    } else {
+                        status.status = "stable";
+                    }
+                }
+            });
+            
+            // Identify devices that disappeared in this scan
+            Object.keys(deviceStatus).forEach(deviceId => {
+                const status = deviceStatus[deviceId];
+                const deviceExists = scanDevices.some(d => (d.ip === deviceId || d.mac === deviceId));
+                
+                if (!deviceExists && status.lastSeen < scanTime) {
+                    status.status = "missing";
+                    status.changes.push({
+                        time: scanTime,
+                        type: "missing"
+                    });
+                }
+            });
+        }
+        
+        // Create a timeline visualization
+        const margin = { top: 80, right: 40, bottom: 50, left: 200 };
+        const timelineWidth = width - margin.left - margin.right;
+        const timelineHeight = height - margin.top - margin.bottom;
+        
+        // Create the timeline scale
+        const timeScale = d3.scaleTime()
+            .domain([new Date(minTime), new Date(maxTime)])
+            .range([0, timelineWidth]);
+            
+        // Create an axis for the timeline
+        const timeAxis = d3.axisBottom(timeScale)
+            .ticks(Math.min(10, sortedTimePoints.length))
+            .tickFormat(d3.timeFormat("%b %d, %H:%M"));
+            
+        // Add the timeline axis
+        const timelineG = zoomLayer.append("g")
+            .attr("transform", `translate(${margin.left}, ${height - margin.bottom})`)
+            .call(timeAxis);
+            
+        // Style the axis
+        timelineG.select(".domain")
+            .attr("stroke", "#FFFFFF")
+            .attr("stroke-opacity", 0.5);
+            
+        timelineG.selectAll(".tick line")
+            .attr("stroke", "#FFFFFF")
+            .attr("stroke-opacity", 0.2);
+            
+        timelineG.selectAll(".tick text")
+            .attr("fill", "#FFFFFF");
+            
+        // Add a timeline label
+        zoomLayer.append("text")
+            .attr("x", width / 2)
+            .attr("y", height - 10)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#FFFFFF")
+            .attr("font-size", "14px")
+            .text("Time");
+            
+        // Create a list of all devices for the device axis
+        const allDeviceIds = Object.keys(deviceStatus).sort();
+        const deviceScale = d3.scaleBand()
+            .domain(allDeviceIds)
+            .range([0, timelineHeight])
+            .padding(0.1);
+            
+        // Calculate the height of each device row
+        const rowHeight = deviceScale.bandwidth();
+            
+        // Add the device axis
+        const deviceAxis = d3.axisLeft(deviceScale)
+            .tickFormat(d => {
+                // Use custom name if available, otherwise show IP
+                if (customNames?.[d]?.name) {
+                    return customNames[d].name;
+                }
+                return d;
+            });
+            
+        const deviceAxisG = zoomLayer.append("g")
+            .attr("transform", `translate(${margin.left}, ${margin.top})`)
+            .call(deviceAxis);
+            
+        // Style the device axis
+        deviceAxisG.select(".domain").remove();
+            
+        deviceAxisG.selectAll(".tick line")
+            .attr("stroke", "#FFFFFF")
+            .attr("stroke-opacity", 0.1)
+            .attr("x2", timelineWidth);
+            
+        deviceAxisG.selectAll(".tick text")
+            .attr("fill", "#FFFFFF");
+            
+        // Add horizontal lines for each device row
+        allDeviceIds.forEach((deviceId, index) => {
+            const y = margin.top + deviceScale(deviceId) + rowHeight / 2;
+            
+            // Add a horizontal line
+            zoomLayer.append("line")
+                .attr("x1", margin.left)
+                .attr("x2", margin.left + timelineWidth)
+                .attr("y1", y)
+                .attr("y2", y)
+                .attr("stroke", "#FFFFFF")
+                .attr("stroke-opacity", 0.1)
+                .attr("stroke-width", 1);
+        });
+        
+        // Add vertical lines for each time point
+        sortedTimePoints.forEach(timePoint => {
+            const scanTime = new Date(timePoint).getTime();
+            const x = margin.left + timeScale(new Date(scanTime));
+            
+            // Add a vertical line
+            zoomLayer.append("line")
+                .attr("x1", x)
+                .attr("x2", x)
+                .attr("y1", margin.top)
+                .attr("y2", margin.top + timelineHeight)
+                .attr("stroke", "#FFFFFF")
+                .attr("stroke-opacity", 0.2)
+                .attr("stroke-width", 1)
+                .attr("stroke-dasharray", "4,4");
+        });
+        
+        // Add markers for device events
+        allDeviceIds.forEach(deviceId => {
+            const status = deviceStatus[deviceId];
+            const y = margin.top + deviceScale(deviceId) + rowHeight / 2;
+            
+            // First seen - green circle
+            const firstSeen = margin.left + timeScale(new Date(status.firstSeen));
+            zoomLayer.append("circle")
+                .attr("cx", firstSeen)
+                .attr("cy", y)
+                .attr("r", 6)
+                .attr("fill", "#10b981")
+                .attr("stroke", "#FFFFFF")
+                .attr("stroke-width", 1)
+                .attr("opacity", 0.8)
+                .on("mouseover", (event) => {
+                    showTooltip(event, `Device first seen: ${new Date(status.firstSeen).toLocaleString()}`);
+                })
+                .on("mouseout", hideTooltip);
+                
+            // Last seen - if different from first seen
+            if (status.lastSeen > status.firstSeen) {
+                const lastSeen = margin.left + timeScale(new Date(status.lastSeen));
+                
+                // Draw a line between first and last seen
+                zoomLayer.append("line")
+                    .attr("x1", firstSeen)
+                    .attr("x2", lastSeen)
+                    .attr("y1", y)
+                    .attr("y2", y)
+                    .attr("stroke", getStatusColor(status.status))
+                    .attr("stroke-width", 3)
+                    .attr("opacity", 0.7);
+                
+                // Add marker for last seen
+                zoomLayer.append("circle")
+                    .attr("cx", lastSeen)
+                    .attr("cy", y)
+                    .attr("r", 5)
+                    .attr("fill", getStatusColor(status.status))
+                    .attr("stroke", "#FFFFFF")
+                    .attr("stroke-width", 1)
+                    .attr("opacity", 0.8)
+                    .on("mouseover", (event) => {
+                        let message = `Device last seen: ${new Date(status.lastSeen).toLocaleString()}`;
+                        if (status.status === "missing") {
+                            message += " (Device disappeared)";
+                        }
+                        showTooltip(event, message);
+                    })
+                    .on("mouseout", hideTooltip);
+            }
+            
+            // Add change markers
+            status.changes.forEach(change => {
+                const changeTime = margin.left + timeScale(new Date(change.time));
+                const markerColor = change.type === "missing" ? "#ef4444" : "#f59e0b";
+                
+                zoomLayer.append("path")
+                    .attr("d", d3.symbol().type(d3.symbolDiamond).size(80))
+                    .attr("transform", `translate(${changeTime}, ${y})`)
+                    .attr("fill", markerColor)
+                    .attr("stroke", "#FFFFFF")
+                    .attr("stroke-width", 1)
+                    .attr("opacity", 0.9)
+                    .on("mouseover", (event) => {
+                        const message = change.type === "missing" 
+                            ? `Device missing at: ${new Date(change.time).toLocaleString()}`
+                            : `Device changed at: ${new Date(change.time).toLocaleString()}`;
+                        showTooltip(event, message);
+                    })
+                    .on("mouseout", hideTooltip);
+            });
+        });
+        
+        // Add a tooltip element
+        const tooltip = zoomLayer.append("g")
+            .attr("class", "tooltip")
+            .style("display", "none");
+            
+        tooltip.append("rect")
+            .attr("width", 200)
+            .attr("height", 30)
+            .attr("rx", 5)
+            .attr("ry", 5)
+            .attr("fill", "#374151")
+            .attr("stroke", "#6B7280")
+            .attr("stroke-width", 1)
+            .attr("opacity", 0.9);
+            
+        tooltip.append("text")
+            .attr("x", 10)
+            .attr("y", 20)
+            .attr("fill", "#FFFFFF")
+            .attr("font-size", "12px");
+            
+        // Tooltip functions
+        function showTooltip(event, text) {
+            tooltip.select("text").text(text);
+            
+            // Adjust tooltip width based on text length
+            const textWidth = tooltip.select("text").node().getComputedTextLength();
+            tooltip.select("rect").attr("width", textWidth + 20);
+            
+            tooltip.attr("transform", `translate(${event.offsetX + 10}, ${event.offsetY - 40})`);
+            tooltip.style("display", null);
+        }
+        
+        function hideTooltip() {
+            tooltip.style("display", "none");
+        }
+        
+        // Add legend
+        const legendData = [
+            { color: "#10b981", label: "First Seen" },
+            { color: "#3b82f6", label: "Stable" },
+            { color: "#f59e0b", label: "Changed" },
+            { color: "#ef4444", label: "Missing" }
+        ];
+        
+        const legend = zoomLayer.append("g")
+            .attr("transform", `translate(${width - 180}, ${margin.top})`);
+            
+        legendData.forEach((item, i) => {
+            const legendRow = legend.append("g")
+                .attr("transform", `translate(0, ${i * 25})`);
+                
+            legendRow.append("rect")
+                .attr("width", 15)
+                .attr("height", 15)
+                .attr("fill", item.color)
+                .attr("rx", 2)
+                .attr("ry", 2);
+                
+            legendRow.append("text")
+                .attr("x", 25)
+                .attr("y", 12.5)
+                .attr("text-anchor", "start")
+                .attr("dominant-baseline", "middle")
+                .attr("fill", "#FFFFFF")
+                .text(item.label);
+        });
+    };
+    
+    // Helper for timeline view - check for device changes
+    // In a real app, this would do more detailed comparison
+    const checkDeviceChanges = (device, deviceId, scanTime) => {
+        // Simple implementation - assume 10% chance of a change
+        // In a real app, this would compare with previous scans
+        return Math.random() < 0.1;
+    };
+    
+    // Helper function for timeline view - get color based on status
+    const getStatusColor = (status) => {
+        switch (status) {
+            case "new": return "#10b981"; // green
+            case "changed": return "#f59e0b"; // amber
+            case "missing": return "#ef4444"; // red
+            case "stable":
+            default: return "#3b82f6"; // blue
+        }
     };
 
     const formatPorts = (ports) => {
@@ -651,6 +1713,47 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                                     ))}
                                 </div>
                             )}
+                        </div>
+                    )}
+                    
+                    {/* Visualization Type Selection */}
+                    <div className="mt-3 border-t border-gray-600 pt-3">
+                        <label className="mb-1 text-xs text-gray-300">Visualization:</label>
+                        <div className="flex gap-2">
+                            <button
+                                className={`flex-1 px-2 py-1 text-xs rounded flex items-center justify-center ${visualizationType === "circular" ? "bg-blue-600 text-white" : "bg-gray-600 hover:bg-gray-500"}`}
+                                onClick={() => setVisualizationType("circular")}
+                                title="Standard circular layout"
+                            >
+                                <FaCircle size={8} className="mr-1" /> Circular
+                            </button>
+                            <button
+                                className={`flex-1 px-2 py-1 text-xs rounded flex items-center justify-center ${visualizationType === "hierarchical" ? "bg-blue-600 text-white" : "bg-gray-600 hover:bg-gray-500"}`}
+                                onClick={() => setVisualizationType("hierarchical")}
+                                title="Hierarchical tree layout"
+                            >
+                                <FaSitemap size={8} className="mr-1" /> Hierarchical
+                            </button>
+                        </div>
+                    </div>
+                    
+                    {/* Subnet Grouping Toggle - Only show for circular and hierarchical views */}
+                    {(visualizationType === "circular" || visualizationType === "hierarchical") && (
+                        <div className="mt-3">
+                            <button
+                                className="w-full px-2 py-1 text-xs rounded bg-gray-600 hover:bg-gray-500 flex items-center justify-center"
+                                onClick={() => {
+                                    // Toggle subnet grouping
+                                    const newSubnetGroups = Object.keys(subnetGroups).length ? {} : groupDevicesBySubnet(
+                                        Array.isArray(devices) ? devices : Object.values(devices).flat()
+                                    );
+                                    setSubnetGroups(newSubnetGroups);
+                                    setRefreshTrigger(prev => prev + 1);
+                                }}
+                            >
+                                <FaLayerIcon size={10} className="mr-1" /> 
+                                {Object.keys(subnetGroups).length ? "Disable" : "Enable"} Subnet Grouping
+                            </button>
                         </div>
                     )}
                 </div>
