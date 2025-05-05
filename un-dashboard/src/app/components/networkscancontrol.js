@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
-import { FaNetworkWired, FaDocker } from "react-icons/fa";
+import { FaNetworkWired } from "react-icons/fa";
 import NetworkScanHistory from "./networkscanhistory";
 
 export default function NetworkScanControl({ devices, setDevices, customNames, setCustomNames }) {
@@ -13,7 +13,7 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
     const [scanOutput, setScanOutput] = useState("");
     const [errorMessage, setErrorMessage] = useState("");
     const [scanHistoryData, setScanHistoryData] = useState(null);
-    const [useDocker, setUseDocker] = useState(false);
+    // Removed useDocker state since it's no longer needed
 
     const addZonesToTopology = (data) => {
         console.log("addZonesToTopology called with:", data);
@@ -63,7 +63,7 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
         setErrorMessage("");
         setStatus("Starting scan...");
         setScanOutput("");
-        socketRef.current.emit("startNetworkScan", { range: ipRange, useDocker });
+        socketRef.current.emit("startNetworkScan", { range: ipRange });
     };
 
     return (
@@ -76,16 +76,7 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
                 placeholder="IP Range (e.g., 192.168.1.1-255)"
                 className="px-3 py-2 mb-2 rounded bg-gray-700 text-white w-full"
             />
-            <div className="flex items-center mb-4">
-                <input
-                    type="checkbox"
-                    checked={useDocker}
-                    onChange={(e) => setUseDocker(e.target.checked)}
-                    className="mr-2"
-                />
-                <FaDocker className="text-blue-500 mr-2" />
-                <span>Use Docker</span>
-            </div>
+            {/* Docker checkbox UI element removed */}
             <button
                 onClick={startScan}
                 className="w-full bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded mb-4"

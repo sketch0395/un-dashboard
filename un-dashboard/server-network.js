@@ -1038,7 +1038,7 @@ io.on('connection', (socket) => {
 
     socket.on('startNetworkScan', async (data) => {
         try {
-            const { range, useDocker } = data;
+            const { range } = data; // We're no longer using the useDocker parameter
 
             if (!range) {
                 throw new Error('IP range is required');
@@ -1048,14 +1048,9 @@ io.on('connection', (socket) => {
                 throw new Error('Invalid IP range format');
             }
 
-            if (useDocker) {
-                await handleDockerScan(range, socket);
-            } else {
-                if (!isNmapAvailable()) {
-                    throw new Error('Nmap is not installed on the host system');
-                }
-                handleHostScan(range, socket);
-            }
+            // Always use Docker for scanning, ignore the UI setting
+            await handleDockerScan(range, socket);
+            
         } catch (error) {
             console.error('[ERROR] startNetworkScan:', error.message);
             socket.emit('networkScanStatus', { status: 'Error', error: error.message });
