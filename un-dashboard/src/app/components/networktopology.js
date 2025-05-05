@@ -9,7 +9,7 @@ import { createRoot } from "react-dom/client";
 import { iconMap } from './icons/iconMapping'; // Import the iconMap directly
 
 // Wrap component with forwardRef to expose refresh method
-const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHModal, setModalDevice, activeTab, setActiveTab }, ref) => {
+const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHModal, setModalDevice }, ref) => {
     const svgRef = useRef();
     const containerRef = useRef();
     const [contextMenu, setContextMenu] = useState({
@@ -1759,21 +1759,7 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                 </div>
             </div>
             
-            {/* View tabs - positioned in the top-right corner of the map itself */}
-            <div className="absolute top-4 right-4 z-10 flex gap-2">
-                <button
-                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-800 text-blue-400"
-                    onClick={() => setActiveTab('topology')}
-                >
-                    <FaNetworkWired /> Topology
-                </button>
-                <button
-                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-700 text-gray-300 hover:bg-gray-600"
-                    onClick={() => setActiveTab('performance')}
-                >
-                    <FaChartLine /> Performance
-                </button>
-            </div>
+
             
             {/* Selected filter indicator - moved below the tabs */}
             {selectedGroup && (

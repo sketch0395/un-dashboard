@@ -3,7 +3,10 @@
 import { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import { Line } from "react-chartjs-2";
-import { FaWifi, FaServer, FaChartLine, FaExclamationTriangle, FaCheck, FaTimes, FaInfoCircle, FaNetworkWired, FaDocker } from "react-icons/fa";
+import { 
+    FaWifi, FaServer, FaChartLine, FaExclamationTriangle, FaCheck, 
+    FaTimes, FaInfoCircle, FaSignal, FaRoute, FaLocationArrow 
+} from "react-icons/fa";
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -26,28 +29,14 @@ ChartJS.register(
     Legend
 );
 
-export default function NetworkPerformance({ devices, activeTab, setActiveTab }) {
-    const socketRef = useRef(null);
-    const [selectedDevices, setSelectedDevices] = useState([]);
-    const [performanceData, setPerformanceData] = useState({
-        latency: [],
-        bandwidth: [],
-        uptime: [],
-    });
+export default function NetworkPerformance({ devices, activeTab, setActiveTab, performanceData }) {
     const [historicalData, setHistoricalData] = useState({});
-    const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState(null);
     const [activeDevice, setActiveDevice] = useState(null);
-    const [monitoringInterval, setMonitoringInterval] = useState(null);
-    const [isMonitoring, setIsMonitoring] = useState(false);
-    const intervalRef = useRef(null);
     const [deviceNameMap, setDeviceNameMap] = useState({});
-    const [useDockerTools, setUseDockerTools] = useState(false);
-    const [dockerHost, setDockerHost] = useState("10.5.1.212");
-    const [showDockerConfig, setShowDockerConfig] = useState(false);
-    const [ipStatus, setIpStatus] = useState({});
-    const [overallProgress, setOverallProgress] = useState(0);
-
+    const [recentlyUpdated, setRecentlyUpdated] = useState({});
+    const [displayTab, setDisplayTab] = useState('latency'); // 'latency', 'bandwidth', 'uptime', 'quality', 'path'
+    const socketRef = useRef(null);
+    
     // Create map of IP to device name
     useEffect(() => {
         if (devices && devices.length > 0) {
@@ -58,83 +47,14 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
             setDeviceNameMap(nameMap);
         }
     }, [devices]);
-
-    // Connect to socket server on component mount
+    
+    // Connect to socket server for historical data only
     useEffect(() => {
         const socket = io("http://10.5.1.83:4000");
         socketRef.current = socket;
 
         socket.on("connect", () => {
-            console.log("Socket connected for network performance monitoring");
-        });
-
-        socket.on("networkPerformanceStatus", (data) => {
-            if (data.error) {
-                setError(data.error);
-                setIsLoading(false);
-                
-                // Update status for specific IP if provided
-                if (data.ip) {
-                    setIpStatus(prev => ({
-                        ...prev,
-                        [data.ip]: {
-                            status: 'error',
-                            message: data.error,
-                            progress: data.progress || 0
-                        }
-                    }));
-                }
-            } else {
-                // Update overall progress if provided
-                if (data.progress !== undefined) {
-                    setOverallProgress(data.progress);
-                }
-                
-                // Update status for specific IP if provided
-                if (data.ip) {
-                    setIpStatus(prev => ({
-                        ...prev,
-                        [data.ip]: {
-                            status: data.complete ? 'complete' : 'checking',
-                            message: data.status,
-                            progress: data.progress || 0
-                        }
-                    }));
-                }
-            }
-        });
-
-        socket.on("networkPerformanceData", (data) => {
-            setPerformanceData({
-                latency: data.latency || [],
-                bandwidth: data.bandwidth || [],
-                uptime: data.uptime || [],
-            });
-            setIsLoading(false);
-        });
-        
-        // Handle partial updates for individual IPs
-        socket.on("networkPerformancePartialUpdate", (data) => {
-            if (!data.ip || !data.data) return;
-            
-            setPerformanceData(prev => {
-                // Function to merge arrays without duplicates
-                const mergeArrays = (existingArr, newArr) => {
-                    if (!newArr || newArr.length === 0) return existingArr;
-                    
-                    // Remove any existing data for this IP
-                    const filtered = existingArr.filter(item => item.ip !== data.ip);
-                    
-                    // Add the new data
-                    return [...filtered, ...newArr];
-                };
-                
-                return {
-                    latency: mergeArrays(prev.latency, data.data.latency),
-                    bandwidth: mergeArrays(prev.bandwidth, data.data.bandwidth),
-                    uptime: mergeArrays(prev.uptime, data.data.uptime)
-                };
-            });
+            console.log("Socket connected for network performance history");
         });
 
         socket.on("historicalPerformanceData", (data) => {
@@ -142,30 +62,26 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
                 ...prev,
                 [data.ip]: data
             }));
+            setRecentlyUpdated(prev => ({
+                ...prev,
+                [data.ip]: true
+            }));
+            setTimeout(() => {
+                setRecentlyUpdated(prev => ({
+                    ...prev,
+                    [data.ip]: false
+                }));
+            }, 3000);
         });
 
         socket.on("connect_error", (err) => {
             console.error("Socket connection error:", err);
-            setError("Failed to connect to the server.");
-            setIsLoading(false);
         });
 
         return () => {
-            if (intervalRef.current) {
-                clearInterval(intervalRef.current);
-            }
             socket.disconnect();
         };
     }, []);
-
-    // Update selected devices when devices prop changes
-    useEffect(() => {
-        if (devices && devices.length > 0 && selectedDevices.length === 0) {
-            // Initially select the first 5 devices, or all if fewer than 5
-            const initialSelected = devices.slice(0, 5).map(device => device.ip);
-            setSelectedDevices(initialSelected);
-        }
-    }, [devices]);
 
     // When a device is selected, load its historical data
     useEffect(() => {
@@ -174,61 +90,6 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
             socketRef.current.emit("getHistoricalPerformance", { ip: activeDevice });
         }
     }, [activeDevice]);
-
-    const startPerformanceCheck = () => {
-        if (selectedDevices.length === 0) {
-            setError("Please select at least one device to monitor.");
-            return;
-        }
-
-        setIsLoading(true);
-        setError(null);
-        setOverallProgress(0);
-        
-        // Reset IP status for all selected devices
-        const initialStatus = {};
-        selectedDevices.forEach(ip => {
-            initialStatus[ip] = { status: 'pending', message: 'Waiting to start...', progress: 0 };
-        });
-        setIpStatus(initialStatus);
-        
-        // Emit event to server to start performance check
-        socketRef.current.emit("startNetworkPerformanceCheck", {
-            ips: selectedDevices,
-            useDockerTools,
-            dockerHost: dockerHost
-        });
-    };
-
-    const toggleDeviceSelection = (ip) => {
-        if (selectedDevices.includes(ip)) {
-            setSelectedDevices(prev => prev.filter(device => device !== ip));
-        } else {
-            setSelectedDevices(prev => [...prev, ip]);
-        }
-    };
-
-    const toggleMonitoring = () => {
-        if (isMonitoring) {
-            // Stop monitoring
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-            setIsMonitoring(false);
-        } else {
-            // Start monitoring
-            startPerformanceCheck(); // Run immediately
-            
-            // Then set up interval
-            const interval = setInterval(() => {
-                if (selectedDevices.length > 0) {
-                    startPerformanceCheck();
-                }
-            }, monitoringInterval || 60000); // Default to 1 minute if not set
-            
-            intervalRef.current = interval;
-            setIsMonitoring(true);
-        }
-    };
 
     // Format timestamp for display
     const formatTime = (timestamp) => {
@@ -362,6 +223,38 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
                 }
             };
         }
+        
+        if (activeTab === 'quality') {
+            return {
+                ...baseOptions,
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: {
+                            display: true,
+                            text: 'Packet Loss (%)'
+                        },
+                        min: 0,
+                        max: 100,
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: {
+                            display: true,
+                            text: 'Jitter (ms)'
+                        },
+                        min: 0,
+                        grid: {
+                            drawOnChartArea: false,
+                        },
+                    },
+                }
+            };
+        }
 
         return baseOptions;
     };
@@ -371,387 +264,386 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
         return (
             performanceData.latency.length > 0 || 
             performanceData.bandwidth.length > 0 || 
-            performanceData.uptime.length > 0
+            performanceData.uptime.length > 0 ||
+            (performanceData.quality && performanceData.quality.length > 0) ||
+            (performanceData.pathAnalysis && performanceData.pathAnalysis.length > 0)
         );
     };
-
-    // Get device status indicator
-    const getStatusIndicator = (ip) => {
-        const status = ipStatus[ip];
-        if (!status) return null;
-        
-        let color, icon;
-        switch(status.status) {
-            case 'complete':
-                color = 'bg-green-500';
-                icon = <FaCheck className="text-white" />;
-                break;
-            case 'error':
-                color = 'bg-red-500';
-                icon = <FaExclamationTriangle className="text-white" />;
-                break;
-            case 'checking':
-                color = 'bg-blue-500';
-                icon = <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>;
-                break;
-            default:
-                color = 'bg-gray-500';
-                icon = <FaInfoCircle className="text-white" />;
+    
+    // Generate chart data for connection quality
+    const getQualityChartData = () => {
+        if (!activeDevice || !historicalData[activeDevice] || !historicalData[activeDevice].quality) {
+            return {
+                labels: [],
+                datasets: []
+            };
         }
+
+        const data = historicalData[activeDevice].quality;
+        const deviceName = getDeviceName(activeDevice);
         
-        return (
-            <div className="flex items-center space-x-1">
-                <div className={`flex items-center justify-center w-5 h-5 rounded-full ${color}`}>
-                    {icon}
-                </div>
-                <div className="text-xs truncate max-w-[120px]">{status.message}</div>
-            </div>
-        );
+        return {
+            labels: data.map(point => formatTime(point.timestamp)),
+            datasets: [
+                {
+                    label: `Packet Loss (%) - ${deviceName}`,
+                    data: data.map(point => point.packetLoss),
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                    tension: 0.1,
+                    yAxisID: 'y'
+                },
+                {
+                    label: `Jitter (ms) - ${deviceName}`,
+                    data: data.map(point => point.jitter),
+                    borderColor: 'rgb(53, 162, 235)',
+                    backgroundColor: 'rgba(53, 162, 235, 0.5)',
+                    tension: 0.1,
+                    yAxisID: 'y1'
+                }
+            ]
+        };
+    };
+    
+    // Get quality score badge color
+    const getQualityScoreColor = (quality) => {
+        switch(quality) {
+            case 'excellent': return 'bg-green-600';
+            case 'good': return 'bg-blue-600';
+            case 'fair': return 'bg-yellow-600';
+            case 'poor': return 'bg-red-600';
+            default: return 'bg-gray-600';
+        }
     };
 
     return (
         <div className="relative bg-gray-800 rounded-lg p-4 text-white">
-            {/* View tabs - positioned in the top-right corner with identical styling as topology view */}
-            <div className="absolute top-4 right-4 z-10 flex gap-2">
-                <button
-                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-700 text-gray-300 hover:bg-gray-600"
-                    onClick={() => setActiveTab('topology')}
-                    style={{ paddingTop: '0.5rem', paddingBottom: '0.5rem' }} /* Fixed padding to match topology tabs */
-                >
-                    <FaNetworkWired /> Topology
-                </button>
-                <button
-                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-800 text-blue-400"
-                    onClick={() => setActiveTab('performance')}
-                    style={{ paddingTop: '0.5rem', paddingBottom: '0.5rem' }} /* Fixed padding to match topology tabs */
-                >
-                    <FaChartLine /> Performance
-                </button>
-            </div>
-
-            <h2 className="text-xl font-bold mb-4 mt-12">Network Performance Monitoring</h2>
+            <h2 className="text-xl font-bold mb-4">Network Performance Dashboard</h2>
             
-            {/* Device Selection */}
-            <div className="mb-4">
-                <h3 className="text-md font-semibold mb-2">Select Devices to Monitor</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                    {devices && devices.map((device, index) => (
-                        <div 
-                            key={index}
-                            className={`cursor-pointer p-2 rounded ${
-                                selectedDevices.includes(device.ip) 
-                                    ? "bg-blue-600" 
-                                    : "bg-gray-700 hover:bg-gray-600"
-                            }`}
-                            onClick={() => toggleDeviceSelection(device.ip)}
-                        >
-                            <div className="flex justify-between items-center mb-1">
-                                <div className={`w-4 h-4 mr-2 rounded-full flex items-center justify-center ${
-                                    selectedDevices.includes(device.ip) ? "bg-blue-300" : "bg-gray-500"
-                                }`}>
-                                    {selectedDevices.includes(device.ip) && <FaCheck className="text-xs text-blue-800" />}
-                                </div>
-                                <span className="text-sm truncate flex-1">
-                                    {device.name || device.hostname || device.ip}
-                                </span>
-                            </div>
-                            
-                            {/* Show status indicator for this IP when selected */}
-                            {selectedDevices.includes(device.ip) && ipStatus[device.ip] && (
-                                <div className="mt-1">
-                                    {getStatusIndicator(device.ip)}
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            </div>
-            
-            {/* Monitoring Controls */}
-            <div className="flex flex-col md:flex-row gap-4 mb-4">
-                <div className="flex-1">
-                    <label className="block text-sm text-gray-300 mb-1">Monitoring Interval (sec)</label>
-                    <select
-                        value={monitoringInterval || 60000}
-                        onChange={(e) => setMonitoringInterval(parseInt(e.target.value))}
-                        className="w-full bg-gray-700 text-white px-3 py-2 rounded"
-                        disabled={isMonitoring}
-                    >
-                        <option value={10000}>10 seconds</option>
-                        <option value={30000}>30 seconds</option>
-                        <option value={60000}>1 minute</option>
-                        <option value={300000}>5 minutes</option>
-                        <option value={600000}>10 minutes</option>
-                    </select>
-                </div>
-                
-                <div className="flex gap-2">
-                    <button
-                        onClick={toggleMonitoring}
-                        className={`px-4 py-2 rounded flex-1 ${
-                            isMonitoring 
-                                ? "bg-red-600 hover:bg-red-700" 
-                                : "bg-green-600 hover:bg-green-700"
-                        }`}
-                        disabled={selectedDevices.length === 0}
-                    >
-                        {isMonitoring ? "Stop Monitoring" : "Start Monitoring"}
-                    </button>
-                    
-                    <button
-                        onClick={startPerformanceCheck}
-                        className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded flex-1"
-                        disabled={selectedDevices.length === 0 || isLoading}
-                    >
-                        {isLoading ? "Checking..." : "Check Now"}
-                    </button>
-                </div>
-            </div>
-            
-            {/* Overall progress bar */}
-            {isLoading && (
-                <div className="mb-4">
-                    <div className="flex justify-between text-xs text-gray-400 mb-1">
-                        <span>Progress</span>
-                        <span>{Math.round(overallProgress)}%</span>
-                    </div>
-                    <div className="w-full bg-gray-700 rounded-full h-2.5">
-                        <div 
-                            className="bg-blue-600 h-2.5 rounded-full transition-all duration-300 ease-in-out" 
-                            style={{width: `${overallProgress}%`}}
-                        ></div>
-                    </div>
-                </div>
-            )}
-
-            {/* Docker Tools Option */}
-            <div className="mb-4">
-                <div className="flex items-center mb-2">
-                    <input
-                        type="checkbox"
-                        checked={useDockerTools}
-                        onChange={(e) => {
-                            setUseDockerTools(e.target.checked);
-                            setShowDockerConfig(e.target.checked);
-                        }}
-                        className="form-checkbox h-4 w-4 text-blue-600"
-                        id="useDockerTools"
-                    />
-                    <label htmlFor="useDockerTools" className="ml-2 flex items-center text-sm text-gray-300">
-                        <FaDocker className="mr-2 text-blue-400" /> Use Docker Network Tools (jonlabelle/network-tools)
-                    </label>
-                    <button 
-                        className="ml-2 text-xs text-blue-400 hover:text-blue-300"
-                        onClick={() => setShowDockerConfig(!showDockerConfig)}>
-                        {showDockerConfig ? "Hide settings" : "Show settings"}
-                    </button>
-                </div>
-                
-                {showDockerConfig && (
-                    <div className="bg-gray-700 p-3 rounded mb-3 text-sm">
-                        <div className="mb-2">
-                            <label className="block text-xs text-gray-400 mb-1">Docker Host IP</label>
-                            <input
-                                type="text"
-                                value={dockerHost}
-                                onChange={(e) => setDockerHost(e.target.value)}
-                                className="w-full bg-gray-800 text-white px-3 py-1 rounded text-sm"
-                                placeholder="e.g., 10.5.1.212"
-                            />
-                        </div>
-                        <div className="text-xs text-gray-400">
-                            <p>Using jonlabelle/network-tools container for network diagnostics.</p>
-                            <p>If devices are shown as unreachable, try adjusting Docker network settings.</p>
-                        </div>
-                    </div>
-                )}
-            </div>
-            
-            {error && !hasPerformanceData() && (
+            {!hasPerformanceData() && (
                 <div className="bg-gray-700 text-white p-3 rounded mb-4 flex items-center">
                     <FaInfoCircle className="mr-2 text-blue-400" /> 
                     <span>
-                        No performance data available. Select devices and click "Check Now" to start monitoring.
-                    </span>
-                </div>
-            )}
-
-            {error && hasPerformanceData() && (
-                <div className="bg-yellow-700 text-white p-3 rounded mb-4 flex items-center">
-                    <FaExclamationTriangle className="mr-2 text-yellow-400" /> 
-                    <span>
-                        {error}
+                        No performance data available. Use the control panel to select devices and run performance checks.
                     </span>
                 </div>
             )}
             
             {/* Performance Data Display */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                {/* Latency Card */}
-                <div className="bg-gray-700 p-4 rounded">
-                    <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-semibold flex items-center">
-                            <FaWifi className="mr-2" /> Latency
-                        </h3>
-                    </div>
-                    
-                    {performanceData.latency.length === 0 ? (
-                        <div className="text-center text-gray-400 py-6">
-                            <p>No latency data available</p>
+            <div className="mb-4">
+                <div className="flex gap-2 mb-4">
+                    <button 
+                        className={`px-3 py-1 rounded text-sm ${displayTab === 'latency' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}`}
+                        onClick={() => setDisplayTab('latency')}
+                    >
+                        Latency
+                    </button>
+                    <button 
+                        className={`px-3 py-1 rounded text-sm ${displayTab === 'bandwidth' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}`}
+                        onClick={() => setDisplayTab('bandwidth')}
+                    >
+                        Bandwidth
+                    </button>
+                    <button 
+                        className={`px-3 py-1 rounded text-sm ${displayTab === 'uptime' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}`}
+                        onClick={() => setDisplayTab('uptime')}
+                    >
+                        Uptime
+                    </button>
+                    <button 
+                        className={`px-3 py-1 rounded text-sm ${displayTab === 'quality' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}`}
+                        onClick={() => setDisplayTab('quality')}
+                    >
+                        Quality
+                    </button>
+                    <button 
+                        className={`px-3 py-1 rounded text-sm ${displayTab === 'path' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}`}
+                        onClick={() => setDisplayTab('path')}
+                    >
+                        Path Analysis
+                    </button>
+                </div>
+
+                {displayTab === 'latency' && (
+                    <div className="bg-gray-700 p-4 rounded">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-semibold flex items-center">
+                                <FaWifi className="mr-2" /> Latency
+                            </h3>
                         </div>
-                    ) : (
-                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                            {performanceData.latency.map((item, index) => (
-                                <div 
-                                    key={index} 
-                                    className={`p-2 rounded cursor-pointer ${
-                                        activeDevice === item.ip ? "bg-blue-900" : "bg-gray-800 hover:bg-gray-600"
-                                    }`}
-                                    onClick={() => setActiveDevice(item.ip)}
-                                >
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm font-medium">
-                                            {getDeviceName(item.ip)} <span className="text-xs text-gray-400">({item.ip})</span>
-                                        </span>
+                        
+                        {performanceData.latency.length === 0 ? (
+                            <div className="text-center text-gray-400 py-6">
+                                <p>No latency data available</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                {performanceData.latency.map((item, index) => (
+                                    <div 
+                                        key={index} 
+                                        className={`p-2 rounded cursor-pointer ${
+                                            activeDevice === item.ip ? "bg-blue-900" : "bg-gray-800 hover:bg-gray-600"
+                                        } ${recentlyUpdated[item.ip] ? "border-2 border-green-500" : ""}`}
+                                        onClick={() => setActiveDevice(item.ip)}
+                                    >
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm font-medium">
+                                                {getDeviceName(item.ip)} <span className="text-xs text-gray-400">({item.ip})</span>
+                                            </span>
+                                            {item.alive ? (
+                                                <span className="text-xs bg-green-800 text-green-200 px-1.5 rounded">Online</span>
+                                            ) : (
+                                                <span className="text-xs bg-red-800 text-red-200 px-1.5 rounded">Offline</span>
+                                            )}
+                                        </div>
                                         {item.alive ? (
-                                            <span className="text-xs bg-green-800 text-green-200 px-1.5 rounded">Online</span>
+                                            <div className="text-sm mt-1">
+                                                <span>{item.latency !== null ? `${item.latency.toFixed(2)} ms` : 'N/A'}</span>
+                                                {item.packetLoss > 0 && (
+                                                    <span className="ml-2 text-yellow-400 text-xs">
+                                                        {item.packetLoss}% loss
+                                                    </span>
+                                                )}
+                                            </div>
                                         ) : (
-                                            <span className="text-xs bg-red-800 text-red-200 px-1.5 rounded">Offline</span>
+                                            <div className="text-xs text-red-400 mt-1">
+                                                Device unreachable
+                                            </div>
                                         )}
                                     </div>
-                                    {item.alive ? (
-                                        <div className="text-sm mt-1">
-                                            <span>{item.latency !== null ? `${item.latency.toFixed(2)} ms` : 'N/A'}</span>
-                                            {item.packetLoss > 0 && (
-                                                <span className="ml-2 text-yellow-400 text-xs">
-                                                    {item.packetLoss}% loss
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {displayTab === 'bandwidth' && (
+                    <div className="bg-gray-700 p-4 rounded">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-semibold flex items-center">
+                                <FaChartLine className="mr-2" /> Bandwidth
+                            </h3>
+                        </div>
+                        
+                        {performanceData.bandwidth.length === 0 ? (
+                            <div className="text-center text-gray-400 py-6">
+                                <p>No bandwidth data available</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                {performanceData.bandwidth.map((item, index) => (
+                                    <div 
+                                        key={index} 
+                                        className={`p-2 rounded cursor-pointer ${
+                                            activeDevice === item.ip ? "bg-blue-900" : "bg-gray-800 hover:bg-gray-600"
+                                        } ${recentlyUpdated[item.ip] ? "border-2 border-green-500" : ""}`}
+                                        onClick={() => setActiveDevice(item.ip)}
+                                    >
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm font-medium">
+                                                {getDeviceName(item.ip)} <span className="text-xs text-gray-400">({item.ip})</span>
+                                            </span>
+                                            {(item.download !== null || item.upload !== null) && (
+                                                <span className="text-xs bg-blue-800 text-blue-200 px-1.5 rounded">
+                                                    {item.source === 'enhanced-iperf3' ? 'Enhanced' : 'Data'}
                                                 </span>
                                             )}
                                         </div>
-                                    ) : (
-                                        <div className="text-xs text-red-400 mt-1">
-                                            Device unreachable
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-                
-                {/* Bandwidth Card */}
-                <div className="bg-gray-700 p-4 rounded">
-                    <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-semibold flex items-center">
-                            <FaChartLine className="mr-2" /> Bandwidth
-                        </h3>
-                    </div>
-                    
-                    {performanceData.bandwidth.length === 0 ? (
-                        <div className="text-center text-gray-400 py-6">
-                            <p>No bandwidth data available</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                            {performanceData.bandwidth.map((item, index) => (
-                                <div 
-                                    key={index} 
-                                    className={`p-2 rounded cursor-pointer ${
-                                        activeDevice === item.ip ? "bg-blue-900" : "bg-gray-800 hover:bg-gray-600"
-                                    }`}
-                                    onClick={() => setActiveDevice(item.ip)}
-                                >
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm font-medium">
-                                            {getDeviceName(item.ip)} <span className="text-xs text-gray-400">({item.ip})</span>
-                                        </span>
-                                        {(item.download !== null || item.upload !== null) && (
-                                            <span className="text-xs bg-blue-800 text-blue-200 px-1.5 rounded">Data</span>
+                                        {item.download !== null && item.upload !== null ? (
+                                            <div className="text-xs mt-1">
+                                                <div className="grid grid-cols-2">
+                                                    <span>↓ {item.download.toFixed(2)} Mbps</span>
+                                                    <span>↑ {item.upload.toFixed(2)} Mbps</span>
+                                                </div>
+                                                {item.source && (
+                                                    <div className="mt-1">
+                                                        <span className={`text-xs px-1 rounded ${
+                                                            item.source === 'enhanced-iperf3' ? 'bg-purple-800 text-purple-200' :
+                                                            item.source === 'iperf3' ? 'bg-green-800 text-green-200' :
+                                                            item.source === 'enhanced-curl-fallback' ? 'bg-blue-800 text-blue-200' :
+                                                            item.source === 'curl-fallback' ? 'bg-yellow-800 text-yellow-200' :
+                                                            'bg-gray-800 text-gray-200'
+                                                        }`}>
+                                                            {item.source === 'enhanced-iperf3' ? 'enhanced iperf3' :
+                                                             item.source === 'iperf3' ? 'iperf3 measurement' :
+                                                             item.source === 'enhanced-curl-fallback' ? 'enhanced HTTP test' :
+                                                             item.source === 'curl-fallback' ? 'HTTP fallback' :
+                                                             'simulated data'}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="text-xs text-gray-400 mt-1">
+                                                No bandwidth data
+                                            </div>
                                         )}
                                     </div>
-                                    {item.download !== null && item.upload !== null ? (
-                                        <div className="text-xs mt-1">
-                                            <div className="grid grid-cols-2">
-                                                <span>↓ {item.download.toFixed(2)} Mbps</span>
-                                                <span>↑ {item.upload.toFixed(2)} Mbps</span>
-                                            </div>
-                                            {item.source && (
-                                                <div className="mt-1">
-                                                    <span className={`text-xs px-1 rounded ${
-                                                        item.source === 'iperf3' ? 'bg-green-800 text-green-200' :
-                                                        item.source === 'curl-fallback' ? 'bg-yellow-800 text-yellow-200' :
-                                                        'bg-gray-800 text-gray-200'
-                                                    }`}>
-                                                        {item.source === 'iperf3' ? 'iperf3 measurement' :
-                                                         item.source === 'curl-fallback' ? 'HTTP fallback' :
-                                                         'simulated data'}
-                                                    </span>
-                                                </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {displayTab === 'uptime' && (
+                    <div className="bg-gray-700 p-4 rounded">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-semibold flex items-center">
+                                <FaServer className="mr-2" /> Uptime
+                            </h3>
+                        </div>
+                        
+                        {performanceData.uptime.length === 0 ? (
+                            <div className="text-center text-gray-400 py-6">
+                                <p>No uptime data available</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                {performanceData.uptime.map((item, index) => (
+                                    <div 
+                                        key={index} 
+                                        className={`p-2 rounded cursor-pointer ${
+                                            activeDevice === item.ip ? "bg-blue-900" : "bg-gray-800 hover:bg-gray-600"
+                                        } ${recentlyUpdated[item.ip] ? "border-2 border-green-500" : ""}`}
+                                        onClick={() => setActiveDevice(item.ip)}
+                                    >
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm font-medium">
+                                                {getDeviceName(item.ip)} <span className="text-xs text-gray-400">({item.ip})</span>
+                                            </span>
+                                            {item.status === 'up' ? (
+                                                <span className="flex items-center text-xs bg-green-800 text-green-200 px-1.5 rounded">
+                                                    <FaCheck className="mr-1" size={10} /> Up
+                                                </span>
+                                            ) : (
+                                                <span className="flex items-center text-xs bg-red-800 text-red-200 px-1.5 rounded">
+                                                    <FaTimes className="mr-1" size={10} /> Down
+                                                </span>
                                             )}
                                         </div>
-                                    ) : (
-                                        <div className="text-xs text-gray-400 mt-1">
-                                            No bandwidth data
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
-                
-                {/* Uptime Card */}
-                <div className="bg-gray-700 p-4 rounded">
-                    <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-semibold flex items-center">
-                            <FaServer className="mr-2" /> Uptime
-                        </h3>
+                                        {item.uptimePercentage !== null ? (
+                                            <div className="text-xs mt-1">
+                                                Uptime: {item.uptimePercentage.toFixed(1)}%
+                                            </div>
+                                        ) : (
+                                            <div className="text-xs text-gray-400 mt-1">
+                                                No uptime data
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                    
-                    {performanceData.uptime.length === 0 ? (
-                        <div className="text-center text-gray-400 py-6">
-                            <p>No uptime data available</p>
+                )}
+
+                {displayTab === 'quality' && (
+                    <div className="bg-gray-700 p-4 rounded">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-semibold flex items-center">
+                                <FaSignal className="mr-2" /> Connection Quality
+                            </h3>
                         </div>
-                    ) : (
+                        
                         <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                            {performanceData.uptime.map((item, index) => (
+                            {performanceData.quality.map((item, index) => (
                                 <div 
                                     key={index} 
                                     className={`p-2 rounded cursor-pointer ${
                                         activeDevice === item.ip ? "bg-blue-900" : "bg-gray-800 hover:bg-gray-600"
-                                    }`}
+                                    } ${recentlyUpdated[item.ip] ? "border-2 border-green-500" : ""}`}
                                     onClick={() => setActiveDevice(item.ip)}
                                 >
                                     <div className="flex justify-between items-center">
                                         <span className="text-sm font-medium">
                                             {getDeviceName(item.ip)} <span className="text-xs text-gray-400">({item.ip})</span>
                                         </span>
-                                        {item.status === 'up' ? (
-                                            <span className="flex items-center text-xs bg-green-800 text-green-200 px-1.5 rounded">
-                                                <FaCheck className="mr-1" size={10} /> Up
-                                            </span>
-                                        ) : (
-                                            <span className="flex items-center text-xs bg-red-800 text-red-200 px-1.5 rounded">
-                                                <FaTimes className="mr-1" size={10} /> Down
+                                        {item.quality && (
+                                            <span className={`text-xs ${getQualityScoreColor(item.quality)} text-white px-2 py-0.5 rounded`}>
+                                                {item.quality.charAt(0).toUpperCase() + item.quality.slice(1)}
                                             </span>
                                         )}
                                     </div>
-                                    {item.uptimePercentage !== null ? (
-                                        <div className="text-xs mt-1">
-                                            Uptime: {item.uptimePercentage.toFixed(1)}%
+                                    <div className="grid grid-cols-2 gap-2 mt-2">
+                                        <div className="bg-gray-900 p-1 rounded text-center">
+                                            <div className="text-xs text-gray-400">Packet Loss</div>
+                                            <div className="font-medium">
+                                                {item.packetLoss !== null ? `${item.packetLoss}%` : 'N/A'}
+                                            </div>
                                         </div>
-                                    ) : (
-                                        <div className="text-xs text-gray-400 mt-1">
-                                            No uptime data
+                                        <div className="bg-gray-900 p-1 rounded text-center">
+                                            <div className="text-xs text-gray-400">Jitter</div>
+                                            <div className="font-medium">
+                                                {item.jitter ? `${item.jitter.toFixed(1)} ms` : 'N/A'}
+                                            </div>
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
                             ))}
                         </div>
-                    )}
-                </div>
+                    </div>
+                )}
+
+                {displayTab === 'path' && (
+                    <div className="bg-gray-700 p-4 rounded">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-semibold flex items-center">
+                                <FaRoute className="mr-2" /> Network Path Analysis
+                            </h3>
+                        </div>
+                        
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                            {performanceData.pathAnalysis.map((item, index) => (
+                                <div 
+                                    key={index} 
+                                    className={`p-2 rounded cursor-pointer ${
+                                        activeDevice === item.ip ? "bg-blue-900" : "bg-gray-800 hover:bg-gray-600"
+                                    } ${recentlyUpdated[item.ip] ? "border-2 border-green-500" : ""}`}
+                                    onClick={() => setActiveDevice(item.ip)}
+                                >
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm font-medium">
+                                            {getDeviceName(item.ip)} <span className="text-xs text-gray-400">({item.ip})</span>
+                                        </span>
+                                        {item.hasIssues ? (
+                                            <span className="flex items-center text-xs bg-red-800 text-red-200 px-1.5 rounded">
+                                                <FaExclamationTriangle className="mr-1" size={10} /> Issues Detected
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center text-xs bg-green-800 text-green-200 px-1.5 rounded">
+                                                <FaCheck className="mr-1" size={10} /> Path OK
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="mt-2 text-xs">
+                                        <div>
+                                            <span className="text-gray-400">Total hops:</span> {item.hopCount || 'N/A'}
+                                        </div>
+                                        {item.bottlenecks && item.bottlenecks.length > 0 && (
+                                            <div className="mt-1">
+                                                <span className="text-yellow-400">Bottlenecks detected:</span> {item.bottlenecks.length}
+                                                <div className="mt-1 ml-2">
+                                                    {item.bottlenecks.slice(0, 2).map((bottleneck, idx) => (
+                                                        <div key={idx} className="text-red-300">
+                                                            Hop {bottleneck.hopNumber}: {bottleneck.ip} ({bottleneck.avg.toFixed(1)}ms, {bottleneck.packetLoss}% loss)
+                                                        </div>
+                                                    ))}
+                                                    {item.bottlenecks.length > 2 && (
+                                                        <div className="text-gray-400">
+                                                            ...and {item.bottlenecks.length - 2} more
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
-            
+
             {/* Historical Data Visualization */}
             {activeDevice && (
                 <div className="bg-gray-700 p-4 rounded">
@@ -778,6 +670,12 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
                             >
                                 Uptime
                             </button>
+                            <button 
+                                className={`px-3 py-1 rounded text-sm ${activeTab === 'quality' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}`}
+                                onClick={() => setActiveTab('quality')}
+                            >
+                                Quality
+                            </button>
                         </div>
                     </div>
                     
@@ -790,6 +688,9 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
                         )}
                         {activeTab === 'uptime' && (
                             <Line data={getUptimeChartData()} options={getChartOptions()} />
+                        )}
+                        {activeTab === 'quality' && (
+                            <Line data={getQualityChartData()} options={getChartOptions()} />
                         )}
                     </div>
                 </div>

@@ -4,8 +4,7 @@ import { useState, lazy, Suspense, useEffect, useRef } from "react";
 import NetworkScanControl from "./networkscancontrol";
 import TopologyMap from "./networktopology";
 import DeviceModal from "./devicemodal";
-import NetworkPerformance from "./networkperformance";
-import { FaNetworkWired, FaChartLine, FaChevronLeft, FaChevronRight, FaCog } from "react-icons/fa";
+import { FaChevronLeft, FaChevronRight, FaCog } from "react-icons/fa";
 import { format } from "date-fns";
 
 // Lazy load the SSH terminal component
@@ -17,7 +16,6 @@ export default function NetworkDashboard() {
     const [vendorColors, setVendorColors] = useState({});
     const [customNames, setCustomNames] = useState({});
     const [modalDevice, setModalDevice] = useState(null);
-    const [activeTab, setActiveTab] = useState('topology'); // 'topology' or 'performance'
     const [flattenedDevices, setFlattenedDevices] = useState([]);
     
     // Add state for SSH modal and connection
@@ -241,56 +239,22 @@ export default function NetworkDashboard() {
 
             {/* Right Panel - Expanded to fill available space */}
             <div className="flex-1 flex flex-col p-4 overflow-hidden">
-                {/* Tabs */}
-                {/* <div className="flex gap-2 mb-2">
-                    <button
-                        className={`flex items-center gap-2 px-4 py-2 rounded-t ${
-                            activeTab === 'topology' ? 'bg-gray-800 text-blue-400' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                        }`}
-                        onClick={() => setActiveTab('topology')}
-                    >
-                        <FaNetworkWired /> Topology
-                    </button>
-                    <button
-                        className={`flex items-center gap-2 px-4 py-2 rounded-t ${
-                            activeTab === 'performance' ? 'bg-gray-800 text-blue-400' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                        }`}
-                        onClick={() => setActiveTab('performance')}
-                    >
-                        <FaChartLine /> Performance
-                    </button>
-                </div> */}
-                
                 {/* Content based on active tab */}
                 <div 
                     ref={contentRef}
                     className="flex-1 bg-gray-800 rounded-lg overflow-hidden"
                 >
-                    {activeTab === 'topology' && (
-                        <div className="w-full h-full overflow-hidden">
-                            <TopologyMap
-                                ref={topologyMapRef}
-                                devices={devices}
-                                vendorColors={vendorColors}
-                                customNames={customNames}
-                                openSSHModal={handleOpenSSH}
-                                contentDimensions={contentDimensions}
-                                setModalDevice={setModalDevice}
-                                activeTab={activeTab}
-                                setActiveTab={setActiveTab}
-                            />
-                        </div>
-                    )}
-                    
-                    {activeTab === 'performance' && (
-                        <div className="h-full overflow-y-auto p-4">
-                            <NetworkPerformance 
-                                devices={getAllDevices()} 
-                                activeTab={activeTab}
-                                setActiveTab={setActiveTab}
-                            />
-                        </div>
-                    )}
+                    <div className="w-full h-full overflow-hidden">
+                        <TopologyMap
+                            ref={topologyMapRef}
+                            devices={devices}
+                            vendorColors={vendorColors}
+                            customNames={customNames}
+                            openSSHModal={handleOpenSSH}
+                            contentDimensions={contentDimensions}
+                            setModalDevice={setModalDevice}
+                        />
+                    </div>
                 </div>
             </div>
 
