@@ -4,6 +4,7 @@ import { useState, lazy, Suspense, useEffect, useRef } from "react";
 import NetworkScanControl from "./networkscancontrol";
 import TopologyMap from "./networktopology";
 import DeviceModal from "./devicemodal";
+import DeviceHeaders from "./deviceheaders";
 import { FaChevronLeft, FaChevronRight, FaCog } from "react-icons/fa";
 import { format } from "date-fns";
 
@@ -24,6 +25,10 @@ export default function NetworkDashboard() {
     const [sshUsername, setSSHUsername] = useState("");
     const [sshPassword, setSSHPassword] = useState("");
     const [showTerminal, setShowTerminal] = useState(false);
+
+    // Add state for header information display
+    const [headerInfo, setHeaderInfo] = useState(null);
+    const [loadingHeaders, setLoadingHeaders] = useState(false);
 
     // Control panel minimization state
     const [controlsMinimized, setControlsMinimized] = useState(false);
@@ -95,6 +100,16 @@ export default function NetworkDashboard() {
             return; // Exit early, no need to save other changes
         }
         
+        // Check if this is a header scan request from the device modal
+        if (updatedDevice._requestHeaderScan) {
+            // Remove the special flag
+            const { _requestHeaderScan, ...deviceWithoutFlag } = updatedDevice;
+            
+            // Open the header scan for this device
+            handleOpenHeaderScan(deviceWithoutFlag);
+            return; // Exit early, no need to save other changes
+        }
+        
         // Update both devices and customNames state to ensure re-rendering
         if (updatedDevice.ip) {
             // Get existing custom properties from localStorage
@@ -153,6 +168,47 @@ export default function NetworkDashboard() {
         setSSHUsername(""); // Reset username
         setSSHPassword(""); // Reset password
         setSSHModalVisible(true);
+    };
+    
+    // Handle header scanning request
+    const handleOpenHeaderScan = async (device) => {
+        try {
+            setLoadingHeaders(true);
+            setHeaderInfo({
+                ip: device.ip,
+                hostname: device.name || device.hostname || 'Unknown device',
+                headers: null
+            });
+
+            const response = await fetch(`/api/network-scan/headers?ip=${device.ip}`);
+            
+            if (!response.ok) {
+                throw new Error('Failed to get device headers');
+            }
+            
+            const data = await response.json();
+            setHeaderInfo({
+                ip: device.ip,
+                hostname: device.name || device.hostname || 'Unknown device',
+                headers: data.headers
+            });
+        } catch (error) {
+            console.error('Error getting device headers:', error);
+            // Show error state in modal
+            setHeaderInfo({
+                ip: device.ip,
+                hostname: device.name || device.hostname || 'Unknown device',
+                headers: null,
+                error: error.message
+            });
+        } finally {
+            setLoadingHeaders(false);
+        }
+    };
+    
+    // Close header modal
+    const closeHeaderModal = () => {
+        setHeaderInfo(null);
     };
     
     // Handle keypress for SSH credentials
@@ -324,6 +380,18 @@ export default function NetworkDashboard() {
                         onClose={() => setShowTerminal(false)}
                     />
                 </Suspense>
+            )}
+            
+            {/* Header Info Modal */}
+            {headerInfo && (
+                <DeviceHeaders 
+                    ip={headerInfo.ip}
+                    hostname={headerInfo.hostname}
+                    headers={headerInfo.headers}
+                    error={headerInfo.error}
+                    onClose={closeHeaderModal}
+                    loading={loadingHeaders}
+                />
             )}
         </div>
     );

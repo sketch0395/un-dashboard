@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import Modal from "./Modal";
 import { iconMap } from "./icons/iconMapping";
-import { FaChevronDown, FaChevronUp, FaTerminal, FaHistory } from "react-icons/fa";
+import { FaChevronDown, FaChevronUp, FaTerminal, FaHistory, FaNetworkWired } from "react-icons/fa";
 
 const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
     const [colorAccordionOpen, setColorAccordionOpen] = useState(false);
@@ -176,6 +176,31 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                                 <FaTerminal size={12} /> Connect
                             </button>
                         )}
+                    </div>
+                </div>
+
+                {/* Header Scanning Option */}
+                <div className="mb-3">
+                    <label className="block text-xs text-gray-300 mb-1">Headers & Port Info</label>
+                    <div className="flex items-center justify-between">
+                        <div className="text-xs bg-gray-800 px-3 py-1.5 rounded flex items-center">
+                            <span>Scan this device using docker-network-tools</span>
+                        </div>
+                        <button
+                            className="bg-blue-600 hover:bg-blue-700 text-xs text-white px-2 py-1 rounded flex items-center gap-1"
+                            onClick={() => {
+                                // Request header scanning for this device
+                                if (modalDevice) {
+                                    setModalDevice(null); // Close this modal first
+                                    onSave({
+                                        ...modalDevice, 
+                                        _requestHeaderScan: true // Special flag to request headers scanning
+                                    });
+                                }
+                            }}
+                        >
+                            <FaNetworkWired size={12} /> Scan Headers
+                        </button>
                     </div>
                 </div>
                 

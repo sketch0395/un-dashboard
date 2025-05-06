@@ -1,11 +1,12 @@
 "use client";
 
 import React, { lazy, Suspense, useState, useEffect, memo } from "react";
-import { FaChevronDown, FaChevronUp, FaTrash, FaEdit, FaEllipsisV, FaTerminal } from "react-icons/fa";
+import { FaChevronDown, FaChevronUp, FaTrash, FaEdit, FaEllipsisV, FaTerminal, FaSync, FaDesktop, FaServer, FaMobileAlt, FaWifi, FaQuestion, FaInfoCircle } from "react-icons/fa";
 import { format } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 import { createContext, useContext } from "react";
 import { FixedSizeList as List } from "react-window";
+import DeviceHeaders from './deviceheaders';
 
 const DeviceModal = lazy(() => import("./devicemodal"));
 const SSHTerminal = lazy(() => import("./sshterminal"));
@@ -126,6 +127,12 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     const [persistentCustomNames, setPersistentCustomNames] = useState({});
     // Add state for confirmation modal
     const [showConfirmClear, setShowConfirmClear] = useState(false);
+    const [deviceMap, setDeviceMap] = useState({});
+    const [expandedDevice, setExpandedDevice] = useState(null);
+    const [headerInfo, setHeaderInfo] = useState(null);
+    const [loadingHeaders, setLoadingHeaders] = useState(false);
+    // Add state for network device scanning loading state
+    const [refreshingDevices, setRefreshingDevices] = useState(false);
     
     // Load any previously saved custom device properties from localStorage
     useEffect(() => {
@@ -477,6 +484,111 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         }
     };
 
+    // Process scan results to create device map
+    useEffect(() => {
+        if (scanHistory && scanHistory.length > 0) {
+            const newDeviceMap = {};
+            scanHistory.forEach(scan => {
+                Object.values(scan.data).flat().forEach(device => {
+                    if (!newDeviceMap[device.ip]) {
+                        newDeviceMap[device.ip] = { ...device };
+                    } else {
+                        // Update with most recent device data
+                        if (new Date(scan.timestamp) > new Date(newDeviceMap[device.ip].lastSeen)) {
+                            newDeviceMap[device.ip] = { ...device };
+                        }
+                    }
+                    // Update last seen time
+                    newDeviceMap[device.ip].lastSeen = scan.timestamp;
+                });
+            });
+            setDeviceMap(newDeviceMap);
+        }
+    }, [scanHistory]);
+
+    const getDeviceIcon = (deviceType) => {
+        switch (deviceType?.toLowerCase()) {
+            case 'desktop': return <FaDesktop />;
+            case 'server': return <FaServer />;
+            case 'mobile': return <FaMobileAlt />;
+            case 'iot': return <FaWifi />;
+            default: return <FaQuestion />;
+        }
+    };
+
+    const handleDeviceClick = (ip) => {
+        if (expandedDevice === ip) {
+            setExpandedDevice(null);
+        } else {
+            setExpandedDevice(ip);
+        }
+    };
+
+    const handleGetHeaders = async (ip) => {
+        try {
+            setLoadingHeaders(true);
+            setHeaderInfo({
+                ip,
+                hostname: deviceMap[ip]?.hostname || 'Unknown device',
+                headers: null
+            });
+
+            const response = await fetch(`/api/network-scan/headers?ip=${ip}`);
+            
+            if (!response.ok) {
+                throw new Error('Failed to get device headers');
+            }
+            
+            const data = await response.json();
+            setHeaderInfo({
+                ip,
+                hostname: deviceMap[ip]?.hostname || 'Unknown device',
+                headers: data.headers
+            });
+        } catch (error) {
+            console.error('Error getting device headers:', error);
+            // Show error state in modal
+            setHeaderInfo({
+                ip,
+                hostname: deviceMap[ip]?.hostname || 'Unknown device',
+                headers: null,
+                error: error.message
+            });
+        } finally {
+            setLoadingHeaders(false);
+        }
+    };
+
+    const closeHeaderModal = () => {
+        setHeaderInfo(null);
+    };
+
+    // Add refresh function
+    const handleRefresh = () => {
+        setRefreshingDevices(true);
+        // If there's a recent scan, use its IP range
+        const recentScan = scanHistory[scanHistory.length - 1];
+        const ipRange = recentScan?.ipRange || '192.168.1.1-254';
+        
+        // Make a request to re-scan the network
+        fetch(`/api/network-scan/quick?range=${encodeURIComponent(ipRange)}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network scan failed');
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Save the new scan to history
+                saveScanHistory(data, ipRange);
+                setRefreshingDevices(false);
+            })
+            .catch(error => {
+                console.error('Error refreshing network devices:', error);
+                setRefreshingDevices(false);
+            });
+    };
+
     return (
         <div className="mt-6">
             <div className="flex justify-between items-center mb-4">
@@ -731,7 +843,104 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                     </div>
                 </div>
             )}
+
+            <div className="relative bg-gray-800 rounded-lg p-4 shadow-md text-white">
+                <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-bold">Network Devices</h2>
+                    <button 
+                        onClick={handleRefresh}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded flex items-center text-sm"
+                        disabled={refreshingDevices}
+                    >
+                        <FaSync className={`mr-1 ${refreshingDevices ? 'animate-spin' : ''}`} /> Refresh
+                    </button>
+                </div>
+                
+                {refreshingDevices ? (
+                    <div className="flex justify-center items-center p-8">
+                        <div className="animate-spin h-8 w-8 border-t-2 border-blue-500 border-r-2 rounded-full"></div>
+                        <span className="ml-3">Scanning network...</span>
+                    </div>
+                ) : Object.keys(deviceMap).length === 0 ? (
+                    <div className="bg-gray-700 p-4 rounded mt-4 text-center">
+                        <FaInfoCircle className="mx-auto text-2xl text-gray-400 mb-2" />
+                        <p>No devices found in scan history.</p>
+                        <p className="text-sm text-gray-400 mt-2">Run a new scan to discover devices on your network.</p>
+                    </div>
+                ) : (
+                    <div className="mt-4 space-y-2">
+                        {Object.values(deviceMap).map(device => (
+                            <div key={device.ip} className="bg-gray-700 rounded">
+                                <div 
+                                    className="p-3 cursor-pointer flex items-center justify-between"
+                                    onClick={() => handleDeviceClick(device.ip)}
+                                >
+                                    <div className="flex items-center">
+                                        <div className="bg-gray-600 h-8 w-8 rounded-full flex items-center justify-center mr-3">
+                                            {getDeviceIcon(device.deviceType)}
+                                        </div>
+                                        <div>
+                                            <h3 className="font-medium">
+                                                {device.hostname || 'Unknown device'}
+                                            </h3>
+                                            <p className="text-xs text-gray-400">{device.ip}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center">
+                                        <span className={`h-2 w-2 rounded-full ${device.status === 'up' ? 'bg-green-500' : 'bg-red-500'} mr-2`}></span>
+                                        <span className="text-xs text-gray-300">
+                                            {device.status === 'up' ? 'Online' : 'Offline'}
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                {expandedDevice === device.ip && (
+                                    <div className="p-3 border-t border-gray-600 text-sm">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div>
+                                                <p className="text-gray-400">MAC Address</p>
+                                                <p>{device.mac || 'Unknown'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-gray-400">Manufacturer</p>
+                                                <p>{device.manufacturer || 'Unknown'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-gray-400">Device Type</p>
+                                                <p>{device.deviceType || 'Unknown'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-gray-400">Last Seen</p>
+                                                <p>{new Date(device.lastSeen).toLocaleString()}</p>
+                                            </div>
+                                        </div>
+                                        <div className="mt-3">
+                                            <button 
+                                                onClick={() => handleGetHeaders(device.ip)} 
+                                                className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded"
+                                            >
+                                                Get Device Headers
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+                
+                {/* Header information modal */}
+                {headerInfo && (
+                    <DeviceHeaders 
+                        ip={headerInfo.ip}
+                        hostname={headerInfo.hostname}
+                        headers={headerInfo.headers}
+                        error={headerInfo.error}
+                        onClose={closeHeaderModal}
+                        loading={loadingHeaders}
+                    />
+                )}
+            </div>
         </div>
     );
 }
-

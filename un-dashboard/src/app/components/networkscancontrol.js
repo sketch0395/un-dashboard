@@ -66,6 +66,13 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
         socketRef.current.emit("startNetworkScan", { range: ipRange });
     };
 
+    // Add a function to handle quick header scan for a specific IP
+    const startHeaderScan = (ip) => {
+        setErrorMessage("");
+        setStatus(`Getting headers for ${ip}...`);
+        // This will be handled in the NetworkScanHistory component
+    };
+
     return (
         <div className="p-4 bg-gray-800 text-white rounded-lg">
             <h2 className="text-xl font-bold mb-4">Network Scan Control</h2>
@@ -83,6 +90,13 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
             >
                 Start Scan
             </button>
+            <div className="bg-gray-700 p-3 rounded mb-4 flex items-center">
+                <FaNetworkWired className="text-blue-400 mr-2" />
+                <div className="text-sm">
+                    <p className="font-medium">Device Header Scanning Available</p>
+                    <p className="text-xs text-gray-400">Using docker-network-tools for detailed device information</p>
+                </div>
+            </div>
             {errorMessage && (
                 <div className="bg-red-600 text-white p-3 rounded mb-4">
                     <strong>Error:</strong> {errorMessage}

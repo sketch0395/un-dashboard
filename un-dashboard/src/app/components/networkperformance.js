@@ -102,6 +102,18 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab, p
     const getDeviceName = (ip) => {
         return deviceNameMap[ip] || ip;
     };
+    
+    // Handle header information retrieval
+    const getDeviceHeaders = async (ip) => {
+        try {
+            if (socketRef.current) {
+                socketRef.current.emit("getDeviceHeaders", { ip });
+                console.log(`Requested headers for device: ${ip}`);
+            }
+        } catch (error) {
+            console.error("Error requesting device headers:", error);
+        }
+    };
 
     // Generate chart data for latency
     const getLatencyChartData = () => {

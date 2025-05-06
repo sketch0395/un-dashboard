@@ -76,6 +76,35 @@ const DockerCard = ({ container, onAction, onOpenContainerPage, operations }) =>
                         Open Web
                     </button>
                 )}
+                {/* Action buttons */}
+                <div className="flex space-x-2 mt-2">
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onAction('start', container.Id); }}
+                        className={`text-xs px-2 py-1 rounded ${container.State === 'running' ? 'bg-gray-600 text-gray-300 cursor-not-allowed' : 'bg-green-600 hover:bg-green-500'}`}
+                        disabled={container.State === 'running'}
+                    >
+                        Start
+                    </button>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onAction('stop', container.Id); }}
+                        className={`text-xs px-2 py-1 rounded ${container.State !== 'running' ? 'bg-gray-600 text-gray-300 cursor-not-allowed' : 'bg-red-600 hover:bg-red-500'}`}
+                        disabled={container.State !== 'running'}
+                    >
+                        Stop
+                    </button>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onAction('restart', container.Id); }}
+                        className="text-xs px-2 py-1 rounded bg-yellow-600 hover:bg-yellow-500"
+                    >
+                        Restart
+                    </button>
+                    <button
+                        onClick={(e) => { e.stopPropagation(); onAction('headers', container.Id); }}
+                        className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-500"
+                    >
+                        Headers
+                    </button>
+                </div>
             </div>
         </div>
     );
