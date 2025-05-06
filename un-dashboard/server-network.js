@@ -64,6 +64,10 @@ if (!isValidPortList(DEFAULT_PORTS)) {
 const parseNmapOutput = (output) => {
     console.log('[PARSE] Raw Nmap Output:', output); // Debugging log
 
+    // Extract SSH port information specifically for debugging
+    const sshLines = output.split('\n').filter(line => line.includes('22/tcp'));
+    console.log('[SSH DEBUG] SSH port entries found:', sshLines);
+
     const lines = output.split('\n');
     const devices = [];
     let currentDevice = {};
@@ -82,7 +86,13 @@ const parseNmapOutput = (output) => {
             currentDevice.status = 'up';
         } else if (line.match(/^\d+\/tcp/)) {
             if (!currentDevice.ports) currentDevice.ports = [];
-            currentDevice.ports.push(line.trim());
+            const portLine = line.trim();
+            currentDevice.ports.push(portLine);
+            
+            // Special debug logging for SSH port
+            if (portLine.includes('22/tcp')) {
+                console.log(`[SSH DEBUG] Found port 22 for device ${currentDevice.ip}: "${portLine}"`);
+            }
         }
     });
 
@@ -97,6 +107,14 @@ const parseNmapOutput = (output) => {
         acc[vendor].push(device);
         return acc;
     }, {});
+
+    // Log devices with SSH ports for debugging
+    const devicesWithSsh = devices.filter(d => d.ports && d.ports.some(p => p.includes('22/tcp')));
+    console.log(`[SSH DEBUG] Found ${devicesWithSsh.length} devices with port 22:`);
+    devicesWithSsh.forEach(device => {
+        const sshPort = device.ports.find(p => p.includes('22/tcp'));
+        console.log(`[SSH DEBUG] Device ${device.ip}: SSH port entry: "${sshPort}"`);
+    });
 
     console.log('[PARSE] Grouped Devices:', groupedDevices); // Debugging log
     return groupedDevices;

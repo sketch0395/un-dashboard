@@ -1,12 +1,11 @@
 "use client";
 
 import React, { lazy, Suspense, useState, useEffect, memo } from "react";
-import { FaChevronDown, FaChevronUp, FaTrash, FaEdit, FaEllipsisV, FaTerminal, FaSync, FaDesktop, FaServer, FaMobileAlt, FaWifi, FaQuestion, FaInfoCircle } from "react-icons/fa";
+import { FaChevronDown, FaChevronUp, FaTrash, FaEdit, FaEllipsisV, FaTerminal } from "react-icons/fa";
 import { format } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 import { createContext, useContext } from "react";
 import { FixedSizeList as List } from "react-window";
-import DeviceHeaders from './deviceheaders';
 
 const DeviceModal = lazy(() => import("./devicemodal"));
 const SSHTerminal = lazy(() => import("./sshterminal"));
@@ -127,12 +126,6 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     const [persistentCustomNames, setPersistentCustomNames] = useState({});
     // Add state for confirmation modal
     const [showConfirmClear, setShowConfirmClear] = useState(false);
-    const [deviceMap, setDeviceMap] = useState({});
-    const [expandedDevice, setExpandedDevice] = useState(null);
-    const [headerInfo, setHeaderInfo] = useState(null);
-    const [loadingHeaders, setLoadingHeaders] = useState(false);
-    // Add state for network device scanning loading state
-    const [refreshingDevices, setRefreshingDevices] = useState(false);
     
     // Load any previously saved custom device properties from localStorage
     useEffect(() => {
@@ -484,123 +477,6 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         }
     };
 
-    // Process scan results to create device map
-    useEffect(() => {
-        if (scanHistory && scanHistory.length > 0) {
-            const newDeviceMap = {};
-            scanHistory.forEach(scan => {
-                Object.values(scan.data).flat().forEach(device => {
-                    if (!newDeviceMap[device.ip]) {
-                        newDeviceMap[device.ip] = { ...device };
-                    } else {
-                        // Update with most recent device data
-                        if (new Date(scan.timestamp) > new Date(newDeviceMap[device.ip].lastSeen)) {
-                            newDeviceMap[device.ip] = { ...device };
-                        }
-                    }
-                    // Update last seen time
-                    newDeviceMap[device.ip].lastSeen = scan.timestamp;
-                });
-            });
-            setDeviceMap(newDeviceMap);
-        }
-    }, [scanHistory]);
-
-    const getDeviceIcon = (deviceType) => {
-        switch (deviceType?.toLowerCase()) {
-            case 'desktop': return <FaDesktop />;
-            case 'server': return <FaServer />;
-            case 'mobile': return <FaMobileAlt />;
-            case 'iot': return <FaWifi />;
-            default: return <FaQuestion />;
-        }
-    };
-
-    const handleDeviceClick = (ip) => {
-        if (expandedDevice === ip) {
-            setExpandedDevice(null);
-        } else {
-            setExpandedDevice(ip);
-        }
-    };
-
-    const handleGetHeaders = async (ip) => {
-        try {
-            setLoadingHeaders(true);
-            setHeaderInfo({
-                ip,
-                hostname: deviceMap[ip]?.hostname || 'Unknown device',
-                headers: null
-            });
-
-            const response = await fetch(`/api/network-scan/headers?ip=${ip}`);
-            
-            if (!response.ok) {
-                throw new Error('Failed to get device headers');
-            }
-            
-            const data = await response.json();
-            setHeaderInfo({
-                ip,
-                hostname: deviceMap[ip]?.hostname || 'Unknown device',
-                headers: data.headers
-            });
-        } catch (error) {
-            console.error('Error getting device headers:', error);
-            // Show error state in modal
-            setHeaderInfo({
-                ip,
-                hostname: deviceMap[ip]?.hostname || 'Unknown device',
-                headers: null,
-                error: error.message
-            });
-        } finally {
-            setLoadingHeaders(false);
-        }
-    };
-
-    const closeHeaderModal = () => {
-        setHeaderInfo(null);
-    };
-
-    // Add refresh function
-    const handleRefresh = () => {
-        setRefreshingDevices(true);
-        // If there's a recent scan, use its IP range
-        const recentScan = scanHistory[scanHistory.length - 1];
-        const ipRange = recentScan?.ipRange || '192.168.1.1-254';
-        
-        // Make a request to re-scan the network
-        fetch(`/api/network-scan/quick?range=${encodeURIComponent(ipRange)}`)
-            .then(response => {
-                if (!response.ok) {
-                    // Instead of throwing an error, return an object with error info
-                    return { error: true, status: response.status, message: 'Network scan request failed' };
-                }
-                return response.json();
-            })
-            .then(data => {
-                // Check if we received an error object
-                if (data && data.error) {
-                    console.error('Error during network scan:', data.message);
-                    // Show user feedback instead of crashing
-                    alert(`Network scan failed: ${data.message}. Please try again later.`);
-                    setRefreshingDevices(false);
-                    return;
-                }
-                
-                // Save the new scan to history
-                saveScanHistory(data, ipRange);
-                setRefreshingDevices(false);
-            })
-            .catch(error => {
-                console.error('Error refreshing network devices:', error);
-                // Show user feedback instead of crashing
-                alert(`Network scan failed: ${error.message}. Please try again later.`);
-                setRefreshingDevices(false);
-            });
-    };
-
     return (
         <div className="mt-6">
             <div className="flex justify-between items-center mb-4">
@@ -855,18 +731,7 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                     </div>
                 </div>
             )}
-
-            {/* Header information modal */}
-            {headerInfo && (
-                <DeviceHeaders 
-                    ip={headerInfo.ip}
-                    hostname={headerInfo.hostname}
-                    headers={headerInfo.headers}
-                    error={headerInfo.error}
-                    onClose={closeHeaderModal}
-                    loading={loadingHeaders}
-                />
-            )}
         </div>
     );
 }
+

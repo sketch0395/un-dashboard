@@ -1,129 +1,114 @@
-import React, { memo, useEffect, useState } from "react";
-import { FaTerminal, FaStickyNote, FaTag } from "react-icons/fa";
+"use client";
 
-const DeviceList = ({ devices, openModal, isSSHAvailable, openSSHModal }) => {
-    // Create a map of colors for categories and vendors
-    const [colorMap, setColorMap] = useState({
-        category: {},
-        vendor: {}
+import React, { memo } from "react";
+import { FaServer, FaDesktop, FaDatabase, FaWifi, FaNetworkWired, FaTerminal, FaInfoCircle } from "react-icons/fa";
+
+const DeviceList = ({ devices, openModal, isSSHAvailable, openSSHModal, onHeaderScan }) => {
+    // Sort devices alphabetically by IP address
+    const sortedDevices = [...devices].sort((a, b) => {
+        const ipA = a.ip.split('.').map(num => parseInt(num, 10));
+        const ipB = b.ip.split('.').map(num => parseInt(num, 10));
+        
+        for (let i = 0; i < 4; i++) {
+            if (ipA[i] !== ipB[i]) {
+                return ipA[i] - ipB[i];
+            }
+        }
+        return 0;
     });
 
-    useEffect(() => {
-        // Generate colors for categories and vendors
-        const categorySet = new Set();
-        const vendorSet = new Set();
-        
-        // Collect all unique categories and vendors
-        devices.forEach(device => {
-            if (device.category) categorySet.add(device.category);
-            if (device.vendor) vendorSet.add(device.vendor.toLowerCase());
-        });
-        
-        // Generate colors using a simple hash function
-        const generateColor = (str) => {
-            let hash = 0;
-            for (let i = 0; i < str.length; i++) {
-                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    const getDeviceIcon = (device) => {
+        if (device.icon) {
+            switch (device.icon.toLowerCase()) {
+                case 'server': return <FaServer className="text-blue-400" />;
+                case 'computer': return <FaDesktop className="text-green-400" />;
+                case 'database': return <FaDatabase className="text-purple-400" />;
+                case 'network': return <FaNetworkWired className="text-yellow-400" />;
+                default: return <FaWifi className="text-gray-400" />;
             }
-            
-            // Convert to hex color
-            let color = '#';
-            for (let i = 0; i < 3; i++) {
-                const value = (hash >> (i * 8)) & 0xFF;
-                color += ('00' + value.toString(16)).substr(-2);
+        }
+        
+        // Default icon based on vendor or MAC address patterns
+        if (device.vendor) {
+            const vendorLower = device.vendor.toLowerCase();
+            if (vendorLower.includes('vmware')) {
+                return <FaServer className="text-blue-400" />;
             }
-            return color;
-        };
+            if (vendorLower.includes('raspberry')) {
+                return <FaServer className="text-red-400" />;
+            }
+            if (vendorLower.includes('intel') || vendorLower.includes('realtek')) {
+                return <FaDesktop className="text-green-400" />;
+            }
+        }
         
-        // Create color maps
-        const newCategoryColors = {};
-        const newVendorColors = {};
-        
-        categorySet.forEach(category => {
-            newCategoryColors[category] = generateColor(category);
-        });
-        
-        vendorSet.forEach(vendor => {
-            newVendorColors[vendor] = generateColor(vendor);
-        });
-        
-        setColorMap({
-            category: newCategoryColors,
-            vendor: newVendorColors
-        });
-    }, [devices]);
+        return <FaWifi className="text-gray-400" />;
+    };
 
     return (
-        <div className="device-list">
-            {devices.map((device, index) => (
-                <div key={index} className="device-item flex flex-col p-2 border-b border-gray-700">
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <p className="text-sm font-medium text-white">
-                                {device.name ? (
-                                    <span>
-                                        {device.name} <span className="text-gray-400">({device.ip})</span>
-                                    </span>
-                                ) : (
-                                    device.ip
-                                )}
-                            </p>
-                            {isSSHAvailable(device) && (
+        <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+            {sortedDevices.length === 0 ? (
+                <p className="text-gray-400 text-sm">No devices found.</p>
+            ) : (
+                sortedDevices.map((device, index) => (
+                    <div 
+                        key={device.ip || index}
+                        className="bg-gray-700 p-2 rounded flex items-center justify-between hover:bg-gray-600 transition-colors"
+                    >
+                        <div className="flex items-center">
+                            <div className="mr-2">
+                                {getDeviceIcon(device)}
+                            </div>
+                            <div>
+                                <div className="flex items-center">
+                                    <p className="text-sm font-medium">
+                                        {device.name || device.ip || 'Unknown device'}
+                                    </p>
+                                    {device.category && (
+                                        <span className="ml-2 px-1.5 py-0.5 bg-gray-600 text-xs rounded">
+                                            {device.category}
+                                        </span>
+                                    )}
+                                </div>
+                                <p className="text-xs text-gray-400">
+                                    {device.ip} {device.vendor ? `(${device.vendor})` : ''}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                            {isSSHAvailable && isSSHAvailable(device) && (
                                 <button
                                     onClick={() => openSSHModal(device)}
-                                    className="text-green-500 hover:text-green-400"
-                                    title="SSH Available"
+                                    className="text-green-400 hover:text-green-300 p-1"
+                                    title="SSH to device"
                                 >
-                                    <FaTerminal />
+                                    <FaTerminal size={14} />
                                 </button>
                             )}
-                            {device.notes && device.notes.trim() !== "" && (
-                                <span className="text-amber-400" title="Has notes">
-                                    <FaStickyNote size={12} />
-                                </span>
+                            {onHeaderScan && (
+                                <button
+                                    onClick={() => onHeaderScan(device)}
+                                    className="text-blue-400 hover:text-blue-300 p-1"
+                                    title="Scan device headers"
+                                >
+                                    <FaInfoCircle size={14} />
+                                </button>
                             )}
+                            <button
+                                onClick={() => openModal(device)}
+                                className="bg-blue-600 text-xs text-white px-2 py-1 rounded hover:bg-blue-700"
+                            >
+                                Details
+                            </button>
                         </div>
-                        <button
-                            onClick={() => openModal(device)}
-                            className="text-blue-500 hover:text-blue-400"
-                            title="Edit Device"
-                        >
-                            Edit
-                        </button>
                     </div>
-                    
-                    {/* Category and additional information row */}
-                    <div className="mt-1 flex flex-wrap gap-2">
-                        {device.category && (
-                            <div className="inline-flex items-center text-xs bg-gray-700 text-gray-200 px-1.5 py-0.5 rounded"
-                                style={{ 
-                                    borderLeft: `3px solid ${colorMap.category[device.category] || '#9CA3AF'}` 
-                                }}
-                            >
-                                <FaTag size={8} className="mr-1" style={{ color: colorMap.category[device.category] }} /> 
-                                <span style={{ color: colorMap.category[device.category] || 'inherit' }}>
-                                    {device.category}
-                                </span>
-                            </div>
-                        )}
-                        {device.vendor && (
-                            <div className="inline-flex items-center text-xs bg-gray-700 text-gray-200 px-1.5 py-0.5 rounded"
-                                style={{ 
-                                    borderLeft: `3px solid ${colorMap.vendor[device.vendor.toLowerCase()] || '#9CA3AF'}` 
-                                }}
-                            >
-                                <span style={{ color: colorMap.vendor[device.vendor.toLowerCase()] || 'inherit' }}>
-                                    {device.vendor}
-                                </span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            ))}
+                ))
+            )}
         </div>
     );
 };
 
+// Memoize the component to prevent unnecessary re-renders
 const MemoizedDeviceList = memo(DeviceList);
 
 export default MemoizedDeviceList;
