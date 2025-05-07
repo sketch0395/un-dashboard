@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
 import Modal from "./Modal";
 import { iconMap } from "./icons/iconMapping";
-import { FaChevronDown, FaChevronUp, FaTerminal, FaHistory } from "react-icons/fa";
+import { FaChevronDown, FaChevronUp, FaHistory } from "react-icons/fa";
+import SSHBadge from "./SSHBadge";
+import { getSSHStatus } from "../utils/sshScanUtils";
 
 const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
     const [colorAccordionOpen, setColorAccordionOpen] = useState(false);
@@ -39,30 +41,17 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
         setModalDevice(null);
     };
 
-    // Helper function to check if SSH is available
-    const isSSHAvailable = (device) => {
-        if (!device || !device.ports) return false;
-
-        // Check if port 22 is not marked as "filtered" or "closed"
-        if (Array.isArray(device.ports)) {
-            return device.ports.some(port =>
-                typeof port === 'string' &&
-                port.includes('22/tcp') &&
-                !port.includes('filtered') &&
-                !port.includes('closed')
-            );
+    // Helper function to request SSH
+    const handleSSHRequest = () => {
+        if (modalDevice) {
+            setModalDevice(null); // Close this modal first
+            // The parent will need to detect this device was meant for SSH
+            // and open the SSH modal for it
+            onSave({
+                ...modalDevice, 
+                _requestSSH: true // Special flag to request SSH
+            });
         }
-
-        if (typeof device.ports === 'object') {
-            return Object.entries(device.ports).some(([key, value]) =>
-                (key === '22' || key === 22) &&
-                typeof value === 'string' &&
-                !value.toLowerCase().includes('filtered') &&
-                !value.toLowerCase().includes('closed')
-            );
-        }
-
-        return false;
     };
 
     // Helper function to format ports for display
@@ -142,39 +131,17 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                     </p>
                 </div>
                 
-                {/* SSH Availability */}
+                {/* SSH Availability - Using our SSHBadge component */}
                 <div className="mb-3">
                     <label className="block text-xs text-gray-300 mb-1">SSH Status</label>
-                    <div className="flex items-center justify-between">
-                        <div className="text-xs bg-gray-800 px-3 py-1.5 rounded flex items-center">
-                            <span 
-                                className={`inline-block w-2 h-2 rounded-full mr-2 ${
-                                    isSSHAvailable(modalDevice) ? "bg-green-500" : "bg-red-500"
-                                }`}
-                            ></span>
-                            <span>
-                                {isSSHAvailable(modalDevice) ? "Available" : "Not available"}
-                            </span>
-                        </div>
-                        {isSSHAvailable(modalDevice) && (
-                            <button
-                                className="bg-green-600 hover:bg-green-700 text-xs text-white px-2 py-1 rounded flex items-center gap-1"
-                                onClick={() => {
-                                    // This action will be handled in the parent NetworkScanHistory component
-                                    // via the openSSHModal function that's already available there
-                                    if (modalDevice) {
-                                        setModalDevice(null); // Close this modal first
-                                        // The parent will need to detect this device was meant for SSH
-                                        // and open the SSH modal for it
-                                        onSave({
-                                            ...modalDevice, 
-                                            _requestSSH: true // Special flag to request SSH
-                                        });
-                                    }
-                                }}
-                            >
-                                <FaTerminal size={12} /> Connect
-                            </button>
+                    <div className="text-xs bg-gray-800 px-3 py-1.5 rounded flex items-center">
+                        {modalDevice && (
+                            <SSHBadge 
+                                device={modalDevice} 
+                                onClick={handleSSHRequest}
+                                size="md"
+                                showLabel={true}
+                            />
                         )}
                     </div>
                 </div>

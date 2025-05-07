@@ -62,7 +62,7 @@ if (!isValidPortList(DEFAULT_PORTS)) {
 
 // --- NETWORK MAPPING VIA NMAP ---
 const parseNmapOutput = (output) => {
-    console.log('[PARSE] Raw Nmap Output:', output); // Debugging log
+    console.log('[PARSE] Raw Nmap Output length:', output.length); 
 
     const lines = output.split('\n');
     const devices = [];
@@ -71,22 +71,83 @@ const parseNmapOutput = (output) => {
     lines.forEach((line) => {
         if (line.includes('Nmap scan report for')) {
             if (Object.keys(currentDevice).length) {
+                // Process the device before adding it to enhance SSH detection
+                if (currentDevice.ports) {
+                    // Explicitly check and mark if SSH is available on this device
+                    currentDevice.sshAvailable = currentDevice.ports.some(port => 
+                        port.includes('22/tcp') && 
+                        port.includes('open') && 
+                        port.includes('ssh')
+                    );
+                }
                 devices.push(currentDevice);
             }
-            currentDevice = { ip: line.split('Nmap scan report for ')[1].trim() };
+            currentDevice = { 
+                ip: line.split('Nmap scan report for ')[1].trim(),
+                status: 'unknown'
+            };
         } else if (line.includes('MAC Address:')) {
             const parts = line.split('MAC Address: ')[1].split(' ');
             currentDevice.mac = parts[0];
             currentDevice.vendor = parts.slice(1).join(' ').trim();
         } else if (line.includes('Host is up')) {
             currentDevice.status = 'up';
+            // Extract latency if available
+            const latencyMatch = line.match(/\(([0-9.]+)s latency\)/);
+            if (latencyMatch) {
+                currentDevice.latency = parseFloat(latencyMatch[1]);
+            }
         } else if (line.match(/^\d+\/tcp/)) {
             if (!currentDevice.ports) currentDevice.ports = [];
             currentDevice.ports.push(line.trim());
+            
+            // Check specifically for SSH service
+            if (line.includes('22/tcp') && line.includes('open') && line.includes('ssh')) {
+                currentDevice.sshService = {
+                    available: true,
+                    version: line.includes('ssh') ? line.split('ssh')[1].trim() : 'unknown'
+                };
+            }
+        } else if (line.includes('OS:') || line.includes('Service Info:')) {
+            if (!currentDevice.osInfo) currentDevice.osInfo = [];
+            currentDevice.osInfo.push(line.trim());
+        } else if (line.includes('ssh-auth-methods')) {
+            // Extract SSH authentication methods
+            if (!currentDevice.sshAuthMethods) {
+                currentDevice.sshAuthMethods = [];
+            }
+            const nextLines = lines.slice(lines.indexOf(line) + 1);
+            let i = 0;
+            while (i < nextLines.length && nextLines[i].includes('|')) {
+                const authLine = nextLines[i].trim();
+                if (authLine.includes('Supported authentication methods:')) {
+                    i++;
+                    // Collect all authentication methods
+                    while (i < nextLines.length && nextLines[i].includes('|')) {
+                        const method = nextLines[i].replace(/[|_]/g, '').trim();
+                        if (method) {
+                            currentDevice.sshAuthMethods.push(method);
+                        }
+                        i++;
+                    }
+                    break;
+                }
+                i++;
+            }
         }
     });
 
+    // Add the last device if there is one
     if (Object.keys(currentDevice).length) {
+        // Process the device before adding it
+        if (currentDevice.ports) {
+            // Explicitly check and mark if SSH is available on this device
+            currentDevice.sshAvailable = currentDevice.ports.some(port => 
+                port.includes('22/tcp') && 
+                port.includes('open') && 
+                port.includes('ssh')
+            );
+        }
         devices.push(currentDevice);
     }
 
@@ -98,81 +159,135 @@ const parseNmapOutput = (output) => {
         return acc;
     }, {});
 
-    console.log('[PARSE] Grouped Devices:', groupedDevices); // Debugging log
+    // Log statistics about detected SSH servers
+    const sshDevices = devices.filter(device => device.sshAvailable);
+    console.log(`[PARSE] Found ${sshDevices.length} devices with open SSH ports out of ${devices.length} total devices`);
+    if (sshDevices.length > 0) {
+        console.log('[PARSE] SSH-enabled devices:', sshDevices.map(d => d.ip).join(', '));
+    }
+    
     return groupedDevices;
 };
 
 // Change from const to let so we can reassign it later
-let docker = new Docker({ host: '10.5.1.212', port: 2375 });
+let docker = new Docker({
+    protocol: 'http',
+    host: '10.5.1.212',
+    port: 2375 // Standard Docker daemon port
+});
 
 const handleDockerScan = async (range, socket) => {
     try {
         const sanitizedRange = sanitizeInput(range);
         console.log(`[SCAN] Starting Docker-based scan for range: ${sanitizedRange}`);
         
-        // We need to use the instrumentisto/nmap container specifically for nmap operations
-        // instead of the jonlabelle/network-tools persistent container
         socket.emit('networkScanStatus', { 
             status: 'Scan in progress...', 
             output: `Starting network scan for range: ${sanitizedRange}` 
         });
         
-        // Create a dedicated instrumentisto/nmap container for this scan
-        const container = await docker.createContainer({
-            Image: 'instrumentisto/nmap',
-            Cmd: ['-Pn', '-sS', '-O', '-p', DEFAULT_PORTS, sanitizedRange],
-            HostConfig: {
-                NetworkMode: 'host',
-            },
-        });
-
-        await container.start();
-        socket.emit('networkScanStatus', { status: 'Container started, scanning network...', output: `Scanning ${sanitizedRange}...` });
-
-        let outputData = '';
-        const stream = await container.logs({
-            follow: true,
-            stdout: true,
-            stderr: true,
-        });
-
-        stream.on('data', (chunk) => {
-            const data = chunk.toString();
-            outputData += data;
-            socket.emit('networkScanStatus', { status: 'Scan in progress...', output: data });
-        });
-
-        stream.on('end', async () => {
-            try {
-                await container.remove();
-                
-                if (!outputData.trim()) {
-                    throw new Error('No output from Docker-based scan');
-                }
-                
-                // Send progress update
-                socket.emit('networkScanStatus', { 
-                    status: 'Processing results...', 
-                    output: 'Scan complete, analyzing results...' 
-                });
-                
-                // Parse the scan results
-                const groupedDevices = parseNmapOutput(outputData);
-                
-                // Send results to client
-                socket.emit('networkData', groupedDevices);
-                socket.emit('networkScanStatus', { status: 'Scan complete' });
-            } catch (error) {
-                console.error('[ERROR] Processing scan results:', error.message);
-                socket.emit('networkScanStatus', { status: 'Error', error: error.message });
-            }
+        socket.emit('networkScanStatus', { 
+            status: 'Setting up scan...', 
+            output: `Using jonlabelle/network-tools container for SSH detection` 
         });
         
-        // Add error handler for stream
-        stream.on('error', (error) => {
-            console.error('[ERROR] Stream error:', error.message);
-            socket.emit('networkScanStatus', { status: 'Error', error: `Stream error: ${error.message}` });
+        // Tell user we're using the optimized scan mode now
+        socket.emit('networkScanStatus', { 
+            status: 'Starting optimized SSH scan...',
+            output: 'Using parameters proven to detect SSH services'
         });
+        
+        // Use the same exact parameters from the successful test script
+        const nmapCmd = [
+            'nmap',
+            '-sS',                              // SYN scan
+            '-sV',                              // Version detection
+            '--script=ssh-auth-methods,ssh-hostkey',  // SSH scripts
+            '-T4',                              // Aggressive timing
+            '--max-retries=1',                  // Minimize retries for faster results
+            '--host-timeout=15s',               // Don't spend too long on each host
+            '-p', DEFAULT_PORTS,                // Use configured ports, usually includes 22
+            sanitizedRange
+        ];
+        
+        console.log(`[DOCKER] NMAP command: ${nmapCmd.join(' ')}`);
+        
+        // Create a container for this scan using the exact same configuration as the test script
+        const container = await docker.createContainer({
+            Image: 'jonlabelle/network-tools',
+            Cmd: nmapCmd,
+            Tty: true,
+            HostConfig: {
+                NetworkMode: 'bridge',  // Match the bridge mode from test script
+            }
+        });
+
+        socket.emit('networkScanStatus', { 
+            status: 'Scan started...',
+            output: 'Scanning network for SSH devices'
+        });
+        
+        await container.start();
+        console.log(`[DOCKER] Container started successfully`);
+
+        // Wait for the scan to complete
+        socket.emit('networkScanStatus', { 
+            status: 'Scanning in progress...',
+            output: 'This may take a few minutes to complete'
+        });
+        
+        await container.wait();
+        console.log(`[DOCKER] Container execution completed`);
+
+        // Get container logs
+        console.log(`[DOCKER] Retrieving container logs`);
+        const stream = await container.logs({
+            stdout: true,
+            stderr: true
+        });
+
+        // Clean up the container
+        await container.remove();
+        console.log(`[DOCKER] Container removed`);
+
+        const output = stream.toString();
+        if (!output || !output.trim()) {
+            throw new Error('No output from Docker-based scan');
+        }
+        
+        // Send progress update
+        socket.emit('networkScanStatus', { 
+            status: 'Processing results...', 
+            output: 'Scan complete, analyzing results...' 
+        });
+        
+        // Parse the scan results
+        const groupedDevices = parseNmapOutput(output);
+        
+        // Find SSH-enabled devices
+        const devices = [];
+        Object.values(groupedDevices).forEach(group => {
+            devices.push(...group);
+        });
+        const sshDevices = devices.filter(device => device.sshAvailable);
+        
+        // Log found SSH devices
+        if (sshDevices.length > 0) {
+            socket.emit('networkScanStatus', {
+                status: 'SSH devices found',
+                output: `Found ${sshDevices.length} devices with SSH enabled: ${sshDevices.map(d => d.ip).join(', ')}`
+            });
+        } else {
+            socket.emit('networkScanStatus', {
+                status: 'No SSH devices found',
+                output: 'No SSH-enabled devices were detected on the network'
+            });
+        }
+        
+        // Send results to client
+        socket.emit('networkData', groupedDevices);
+        socket.emit('networkScanStatus', { status: 'Scan complete' });
+        
     } catch (error) {
         console.error('[ERROR] Docker-based scan:', error.message);
         socket.emit('networkScanStatus', { status: 'Error during Docker-based scan', error: error.message });
@@ -230,7 +345,26 @@ const handleHostScan = (range, socket) => {
     try {
         const sanitizedRange = sanitizeInput(range);
         console.log(`[SCAN] Starting host-based scan for range: ${sanitizedRange}`);
-        const nmapProcess = spawn('nmap', ['-Pn', '-sS', '-O', '-p', DEFAULT_PORTS, sanitizedRange]);
+        
+        // Tell user we're using accurate scan mode now
+        socket.emit('networkScanStatus', { 
+            status: 'Scanning active hosts...',
+            output: 'Performing accurate scan to detect only real devices'
+        });
+        
+        // Use the same enhanced NMAP parameters but without -Pn for accurate device discovery
+        const nmapProcess = spawn('nmap', [
+            // -Pn flag removed to get more accurate host discovery
+            '-sS', // SYN scan
+            '-sV', // Service version detection
+            '-O',  // OS detection
+            '--script=ssh-auth-methods,ssh-hostkey', // SSH detection scripts
+            '-T4', // Faster timing template
+            '--max-retries=2',
+            '--host-timeout=30s',
+            '-p', DEFAULT_PORTS,
+            sanitizedRange
+        ]);
 
         handleNmapProcess(nmapProcess, socket);
     } catch (error) {
@@ -1032,6 +1166,95 @@ const ensureContainer = async () => {
 
 // Initialize container on server start
 ensureContainer();
+
+// Function to run NMAP scan directly using jonlabelle/network-tools
+const runNmapInDockerContainer = async (range, options = {}, timeout = 600000) => {
+    try {
+        const sanitizedRange = sanitizeInput(range);
+        console.log(`[DOCKER] Running NMAP scan directly for range: ${sanitizedRange}`);
+        
+        // Set default options
+        const nmapOptions = {
+            ports: DEFAULT_PORTS,
+            serviceDetection: true,
+            osDetection: true,
+            ...options
+        };
+        
+        // Build NMAP command with enhanced SSH detection but without -Pn
+        let nmapCmd = ['nmap'];
+        
+        // Don't use -Pn by default - this will first check if hosts are up before scanning
+        // Only add if explicitly requested in options
+        if (options.skipHostDiscovery) {
+            nmapCmd.push('-Pn'); 
+        }
+        
+        if (nmapOptions.serviceDetection) {
+            nmapCmd.push('-sV'); // Service version detection (crucial for SSH detection)
+        }
+        
+        nmapCmd.push('-sS'); // SYN scan, faster
+        
+        if (nmapOptions.osDetection) {
+            nmapCmd.push('-O'); // OS detection
+        }
+        
+        // Add scripts specifically for SSH detection
+        nmapCmd.push('--script=ssh-auth-methods,ssh-hostkey');
+        
+        // Improved timing and scan settings
+        nmapCmd.push('-T4'); // Faster timing template
+        nmapCmd.push('--max-retries=2'); // Limit retries for better performance
+        nmapCmd.push('--host-timeout=30s'); // Limit per-host timeout
+        nmapCmd.push('-p', nmapOptions.ports);
+        nmapCmd.push(sanitizedRange);
+        
+        console.log(`[DOCKER] Enhanced NMAP command: ${nmapCmd.join(' ')}`);
+        
+        // Create a container specifically for this scan
+        const container = await docker.createContainer({
+            Image: 'jonlabelle/network-tools',
+            Cmd: nmapCmd,
+            HostConfig: {
+                NetworkMode: os.platform() === 'linux' ? 'host' : 'bridge',
+            },
+            Env: ['DEBUG=true']
+        });
+
+        console.log(`[DOCKER] Starting container for NMAP scan`);
+        await container.start();
+        console.log(`[DOCKER] Container started successfully`);
+
+        // Wait for the command to complete with a timeout
+        const waitPromise = container.wait();
+        const timeoutPromise = new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('NMAP scan timed out')), timeout)
+        );
+        
+        const waitResult = await Promise.race([waitPromise, timeoutPromise]);
+        console.log(`[DOCKER] Container execution completed with status: ${JSON.stringify(waitResult)}`);
+
+        // Get container logs
+        console.log(`[DOCKER] Retrieving container logs`);
+        const stream = await container.logs({
+            stdout: true,
+            stderr: true,
+        });
+
+        // Clean up the container
+        console.log(`[DOCKER] Removing container`);
+        await container.remove();
+
+        const output = stream.toString();
+        console.log(`[DOCKER] NMAP scan completed with ${output.length} characters of output`);
+        
+        return output;
+    } catch (error) {
+        console.error(`[ERROR] NMAP scan in Docker container:`, error.message);
+        throw error;
+    }
+};
 
 io.on('connection', (socket) => {
     console.log('A user connected');
