@@ -1,9 +1,15 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import NetworkPerformance from "../components/networkperformance";
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { FaChevronLeft, FaChevronRight, FaCog, FaFilter, FaChevronDown, FaPlay, FaStop, FaSync, FaDocker } from "react-icons/fa";
+
+// Use dynamic import with no SSR to avoid the "Component is not a function" error
+const NetworkPerformance = dynamic(
+  () => import("../components/networkperformance"),
+  { ssr: false }
+);
 
 export default function PerformancePage() {
     const [devices, setDevices] = useState([]);

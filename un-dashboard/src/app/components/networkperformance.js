@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
 import { io } from "socket.io-client";
 import { Line } from "react-chartjs-2";
-import { FaWifi, FaServer, FaChartLine, FaExclamationTriangle, FaCheck, FaTimes, FaInfoCircle, FaNetworkWired, FaDocker } from "react-icons/fa";
+import { FaWifi, FaServer, FaChartLine, FaExclamationTriangle, FaCheck, FaTimes, FaInfoCircle, FaNetworkWired, FaDocker, FaDesktop, FaClock, FaEdit, FaTerminal } from "react-icons/fa";
+import DeviceDetailsModal from "./DeviceDetailsModal";
+import SSHTerminal from "./sshterminal";
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -30,6 +32,7 @@ ChartJS.register(
 const NetworkPerformance = forwardRef(({ 
     devices, 
     activeTab, 
+    setActiveTab,
     monitoringEnabled, 
     useDockerTools = true, 
     dockerHost = "10.5.1.212",
@@ -51,6 +54,31 @@ const NetworkPerformance = forwardRef(({
     const [deviceNameMap, setDeviceNameMap] = useState({});
     const [ipStatus, setIpStatus] = useState({});
     const [overallProgress, setOverallProgress] = useState(0);
+    
+    // State for device details modal
+    const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+    const [selectedDeviceForDetails, setSelectedDeviceForDetails] = useState(null);
+    const [selectedDeviceUptime, setSelectedDeviceUptime] = useState(null);
+    
+    // State for SSH terminal
+    const [sshTerminalVisible, setSshTerminalVisible] = useState(false);
+    const [sshModalVisible, setSshModalVisible] = useState(false);
+    const [sshTarget, setSshTarget] = useState(null);
+    const [sshUsername, setSshUsername] = useState("");
+    const [sshPassword, setSshPassword] = useState("");
+    const [sshConnectionInfo, setSshConnectionInfo] = useState({
+        ip: "",
+        username: "",
+        password: ""
+    });
+    
+    // Format system uptime string in a human-readable way
+    const formatSystemUptime = (uptimeString) => {
+        if (!uptimeString) return 'Unknown';
+
+        // Already nicely formatted by Linux uptime command
+        return uptimeString;
+    };
 
     // Expose methods to parent component via ref
     useImperativeHandle(ref, () => ({
@@ -124,6 +152,27 @@ const NetworkPerformance = forwardRef(({
             setDeviceNameMap(nameMap);
         }
     }, [devices]);
+
+    // Load custom device names from localStorage on component mount
+    useEffect(() => {
+        try {
+            const storedCustomProperties = localStorage.getItem("customDeviceProperties");
+            if (storedCustomProperties) {
+                const customProps = JSON.parse(storedCustomProperties);
+                
+                const updatedNameMap = {...deviceNameMap};
+                Object.entries(customProps).forEach(([ip, props]) => {
+                    if (props.name) {
+                        updatedNameMap[ip] = props.name;
+                    }
+                });
+                
+                setDeviceNameMap(updatedNameMap);
+            }
+        } catch (error) {
+            console.error("Failed to load custom device names:", error);
+        }
+    }, []);
 
     // Connect to socket server on component mount
     useEffect(() => {
@@ -315,6 +364,67 @@ const NetworkPerformance = forwardRef(({
         return deviceNameMap[ip] || ip;
     };
 
+    // Open device details modal
+    const openDeviceDetailsModal = (device) => {
+        if (!device) {
+            console.error("Attempted to open device modal with no device data");
+            return;
+        }
+        
+        // Make sure we set the modal to visible
+        setDetailsModalVisible(true);
+        setSelectedDeviceForDetails(device);
+        
+        // Get uptime data for this device if available
+        const uptimeData = performanceData.uptime.find(item => item.ip === device.ip);
+        if (uptimeData) {
+            setSelectedDeviceUptime(uptimeData.systemUptime);
+        } else {
+            setSelectedDeviceUptime(null);
+        }
+    };
+
+    // Handle saving device name
+    const handleSaveDeviceName = (ip, newName) => {
+        try {
+            // Read existing custom properties
+            const storedCustomProperties = localStorage.getItem("customDeviceProperties") || "{}";
+            const customProps = JSON.parse(storedCustomProperties);
+            
+            // Update or create properties for this IP
+            customProps[ip] = {
+                ...customProps[ip],
+                name: newName
+            };
+            
+            // Save back to localStorage
+            localStorage.setItem("customDeviceProperties", JSON.stringify(customProps));
+            
+            // Update our local device name map
+            setDeviceNameMap(prev => ({
+                ...prev,
+                [ip]: newName
+            }));
+            
+        } catch (error) {
+            console.error("Error saving device name:", error);
+        }
+    };
+
+    // Handle SSH connection request
+    const handleStartSSH = (device) => {
+        // Set the SSH target
+        setSshTarget(device.ip);
+        setSshUsername("admin"); // Default value for the form
+        setSshPassword(""); // Empty password by default
+        
+        // Show the SSH modal instead of directly showing the terminal
+        setSshModalVisible(true);
+        
+        // Close the device details modal
+        setDetailsModalVisible(false);
+    };
+
     // Generate chart data for latency
     const getLatencyChartData = () => {
         if (!activeDevice || !historicalData[activeDevice] || !historicalData[activeDevice].latency) {
@@ -391,7 +501,7 @@ const NetworkPerformance = forwardRef(({
         return {
             labels: data.map(point => formatTime(point.timestamp)),
             datasets: [{
-                label: `Uptime Status - ${getDeviceName(activeDevice)}`,
+                label: `Availability - ${getDeviceName(activeDevice)}`,
                 data: data.map(point => point.status === 'up' ? 1 : 0),
                 borderColor: 'rgb(75, 192, 192)',
                 backgroundColor: 'rgba(75, 192, 192, 0.5)',
@@ -501,6 +611,11 @@ const NetworkPerformance = forwardRef(({
                                     : "bg-gray-700 hover:bg-gray-600"
                             }`}
                             onClick={() => toggleDeviceSelection(device.ip)}
+                            onContextMenu={(e) => {
+                                e.preventDefault(); // Prevent default context menu
+                                openDeviceDetailsModal(device); // Open device details modal on right-click
+                            }}
+                            title="Left-click to select, Right-click for details"
                         >
                             <div className="flex justify-between items-center mb-1">
                                 <div className={`w-4 h-4 mr-2 rounded-full flex items-center justify-center ${
@@ -509,16 +624,19 @@ const NetworkPerformance = forwardRef(({
                                     {selectedDevices.includes(device.ip) && <FaCheck className="text-xs text-blue-800" />}
                                 </div>
                                 <span className="text-sm truncate flex-1">
-                                    {device.name || device.hostname || device.ip}
+                                    {getDeviceName(device.ip)}
                                 </span>
+                                <button 
+                                    className="ml-1 p-1 text-blue-400 hover:text-blue-300 rounded"
+                                    onClick={(e) => {
+                                        e.stopPropagation(); // Prevent toggling device selection
+                                        openDeviceDetailsModal(device);
+                                    }}
+                                    title="Edit device details"
+                                >
+                                    <FaEdit size={12} />
+                                </button>
                             </div>
-                            
-                            {/* Show status indicator for this IP when selected */}
-                            {selectedDevices.includes(device.ip) && ipStatus[device.ip] && (
-                                <div className="mt-1">
-                                    {getStatusIndicator(device.ip)}
-                                </div>
-                            )}
                         </div>
                     ))}
                 </div>
@@ -581,16 +699,41 @@ const NetworkPerformance = forwardRef(({
                                         activeDevice === item.ip ? "bg-blue-900" : "bg-gray-800 hover:bg-gray-600"
                                     }`}
                                     onClick={() => setActiveDevice(item.ip)}
+                                    onContextMenu={(e) => {
+                                        e.preventDefault(); // Prevent default context menu
+                                        // Find the full device object from devices array
+                                        const device = devices.find(d => d.ip === item.ip);
+                                        if (device) {
+                                            openDeviceDetailsModal({...device, ...item});
+                                        }
+                                    }}
                                 >
                                     <div className="flex justify-between items-center">
                                         <span className="text-sm font-medium">
-                                            {getDeviceName(item.ip)} <span className="text-xs text-gray-400">({item.ip})</span>
+                                            {getDeviceName(item.ip)} 
+                                            <span className="text-xs text-gray-400 ml-1">({item.ip})</span>
                                         </span>
-                                        {item.alive ? (
-                                            <span className="text-xs bg-green-800 text-green-200 px-1.5 rounded">Online</span>
-                                        ) : (
-                                            <span className="text-xs bg-red-800 text-red-200 px-1.5 rounded">Offline</span>
-                                        )}
+                                        <div className="flex items-center gap-1">
+                                            {item.alive ? (
+                                                <span className="text-xs bg-green-800 text-green-200 px-1.5 rounded">Online</span>
+                                            ) : (
+                                                <span className="text-xs bg-red-800 text-red-200 px-1.5 rounded">Offline</span>
+                                            )}
+                                            <button 
+                                                className="ml-1 p-1 text-blue-400 hover:text-blue-300 bg-gray-700 rounded"
+                                                onClick={(e) => {
+                                                    e.stopPropagation(); // Prevent triggering parent onClick
+                                                    // Find the full device object from devices array
+                                                    const device = devices.find(d => d.ip === item.ip);
+                                                    if (device) {
+                                                        openDeviceDetailsModal({...device, ...item});
+                                                    }
+                                                }}
+                                                title="View device details"
+                                            >
+                                                <FaEdit size={12} />
+                                            </button>
+                                        </div>
                                     </div>
                                     {item.alive ? (
                                         <div className="text-sm mt-1">
@@ -633,14 +776,39 @@ const NetworkPerformance = forwardRef(({
                                         activeDevice === item.ip ? "bg-blue-900" : "bg-gray-800 hover:bg-gray-600"
                                     }`}
                                     onClick={() => setActiveDevice(item.ip)}
+                                    onContextMenu={(e) => {
+                                        e.preventDefault(); // Prevent default context menu
+                                        // Find the full device object from devices array
+                                        const device = devices.find(d => d.ip === item.ip);
+                                        if (device) {
+                                            openDeviceDetailsModal({...device, ...item});
+                                        }
+                                    }}
                                 >
                                     <div className="flex justify-between items-center">
                                         <span className="text-sm font-medium">
-                                            {getDeviceName(item.ip)} <span className="text-xs text-gray-400">({item.ip})</span>
+                                            {getDeviceName(item.ip)} 
+                                            <span className="text-xs text-gray-400 ml-1">({item.ip})</span>
                                         </span>
-                                        {(item.download !== null || item.upload !== null) && (
-                                            <span className="text-xs bg-blue-800 text-blue-200 px-1.5 rounded">Data</span>
-                                        )}
+                                        <div className="flex items-center gap-1">
+                                            {(item.download !== null || item.upload !== null) && (
+                                                <span className="text-xs bg-blue-800 text-blue-200 px-1.5 rounded">Data</span>
+                                            )}
+                                            <button 
+                                                className="ml-1 p-1 text-blue-400 hover:text-blue-300 bg-gray-700 rounded"
+                                                onClick={(e) => {
+                                                    e.stopPropagation(); // Prevent triggering parent onClick
+                                                    // Find the full device object from devices array
+                                                    const device = devices.find(d => d.ip === item.ip);
+                                                    if (device) {
+                                                        openDeviceDetailsModal({...device, ...item});
+                                                    }
+                                                }}
+                                                title="View device details"
+                                            >
+                                                <FaEdit size={12} />
+                                            </button>
+                                        </div>
                                     </div>
                                     {item.download !== null && item.upload !== null ? (
                                         <div className="text-xs mt-1">
@@ -673,17 +841,17 @@ const NetworkPerformance = forwardRef(({
                     )}
                 </div>
                 
-                {/* Uptime Card */}
+                {/* Device Status Card */}
                 <div className="bg-gray-700 p-4 rounded">
                     <div className="flex items-center justify-between mb-2">
                         <h3 className="font-semibold flex items-center">
-                            <FaServer className="mr-2" /> Uptime
+                            <FaServer className="mr-2" /> Device Status
                         </h3>
                     </div>
                     
                     {performanceData.uptime.length === 0 ? (
                         <div className="text-center text-gray-400 py-6">
-                            <p>No uptime data available</p>
+                            <p>No device status data available</p>
                         </div>
                     ) : (
                         <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
@@ -694,28 +862,63 @@ const NetworkPerformance = forwardRef(({
                                         activeDevice === item.ip ? "bg-blue-900" : "bg-gray-800 hover:bg-gray-600"
                                     }`}
                                     onClick={() => setActiveDevice(item.ip)}
+                                    onContextMenu={(e) => {
+                                        e.preventDefault(); // Prevent default context menu
+                                        // Find the full device object from devices array
+                                        const device = devices.find(d => d.ip === item.ip);
+                                        if (device) {
+                                            openDeviceDetailsModal({...device, ...item});
+                                        }
+                                    }}
                                 >
                                     <div className="flex justify-between items-center">
                                         <span className="text-sm font-medium">
-                                            {getDeviceName(item.ip)} <span className="text-xs text-gray-400">({item.ip})</span>
+                                            {getDeviceName(item.ip)} 
+                                            <span className="text-xs text-gray-400 ml-1">({item.ip})</span>
                                         </span>
-                                        {item.status === 'up' ? (
-                                            <span className="flex items-center text-xs bg-green-800 text-green-200 px-1.5 rounded">
-                                                <FaCheck className="mr-1" size={10} /> Up
-                                            </span>
-                                        ) : (
-                                            <span className="flex items-center text-xs bg-red-800 text-red-200 px-1.5 rounded">
-                                                <FaTimes className="mr-1" size={10} /> Down
-                                            </span>
-                                        )}
+                                        <div className="flex items-center gap-1">
+                                            {item.status === 'up' ? (
+                                                <span className="flex items-center text-xs bg-green-800 text-green-200 px-1.5 rounded">
+                                                    <FaCheck className="mr-1" size={10} /> Online
+                                                </span>
+                                            ) : (
+                                                <span className="flex items-center text-xs bg-red-800 text-red-200 px-1.5 rounded">
+                                                    <FaTimes className="mr-1" size={10} /> Offline
+                                                </span>
+                                            )}
+                                            <button 
+                                                className="ml-1 p-1 text-blue-400 hover:text-blue-300 bg-gray-700 rounded"
+                                                onClick={(e) => {
+                                                    e.stopPropagation(); // Prevent triggering parent onClick
+                                                    const device = devices.find(d => d.ip === item.ip);
+                                                    if (device) {
+                                                        openDeviceDetailsModal({...device, ...item});
+                                                    }
+                                                }}
+                                                title="View device details"
+                                            >
+                                                <FaEdit size={12} />
+                                            </button>
+                                        </div>
                                     </div>
-                                    {item.uptimePercentage !== null ? (
-                                        <div className="text-xs mt-1">
-                                            Uptime: {item.uptimePercentage.toFixed(1)}%
+                                    
+                                    {/* Show system uptime if available */}
+                                    {item.systemUptime && item.systemUptime.available ? (
+                                        <div className="flex items-center text-xs mt-1">
+                                            <FaClock className="mr-1 text-blue-400" size={10} />
+                                            <span>System uptime: {formatSystemUptime(item.systemUptime.uptimeString)}</span>
                                         </div>
                                     ) : (
-                                        <div className="text-xs text-gray-400 mt-1">
-                                            No uptime data
+                                        <div className="flex justify-between text-xs mt-1">
+                                            <span className="flex items-center">
+                                                <FaNetworkWired className="mr-1 text-gray-400" size={10} />
+                                                Availability: 
+                                            </span>
+                                            <span>
+                                                {item.uptimePercentage !== null ? 
+                                                    `${item.uptimePercentage.toFixed(1)}%` : 
+                                                    'N/A'}
+                                            </span>
                                         </div>
                                     )}
                                 </div>
@@ -749,7 +952,7 @@ const NetworkPerformance = forwardRef(({
                                 className={`px-3 py-1 rounded text-sm ${activeTab === 'uptime' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}`}
                                 onClick={() => setActiveTab('uptime')}
                             >
-                                Uptime
+                                Availability
                             </button>
                         </div>
                     </div>
@@ -767,6 +970,81 @@ const NetworkPerformance = forwardRef(({
                     </div>
                 </div>
             )}
+            
+            {/* Device Details Modal */}
+            <DeviceDetailsModal
+                isVisible={detailsModalVisible}
+                onClose={() => setDetailsModalVisible(false)}
+                device={selectedDeviceForDetails}
+                onSaveDeviceName={handleSaveDeviceName}
+                onStartSSH={handleStartSSH}
+                systemUptime={selectedDeviceUptime}
+            />
+            
+            {/* SSH Credentials Modal */}
+            {sshModalVisible && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 p-6 rounded-lg shadow-lg max-w-md w-full">
+                        <h3 className="text-lg font-semibold mb-4">SSH Connection</h3>
+                        <p className="mb-4 text-gray-300">Enter SSH credentials to connect to {sshTarget}</p>
+                        
+                        <div className="mb-4">
+                            <label className="block text-sm font-medium mb-1">Username</label>
+                            <input 
+                                type="text" 
+                                value={sshUsername} 
+                                onChange={(e) => setSshUsername(e.target.value)}
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
+                            />
+                        </div>
+                        
+                        <div className="mb-6">
+                            <label className="block text-sm font-medium mb-1">Password</label>
+                            <input 
+                                type="password" 
+                                value={sshPassword} 
+                                onChange={(e) => setSshPassword(e.target.value)}
+                                className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white"
+                            />
+                        </div>
+                        
+                        <div className="flex justify-end space-x-3">
+                            <button 
+                                className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded"
+                                onClick={() => setSshModalVisible(false)}
+                            >
+                                Cancel
+                            </button>
+                            <button 
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded"
+                                onClick={() => {
+                                    // Set SSH connection info with the user-provided credentials
+                                    setSshConnectionInfo({
+                                        ip: sshTarget,
+                                        username: sshUsername,
+                                        password: sshPassword
+                                    });
+                                    
+                                    // Hide the modal and show the terminal
+                                    setSshModalVisible(false);
+                                    setSshTerminalVisible(true);
+                                }}
+                            >
+                                Connect
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            
+            {/* SSH Terminal */}
+            <SSHTerminal
+                ip={sshConnectionInfo.ip}
+                username={sshConnectionInfo.username}
+                password={sshConnectionInfo.password}
+                visible={sshTerminalVisible}
+                onClose={() => setSshTerminalVisible(false)}
+            />
         </div>
     );
 });

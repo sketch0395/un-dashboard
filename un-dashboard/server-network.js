@@ -596,6 +596,16 @@ const runPerformanceCheck = async (ips, dockerConfig = {}, socket) => {
             
             // Only check bandwidth and uptime if device is alive
             if (latencyResult.alive) {
+                // First, try to get actual system uptime for devices with SSH
+                let systemUptimeInfo = null;
+                try {
+                    // Try to get the actual system uptime for devices with SSH
+                    systemUptimeInfo = await getSystemUptime(ip);
+                    console.log(`[UPTIME] System uptime for ${ip}: ${JSON.stringify(systemUptimeInfo)}`);
+                } catch (uptimeError) {
+                    console.warn(`[WARN] Failed to get system uptime for ${ip}: ${uptimeError.message}`);
+                }
+                
                 // Check bandwidth
                 const bandwidthResult = await checkBandwidth(ip);
                 const formattedBandwidthResult = {
@@ -650,7 +660,12 @@ const runPerformanceCheck = async (ips, dockerConfig = {}, socket) => {
                     ip,
                     timestamp,
                     status,
-                    uptimePercentage
+                    uptimePercentage,
+                    systemUptime: systemUptimeInfo && systemUptimeInfo.available ? {
+                        available: true,
+                        uptimeString: systemUptimeInfo.uptimeString,
+                        raw: systemUptimeInfo.raw
+                    } : null
                 };
                 
                 results.uptime.push(formattedUptimeResult);
@@ -684,7 +699,8 @@ const runPerformanceCheck = async (ips, dockerConfig = {}, socket) => {
                     ip,
                     timestamp,
                     status: 'down',
-                    uptimePercentage
+                    uptimePercentage,
+                    systemUptime: null
                 });
             }
             
@@ -1253,6 +1269,121 @@ const runNmapInDockerContainer = async (range, options = {}, timeout = 600000) =
     } catch (error) {
         console.error(`[ERROR] NMAP scan in Docker container:`, error.message);
         throw error;
+    }
+};
+
+// Function to get system uptime from SSH-capable devices
+const getSystemUptime = async (ip, sshCredentials = null) => {
+    try {
+        // Default SSH credentials if none provided
+        const credentials = sshCredentials || {
+            username: process.env.DEFAULT_SSH_USER || 'admin',
+            password: process.env.DEFAULT_SSH_PASSWORD || 'admin'
+        };
+        
+        // Skip if Docker tools are enabled (we'll use a different approach)
+        if (shouldUseDocker()) {
+            return { available: false, reason: 'SSH not used in Docker mode' };
+        }
+
+        // Check if SSH is available
+        const sshCheck = await ping.promise.probe(ip, {
+            port: 22,
+            timeout: 1
+        });
+        
+        if (!sshCheck.alive) {
+            return { available: false, reason: 'SSH port not responding' };
+        }
+        
+        // Use SSH client to connect and run uptime command
+        return new Promise((resolve, reject) => {
+            const conn = new Client();
+            
+            conn.on('ready', () => {
+                console.log(`[SSH] Connected to ${ip} - checking system uptime`);
+                
+                conn.exec('uptime', (err, stream) => {
+                    if (err) {
+                        conn.end();
+                        return resolve({ 
+                            available: false, 
+                            reason: `SSH command failed: ${err.message}`
+                        });
+                    }
+                    
+                    let output = '';
+                    stream.on('data', (data) => {
+                        output += data.toString();
+                    });
+                    
+                    stream.on('close', () => {
+                        conn.end();
+                        
+                        // Parse the uptime output
+                        // Typical output: "14:30:32 up 42 days, 2:27, 3 users, load average: 0.52, 0.58, 0.59"
+                        try {
+                            const upMatch = output.match(/up\s+(.*?),\s+\d+\s+user/);
+                            if (upMatch && upMatch[1]) {
+                                const uptimeStr = upMatch[1].trim();
+                                return resolve({
+                                    available: true,
+                                    uptimeString: uptimeStr,
+                                    raw: output.trim()
+                                });
+                            }
+                            
+                            // Alternative regex for different formats
+                            const altMatch = output.match(/up\s+(.*?),\s+load average/);
+                            if (altMatch && altMatch[1]) {
+                                const uptimeStr = altMatch[1].trim();
+                                return resolve({
+                                    available: true,
+                                    uptimeString: uptimeStr,
+                                    raw: output.trim()
+                                });
+                            }
+                            
+                            resolve({
+                                available: true,
+                                uptimeString: 'unknown format',
+                                raw: output.trim() 
+                            });
+                        } catch (error) {
+                            resolve({ 
+                                available: true,
+                                uptimeString: 'parse error',
+                                raw: output.trim(),
+                                error: error.message
+                            });
+                        }
+                    });
+                });
+            });
+            
+            conn.on('error', (err) => {
+                console.error(`[SSH] Error connecting to ${ip}: ${err.message}`);
+                resolve({ 
+                    available: false, 
+                    reason: `SSH connection error: ${err.message}`
+                });
+            });
+            
+            conn.connect({
+                host: ip,
+                port: 22,
+                username: credentials.username,
+                password: credentials.password,
+                readyTimeout: 5000,
+                keepaliveInterval: 5000
+            });
+        });
+    } catch (error) {
+        console.error(`[ERROR] System uptime check for ${ip}:`, error.message);
+        return { 
+            available: false, 
+            reason: `Error: ${error.message}`
+        };
     }
 };
 
