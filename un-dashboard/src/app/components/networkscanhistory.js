@@ -131,12 +131,16 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     useEffect(() => {
         const savedCustomNames = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
         setPersistentCustomNames(savedCustomNames);
-    }, []);
+    }, []); // Empty dependency array to run only once on mount
     
-    // Update localStorage whenever custom device properties change
+    // Update localStorage whenever custom device properties change, but with a condition to prevent loops
     useEffect(() => {
         if (Object.keys(persistentCustomNames).length > 0) {
-            localStorage.setItem("customDeviceProperties", JSON.stringify(persistentCustomNames));
+            const currentLocalStorage = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
+            // Only update if there's an actual difference to prevent loops
+            if (JSON.stringify(currentLocalStorage) !== JSON.stringify(persistentCustomNames)) {
+                localStorage.setItem("customDeviceProperties", JSON.stringify(persistentCustomNames));
+            }
         }
     }, [persistentCustomNames]);
 

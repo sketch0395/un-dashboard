@@ -1,15 +1,23 @@
 import React, { useState, useEffect } from "react";
 import Modal from "./Modal";
 import { iconMap } from "./icons/iconMapping";
-import { FaChevronDown, FaChevronUp, FaHistory } from "react-icons/fa";
+import { FaChevronDown, FaChevronUp, FaHistory, FaDesktop, FaNetworkWired, FaAddressCard } from "react-icons/fa";
 import SSHBadge from "./SSHBadge";
-import { getSSHStatus } from "../utils/sshScanUtils";
+import { getSSHStatus, getMacInfo, getOSInfo } from "../utils/sshScanUtils";
 
 const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
     const [colorAccordionOpen, setColorAccordionOpen] = useState(false);
     const [iconAccordionOpen, setIconAccordionOpen] = useState(false);
     const [historyAccordionOpen, setHistoryAccordionOpen] = useState(false);
     const [deviceHistory, setDeviceHistory] = useState([]);
+    
+    // Enhance device with additional info if needed
+    const enhancedDevice = modalDevice ? {
+        ...modalDevice,
+        ssh: modalDevice.ssh || getSSHStatus(modalDevice),
+        macInfo: modalDevice.macInfo || getMacInfo(modalDevice),
+        osInfo: modalDevice.osInfo || getOSInfo(modalDevice)
+    } : null;
     
     // Pre-defined device categories
     const deviceCategories = [
@@ -29,26 +37,26 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
     
     useEffect(() => {
         // Load device history from localStorage when modal opens with a device
-        if (modalDevice?.ip) {
+        if (enhancedDevice?.ip) {
             const savedCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
-            const deviceData = savedCustomProperties[modalDevice.ip] || {};
+            const deviceData = savedCustomProperties[enhancedDevice.ip] || {};
             setDeviceHistory(deviceData.history || []);
         }
-    }, [modalDevice?.ip]);
+    }, [enhancedDevice?.ip]);
     
     const handleSave = () => {
-        onSave(modalDevice);
+        onSave(enhancedDevice);
         setModalDevice(null);
     };
 
     // Helper function to request SSH
     const handleSSHRequest = () => {
-        if (modalDevice) {
+        if (enhancedDevice) {
             setModalDevice(null); // Close this modal first
             // The parent will need to detect this device was meant for SSH
             // and open the SSH modal for it
             onSave({
-                ...modalDevice, 
+                ...enhancedDevice, 
                 _requestSSH: true // Special flag to request SSH
             });
         }
@@ -78,7 +86,7 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
     };
 
     return (
-        <Modal isVisible={!!modalDevice} onClose={() => setModalDevice(null)}>
+        <Modal isVisible={!!enhancedDevice} onClose={() => setModalDevice(null)}>
             <div className="max-h-[80vh] overflow-y-auto scrollbar-hide pr-2">
                 <div className="sticky top-0 bg-gray-800 z-10 pb-2">
                     <h2 className="text-white text-xl mb-4 py-2">Edit Device</h2>
@@ -86,7 +94,7 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                         <label className="block text-sm text-gray-300 mb-1">Name</label>
                         <input
                             type="text"
-                            value={modalDevice?.name || ""}
+                            value={enhancedDevice?.name || ""}
                             onChange={(e) =>
                                 setModalDevice((prev) => ({ ...prev, name: e.target.value }))
                             }
@@ -99,7 +107,7 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                 <div className="mb-4">
                     <label className="block text-sm text-gray-300 mb-1">Category</label>
                     <select
-                        value={modalDevice?.category || ""}
+                        value={enhancedDevice?.category || ""}
                         onChange={(e) =>
                             setModalDevice((prev) => ({ ...prev, category: e.target.value }))
                         }
@@ -112,37 +120,76 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                     </select>
                 </div>
                 
-                <div className="mb-3">
-                    <label className="block text-xs text-gray-300 mb-1">IP Address</label>
-                    <p className="text-white bg-gray-800 px-3 py-1.5 rounded text-xs">{modalDevice?.ip || "N/A"}</p>
-                </div>
-                <div className="mb-3">
-                    <label className="block text-xs text-gray-300 mb-1">MAC Address</label>
-                    <p className="text-white bg-gray-800 px-3 py-1.5 rounded text-xs">{modalDevice?.mac || "N/A"}</p>
-                </div>
-                <div className="mb-3">
-                    <label className="block text-xs text-gray-300 mb-1">Vendor</label>
-                    <p className="text-white bg-gray-800 px-3 py-1.5 rounded text-xs">{modalDevice?.vendor || "N/A"}</p>
-                </div>
-                <div className="mb-3">
-                    <label className="block text-xs text-gray-300 mb-1">Port Status</label>
-                    <p className="text-white bg-gray-800 px-3 py-1.5 rounded text-xs max-h-16 overflow-y-auto">
-                        {formatPorts(modalDevice?.ports)}
-                    </p>
-                </div>
-                
-                {/* SSH Availability - Using our SSHBadge component */}
-                <div className="mb-3">
-                    <label className="block text-xs text-gray-300 mb-1">SSH Status</label>
-                    <div className="text-xs bg-gray-800 px-3 py-1.5 rounded flex items-center">
-                        {modalDevice && (
-                            <SSHBadge 
-                                device={modalDevice} 
-                                onClick={handleSSHRequest}
-                                size="md"
-                                showLabel={true}
-                            />
-                        )}
+                {/* Device Information Section */}
+                <div className="bg-gray-700 p-3 rounded mb-4">
+                    <h3 className="text-sm font-semibold mb-2 text-blue-400 flex items-center">
+                        <FaNetworkWired className="mr-2" /> Device Information
+                    </h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <div className="mb-2">
+                                <label className="block text-xs text-gray-400 mb-1">IP Address</label>
+                                <p className="text-white bg-gray-800 px-3 py-1.5 rounded text-xs">{enhancedDevice?.ip || "N/A"}</p>
+                            </div>
+                            
+                            <div className="mb-2">
+                                <label className="block text-xs text-gray-400 mb-1">Port Status</label>
+                                <p className="text-white bg-gray-800 px-3 py-1.5 rounded text-xs max-h-16 overflow-y-auto">
+                                    {formatPorts(enhancedDevice?.ports)}
+                                </p>
+                            </div>
+                            
+                            <div className="mb-2">
+                                <label className="block text-xs text-gray-400 mb-1">SSH Status</label>
+                                <div className="text-xs bg-gray-800 px-3 py-1.5 rounded flex items-center">
+                                    {enhancedDevice && (
+                                        <SSHBadge 
+                                            device={enhancedDevice} 
+                                            onClick={handleSSHRequest}
+                                            size="md"
+                                            showLabel={true}
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            {/* MAC Address Section */}
+                            <div className="mb-2">
+                                <label className="block text-xs text-gray-400 mb-1 flex items-center">
+                                    <FaAddressCard className="mr-1 text-blue-400" /> MAC Address
+                                </label>
+                                <p className="text-white bg-gray-800 px-3 py-1.5 rounded text-xs">
+                                    {enhancedDevice?.macInfo?.available ? enhancedDevice.macInfo.address : "Not available"}
+                                </p>
+                            </div>
+                            
+                            {/* Vendor Section */}
+                            <div className="mb-2">
+                                <label className="block text-xs text-gray-400 mb-1">Vendor</label>
+                                <p className="text-white bg-gray-800 px-3 py-1.5 rounded text-xs">
+                                    {enhancedDevice?.macInfo?.vendor || enhancedDevice?.vendor || "Unknown"}
+                                </p>
+                            </div>
+                            
+                            {/* OS Information */}
+                            <div className="mb-2">
+                                <label className="block text-xs text-gray-400 mb-1 flex items-center">
+                                    <FaDesktop className="mr-1 text-blue-400" /> Operating System
+                                </label>
+                                <p className="text-white bg-gray-800 px-3 py-1.5 rounded text-xs">
+                                    {enhancedDevice?.osInfo?.available ? (
+                                        <>
+                                            {enhancedDevice.osInfo.name} 
+                                            {enhancedDevice.osInfo.accuracy ? ` (${enhancedDevice.osInfo.accuracy}% accuracy)` : ''}
+                                            {enhancedDevice.osInfo.type ? ` - ${enhancedDevice.osInfo.type}` : ''}
+                                        </>
+                                    ) : "Unknown"}
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
@@ -150,7 +197,7 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                 <div className="mb-4">
                     <label className="block text-sm text-gray-300 mb-1">Notes</label>
                     <textarea
-                        value={modalDevice?.notes || ""}
+                        value={enhancedDevice?.notes || ""}
                         onChange={(e) =>
                             setModalDevice((prev) => ({ ...prev, notes: e.target.value }))
                         }
@@ -176,7 +223,7 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                                 {Array.from(new Set(["#FF5733", "#33FF57", "#3357FF", "#F1C40F", "#9B59B6", "#E74C3C", "#1ABC9C", "#2ECC71", "#3498DB", "#34495E", "#16A085", "#27AE60", "#2980B9", "#8E44AD"])).map((color) => (
                                     <button
                                         key={color}
-                                        className={`w-8 h-8 rounded-full border-2 ${modalDevice?.color === color ? 'border-white' : 'border-transparent'}`}
+                                        className={`w-8 h-8 rounded-full border-2 ${enhancedDevice?.color === color ? 'border-white' : 'border-transparent'}`}
                                         style={{ backgroundColor: color }}
                                         onClick={() => setModalDevice((prev) => ({ ...prev, color }))}
                                     />
@@ -202,7 +249,7 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                                 {Object.entries(iconMap).filter(([key]) => ["computer", "network", "mobile", "server", "router"].includes(key)).map(([key, IconComponent]) => (
                                     <button
                                         key={key}
-                                        className={`w-8 h-8 rounded-full border-2 ${modalDevice?.icon === key ? 'border-white' : 'border-transparent'}`}
+                                        className={`w-8 h-8 rounded-full border-2 ${enhancedDevice?.icon === key ? 'border-white' : 'border-transparent'}`}
                                         onClick={() => setModalDevice((prev) => ({ ...prev, icon: key }))}
                                     >
                                         <div className="w-full h-full flex items-center justify-center text-white">

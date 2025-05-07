@@ -1,7 +1,7 @@
-import React, { memo, useEffect, useState } from "react";
-import { FaStickyNote, FaTag, FaNetworkWired } from "react-icons/fa";
+import React, { memo, useEffect, useState, useMemo } from "react";
+import { FaStickyNote, FaTag, FaNetworkWired, FaDesktop, FaAddressCard } from "react-icons/fa";
 import SSHBadge from "./SSHBadge";
-import { countSSHDevices } from "../utils/sshScanUtils";
+import { countSSHDevices, getSSHStatus, getMacInfo, getOSInfo } from "../utils/sshScanUtils";
 
 const DeviceList = ({ devices, openModal, isSSHAvailable, openSSHModal }) => {
     // Create a map of colors for categories and vendors
@@ -10,15 +10,33 @@ const DeviceList = ({ devices, openModal, isSSHAvailable, openSSHModal }) => {
         vendor: {}
     });
 
+    // Use useMemo to process devices only when the devices array changes
+    const processedDevices = useMemo(() => {
+        return devices.map(device => {
+            // Create a new object to avoid mutating the original
+            return {
+                ...device,
+                // Add SSH status info if not present
+                ssh: device.ssh || getSSHStatus(device),
+                // Add MAC info if not present
+                macInfo: device.macInfo || getMacInfo(device),
+                // Add OS info if not present
+                osInfo: device.osInfo || getOSInfo(device)
+            };
+        });
+    }, [devices]); // Only recompute when devices change
+
     useEffect(() => {
         // Generate colors for categories and vendors
         const categorySet = new Set();
         const vendorSet = new Set();
         
         // Collect all unique categories and vendors
-        devices.forEach(device => {
+        processedDevices.forEach(device => {
             if (device.category) categorySet.add(device.category);
-            if (device.vendor) vendorSet.add(device.vendor.toLowerCase());
+            // Use vendor from macInfo if available, otherwise fallback to device.vendor
+            const vendorName = device.macInfo?.vendor || device.vendor;
+            if (vendorName) vendorSet.add(vendorName.toLowerCase());
         });
         
         // Generate colors using a simple hash function
@@ -53,21 +71,23 @@ const DeviceList = ({ devices, openModal, isSSHAvailable, openSSHModal }) => {
             category: newCategoryColors,
             vendor: newVendorColors
         });
-    }, [devices]);
+    }, [processedDevices]);
 
-    // Count SSH-enabled devices for summary
-    const sshEnabledCount = countSSHDevices(devices);
+    // Count SSH-enabled devices for summary - use useMemo to avoid recalculation on every render
+    const sshEnabledCount = useMemo(() => {
+        return countSSHDevices(processedDevices);
+    }, [processedDevices]);
 
     return (
         <div className="device-list">
             {/* Display summary information */}
             <div className="mb-3 text-sm text-gray-300">
-                <p>Total devices: {devices.length}</p>
-                <p>SSH-enabled devices: {sshEnabledCount} ({Math.round(sshEnabledCount/devices.length*100) || 0}%)</p>
+                <p>Total devices: {processedDevices.length}</p>
+                <p>SSH-enabled devices: {sshEnabledCount} ({Math.round(sshEnabledCount/processedDevices.length*100) || 0}%)</p>
             </div>
             
             {/* Device list with SSHBadge component */}
-            {devices.map((device, index) => (
+            {processedDevices.map((device, index) => (
                 <div key={index} className="device-item flex flex-col p-2 border-b border-gray-700 hover:bg-gray-750">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -110,6 +130,22 @@ const DeviceList = ({ devices, openModal, isSSHAvailable, openSSHModal }) => {
                     
                     {/* Category, vendor and additional information */}
                     <div className="mt-1 flex flex-wrap gap-2">
+                        {/* Display MAC Address if available */}
+                        {(device.macInfo?.available && device.macInfo?.address) && (
+                            <div className="inline-flex items-center text-xs bg-gray-700 text-gray-200 px-1.5 py-0.5 rounded">
+                                <FaAddressCard size={8} className="mr-1" /> 
+                                <span>{device.macInfo.address}</span>
+                            </div>
+                        )}
+                        
+                        {/* Display OS information if available */}
+                        {(device.osInfo?.available && device.osInfo?.name) && (
+                            <div className="inline-flex items-center text-xs bg-gray-700 text-gray-200 px-1.5 py-0.5 rounded">
+                                <FaDesktop size={8} className="mr-1" /> 
+                                <span>{device.osInfo.name} {device.osInfo.accuracy && `(${device.osInfo.accuracy}%)`}</span>
+                            </div>
+                        )}
+                        
                         {/* Display latency if available */}
                         {device.latency && (
                             <div className="inline-flex items-center text-xs bg-gray-700 text-gray-200 px-1.5 py-0.5 rounded">
@@ -132,15 +168,19 @@ const DeviceList = ({ devices, openModal, isSSHAvailable, openSSHModal }) => {
                             </div>
                         )}
                         
-                        {/* Display vendor info */}
-                        {device.vendor && (
+                        {/* Display vendor info - prefer macInfo.vendor if available */}
+                        {(device.macInfo?.vendor || device.vendor) && (
                             <div className="inline-flex items-center text-xs bg-gray-700 text-gray-200 px-1.5 py-0.5 rounded"
                                 style={{ 
-                                    borderLeft: `3px solid ${colorMap.vendor[device.vendor.toLowerCase()] || '#9CA3AF'}` 
+                                    borderLeft: `3px solid ${
+                                        colorMap.vendor[(device.macInfo?.vendor || device.vendor).toLowerCase()] || '#9CA3AF'
+                                    }` 
                                 }}
                             >
-                                <span style={{ color: colorMap.vendor[device.vendor.toLowerCase()] || 'inherit' }}>
-                                    {device.vendor}
+                                <span style={{ 
+                                    color: colorMap.vendor[(device.macInfo?.vendor || device.vendor).toLowerCase()] || 'inherit' 
+                                }}>
+                                    {device.macInfo?.vendor || device.vendor}
                                 </span>
                             </div>
                         )}

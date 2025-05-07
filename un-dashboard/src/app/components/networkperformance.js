@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
 import { io } from "socket.io-client";
 import { Line } from "react-chartjs-2";
 import { FaWifi, FaServer, FaChartLine, FaExclamationTriangle, FaCheck, FaTimes, FaInfoCircle, FaNetworkWired, FaDocker } from "react-icons/fa";
@@ -26,7 +26,15 @@ ChartJS.register(
     Legend
 );
 
-export default function NetworkPerformance({ devices, activeTab, setActiveTab }) {
+// Convert to forwardRef to expose methods to parent component
+const NetworkPerformance = forwardRef(({ 
+    devices, 
+    activeTab, 
+    monitoringEnabled, 
+    useDockerTools = true, 
+    dockerHost = "10.5.1.212",
+    refreshInterval = 60000 
+}, ref) => {
     const socketRef = useRef(null);
     const [selectedDevices, setSelectedDevices] = useState([]);
     const [performanceData, setPerformanceData] = useState({
@@ -38,15 +46,73 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const [activeDevice, setActiveDevice] = useState(null);
-    const [monitoringInterval, setMonitoringInterval] = useState(null);
     const [isMonitoring, setIsMonitoring] = useState(false);
     const intervalRef = useRef(null);
     const [deviceNameMap, setDeviceNameMap] = useState({});
-    const [useDockerTools, setUseDockerTools] = useState(false);
-    const [dockerHost, setDockerHost] = useState("10.5.1.212");
-    const [showDockerConfig, setShowDockerConfig] = useState(false);
     const [ipStatus, setIpStatus] = useState({});
     const [overallProgress, setOverallProgress] = useState(0);
+
+    // Expose methods to parent component via ref
+    useImperativeHandle(ref, () => ({
+        startMonitoring: (interval) => {
+            // Clear any existing interval
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+            }
+            
+            // Start immediately
+            startPerformanceCheck();
+            
+            // Then set up interval
+            const intervalId = setInterval(() => {
+                if (selectedDevices.length > 0) {
+                    startPerformanceCheck();
+                }
+            }, interval || refreshInterval);
+            
+            intervalRef.current = intervalId;
+            setIsMonitoring(true);
+            
+            return Promise.resolve();
+        },
+        stopMonitoring: () => {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+            setIsMonitoring(false);
+            return Promise.resolve();
+        },
+        checkNow: () => {
+            // Return a promise that resolves when the check is complete
+            return new Promise((resolve, reject) => {
+                if (selectedDevices.length === 0) {
+                    setError("Please select at least one device to monitor.");
+                    reject(new Error("No devices selected"));
+                    return;
+                }
+                
+                const checkCompleteListener = (data) => {
+                    if (data.complete) {
+                        socketRef.current.off("networkPerformanceStatus", checkCompleteListener);
+                        resolve();
+                    }
+                };
+                
+                // Listen for completion
+                socketRef.current.on("networkPerformanceStatus", checkCompleteListener);
+                
+                // Start the check
+                startPerformanceCheck();
+                
+                // Safety timeout to resolve the promise if no completion event is received
+                setTimeout(() => {
+                    socketRef.current.off("networkPerformanceStatus", checkCompleteListener);
+                    resolve();
+                }, 30000); // 30 second timeout
+            });
+        }
+    }));
 
     // Create map of IP to device name
     useEffect(() => {
@@ -162,7 +228,7 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
     useEffect(() => {
         if (devices && devices.length > 0 && selectedDevices.length === 0) {
             // Initially select the first 5 devices, or all if fewer than 5
-            const initialSelected = devices.slice(0, 5).map(device => device.ip);
+            const initialSelected = devices.slice(0, Math.min(5, devices.length)).map(device => device.ip);
             setSelectedDevices(initialSelected);
         }
     }, [devices]);
@@ -174,6 +240,35 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
             socketRef.current.emit("getHistoricalPerformance", { ip: activeDevice });
         }
     }, [activeDevice]);
+
+    // Handle external monitoring state from parent
+    useEffect(() => {
+        // Skip if we're already in the correct state
+        if (isMonitoring === monitoringEnabled) return;
+        
+        // Sync with parent state
+        setIsMonitoring(monitoringEnabled);
+        
+        // Clean up any existing interval
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+        }
+        
+        // If monitoring is now enabled, start it
+        if (monitoringEnabled && selectedDevices.length > 0) {
+            startPerformanceCheck();
+            
+            // Set up the interval
+            const intervalId = setInterval(() => {
+                if (selectedDevices.length > 0) {
+                    startPerformanceCheck();
+                }
+            }, refreshInterval);
+            
+            intervalRef.current = intervalId;
+        }
+    }, [monitoringEnabled, refreshInterval]);
 
     const startPerformanceCheck = () => {
         if (selectedDevices.length === 0) {
@@ -205,28 +300,6 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
             setSelectedDevices(prev => prev.filter(device => device !== ip));
         } else {
             setSelectedDevices(prev => [...prev, ip]);
-        }
-    };
-
-    const toggleMonitoring = () => {
-        if (isMonitoring) {
-            // Stop monitoring
-            clearInterval(intervalRef.current);
-            intervalRef.current = null;
-            setIsMonitoring(false);
-        } else {
-            // Start monitoring
-            startPerformanceCheck(); // Run immediately
-            
-            // Then set up interval
-            const interval = setInterval(() => {
-                if (selectedDevices.length > 0) {
-                    startPerformanceCheck();
-                }
-            }, monitoringInterval || 60000); // Default to 1 minute if not set
-            
-            intervalRef.current = interval;
-            setIsMonitoring(true);
         }
     };
 
@@ -411,25 +484,9 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
 
     return (
         <div className="relative bg-gray-800 rounded-lg p-4 text-white">
-            {/* View tabs - positioned in the top-right corner with identical styling as topology view */}
-            <div className="absolute top-4 right-4 z-10 flex gap-2">
-                <button
-                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-700 text-gray-300 hover:bg-gray-600"
-                    onClick={() => setActiveTab('topology')}
-                    style={{ paddingTop: '0.5rem', paddingBottom: '0.5rem' }} /* Fixed padding to match topology tabs */
-                >
-                    <FaNetworkWired /> Topology
-                </button>
-                <button
-                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-800 text-blue-400"
-                    onClick={() => setActiveTab('performance')}
-                    style={{ paddingTop: '0.5rem', paddingBottom: '0.5rem' }} /* Fixed padding to match topology tabs */
-                >
-                    <FaChartLine /> Performance
-                </button>
-            </div>
+            {/* Removed topology/performance tabs that were here */}
 
-            <h2 className="text-xl font-bold mb-4 mt-12">Network Performance Monitoring</h2>
+            <h2 className="text-xl font-bold mb-4">Network Performance Monitoring</h2>
             
             {/* Device Selection */}
             <div className="mb-4">
@@ -467,48 +524,7 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
                 </div>
             </div>
             
-            {/* Monitoring Controls */}
-            <div className="flex flex-col md:flex-row gap-4 mb-4">
-                <div className="flex-1">
-                    <label className="block text-sm text-gray-300 mb-1">Monitoring Interval (sec)</label>
-                    <select
-                        value={monitoringInterval || 60000}
-                        onChange={(e) => setMonitoringInterval(parseInt(e.target.value))}
-                        className="w-full bg-gray-700 text-white px-3 py-2 rounded"
-                        disabled={isMonitoring}
-                    >
-                        <option value={10000}>10 seconds</option>
-                        <option value={30000}>30 seconds</option>
-                        <option value={60000}>1 minute</option>
-                        <option value={300000}>5 minutes</option>
-                        <option value={600000}>10 minutes</option>
-                    </select>
-                </div>
-                
-                <div className="flex gap-2">
-                    <button
-                        onClick={toggleMonitoring}
-                        className={`px-4 py-2 rounded flex-1 ${
-                            isMonitoring 
-                                ? "bg-red-600 hover:bg-red-700" 
-                                : "bg-green-600 hover:bg-green-700"
-                        }`}
-                        disabled={selectedDevices.length === 0}
-                    >
-                        {isMonitoring ? "Stop Monitoring" : "Start Monitoring"}
-                    </button>
-                    
-                    <button
-                        onClick={startPerformanceCheck}
-                        className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded flex-1"
-                        disabled={selectedDevices.length === 0 || isLoading}
-                    >
-                        {isLoading ? "Checking..." : "Check Now"}
-                    </button>
-                </div>
-            </div>
-            
-            {/* Overall progress bar */}
+            {/* Overall progress bar - maintain this in the main panel */}
             {isLoading && (
                 <div className="mb-4">
                     <div className="flex justify-between text-xs text-gray-400 mb-1">
@@ -523,49 +539,6 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
                     </div>
                 </div>
             )}
-
-            {/* Docker Tools Option */}
-            <div className="mb-4">
-                <div className="flex items-center mb-2">
-                    <input
-                        type="checkbox"
-                        checked={useDockerTools}
-                        onChange={(e) => {
-                            setUseDockerTools(e.target.checked);
-                            setShowDockerConfig(e.target.checked);
-                        }}
-                        className="form-checkbox h-4 w-4 text-blue-600"
-                        id="useDockerTools"
-                    />
-                    <label htmlFor="useDockerTools" className="ml-2 flex items-center text-sm text-gray-300">
-                        <FaDocker className="mr-2 text-blue-400" /> Use Docker Network Tools (jonlabelle/network-tools)
-                    </label>
-                    <button 
-                        className="ml-2 text-xs text-blue-400 hover:text-blue-300"
-                        onClick={() => setShowDockerConfig(!showDockerConfig)}>
-                        {showDockerConfig ? "Hide settings" : "Show settings"}
-                    </button>
-                </div>
-                
-                {showDockerConfig && (
-                    <div className="bg-gray-700 p-3 rounded mb-3 text-sm">
-                        <div className="mb-2">
-                            <label className="block text-xs text-gray-400 mb-1">Docker Host IP</label>
-                            <input
-                                type="text"
-                                value={dockerHost}
-                                onChange={(e) => setDockerHost(e.target.value)}
-                                className="w-full bg-gray-800 text-white px-3 py-1 rounded text-sm"
-                                placeholder="e.g., 10.5.1.212"
-                            />
-                        </div>
-                        <div className="text-xs text-gray-400">
-                            <p>Using jonlabelle/network-tools container for network diagnostics.</p>
-                            <p>If devices are shown as unreachable, try adjusting Docker network settings.</p>
-                        </div>
-                    </div>
-                )}
-            </div>
             
             {error && !hasPerformanceData() && (
                 <div className="bg-gray-700 text-white p-3 rounded mb-4 flex items-center">
@@ -796,4 +769,9 @@ export default function NetworkPerformance({ devices, activeTab, setActiveTab })
             )}
         </div>
     );
-}
+});
+
+// Add display name for better debugging
+NetworkPerformance.displayName = 'NetworkPerformance';
+
+export default NetworkPerformance;

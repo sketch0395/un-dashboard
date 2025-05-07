@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { FaTerminal, FaLock } from 'react-icons/fa';
 import { getSSHStatus } from '../utils/sshScanUtils';
 
@@ -15,7 +15,10 @@ import { getSSHStatus } from '../utils/sshScanUtils';
  * @param {Boolean} props.showLabel - Whether to show "SSH" text label
  */
 const SSHBadge = ({ device, onClick, size = 'md', showLabel = true }) => {
-    const sshStatus = getSSHStatus(device);
+    // Memoize the SSH status to prevent recalculation on every render
+    const sshStatus = useMemo(() => {
+        return getSSHStatus(device);
+    }, [device]);
     
     // Size variants
     const sizeClasses = {

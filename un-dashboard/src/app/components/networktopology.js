@@ -1,15 +1,16 @@
 import React, { useEffect, useRef, useState, useLayoutEffect, forwardRef, useImperativeHandle } from "react";
 import * as d3 from "d3";
-import { FaNetworkWired, FaTerminal, FaTimes, FaStickyNote, FaChevronDown, FaFilter, FaCheck, FaChartLine, 
-         FaSitemap, FaGlobe, FaHistory, FaCircle, FaLayerGroup, FaRegularMap } from "react-icons/fa";
+import { FaNetworkWired, FaTerminal, FaTimes, FaStickyNote, FaChevronDown, FaFilter, FaCheck, 
+         FaSitemap, FaCircle, FaLayerGroup, FaDesktop, FaAddressCard } from "react-icons/fa";
 import { FaLayerGroup as FaLayerIcon } from "react-icons/fa6"; 
 import { GiEarthAmerica } from "react-icons/gi";
 import { MdTimeline } from "react-icons/md";
 import { createRoot } from "react-dom/client";
 import { iconMap } from './icons/iconMapping'; // Import the iconMap directly
+import { getMacInfo, getOSInfo } from "../utils/sshScanUtils"; // Import utility functions for MAC and OS info
 
 // Wrap component with forwardRef to expose refresh method
-const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHModal, setModalDevice, activeTab, setActiveTab }, ref) => {
+const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHModal, setModalDevice }, ref) => {
     const svgRef = useRef();
     const containerRef = useRef();
     const [contextMenu, setContextMenu] = useState({
@@ -30,7 +31,7 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
     // Add state for advanced visualization options
-    const [visualizationType, setVisualizationType] = useState("circular"); // Options: circular, hierarchical, geographic, timeline
+    const [visualizationType, setVisualizationType] = useState("circular"); // Options: circular, hierarchical, timeline
     const [visualizationMenuOpen, setVisualizationMenuOpen] = useState(false);
     const [timelineData, setTimelineData] = useState([]); // For time-based visualization
     const [subnetGroups, setSubnetGroups] = useState({}); // For subnet grouping
@@ -105,7 +106,9 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
             });
         } else if (groupBy === "vendor") {
             flattenedDevices.forEach(device => {
-                const vendor = device.vendor || "Unknown";
+                // Use enhanced vendor information if available
+                const macInfo = getMacInfo(device);
+                const vendor = macInfo?.available && macInfo?.vendor ? macInfo.vendor : (device.vendor || "Unknown");
                 groups.add(vendor);
             });
         } else {
@@ -120,7 +123,7 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
         setAvailableGroups(sortedGroups);
         // Reset selected group when grouping changes
         setSelectedGroup(null);
-    }, [groupBy, JSON.stringify(devices), customNames]);
+    }, [groupBy, devices, customNames]);
     
     useEffect(() => {
         if (!devices || Object.keys(devices).length === 0) return;
@@ -188,7 +191,7 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                 break;
         }
 
-    }, [JSON.stringify(devices), vendorColors, JSON.stringify(customNames), groupBy, selectedGroup, dimensions, refreshTrigger, visualizationType, JSON.stringify(subnetGroups)]);
+    }, [devices, vendorColors, customNames, groupBy, selectedGroup, dimensions, refreshTrigger, visualizationType, subnetGroups]);
 
     // Helper functions
     const isSSHAvailable = (device) => {
@@ -315,12 +318,13 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
         // Generate colors for each scan group
         const colorScale = d3.scaleOrdinal(d3.schemeCategory10).domain(groupKeys);
         
-        // Store the colors for use elsewhere in the component
+        // Create a new local colors object rather than updating state in render function
         const newGroupColors = {};
         groupKeys.forEach(key => {
             newGroupColors[key] = colorScale(key);
         });
-        setGroupColors(newGroupColors);
+        // Remove setGroupColors call that causes re-renders
+        // setGroupColors(newGroupColors);
 
         // Create nodes with positioning based on groups
         let nodes = [];
@@ -1069,10 +1073,12 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
             .attr("transform", d => `translate(${d.x}, ${d.y})`)
             .on("click", (event, d) => {
                 event.stopPropagation();
-                // Show context menu with device information
+                // Enhance device with MAC and OS information before showing context menu
+                const enhancedDevice = enhanceDeviceInfo(d);
+                // Show context menu with enhanced device information
                 setContextMenu({
                     visible: true,
-                    device: d,
+                    device: enhancedDevice,
                     x: event.clientX,
                     y: event.clientY
                 });
@@ -1084,12 +1090,14 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                 
                 // Open the device modal with this device data
                 if (setModalDevice && typeof setModalDevice === 'function') {
+                    // Enhance device with MAC and OS information
+                    const enhancedDevice = enhanceDeviceInfo(d);
                     // Merge any existing custom properties from customNames
                     const customProps = customNames?.[d.ip] || {};
                     
                     // Set the modal device with merged data
                     setModalDevice({
-                        ...d,
+                        ...enhancedDevice,
                         ...customProps
                     });
                 }
@@ -1631,10 +1639,27 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
         }).join(', ');
     };
 
+    // Function to enhance device with additional information for context menu and display
+    const enhanceDeviceInfo = (device) => {
+        if (!device) return device;
+        
+        // Add MAC address information
+        if (!device.macInfo) {
+            device.macInfo = getMacInfo(device);
+        }
+        
+        // Add OS information
+        if (!device.osInfo) {
+            device.osInfo = getOSInfo(device);
+        }
+        
+        return device;
+    };
+
     return (
         <div className="relative w-full h-full overflow-hidden" 
              ref={containerRef}
-             style={{ height: "calc(100vh - 8rem)" }} // Increased from 6rem to 8rem to account for navbar
+             style={{ height: "100%" }} // Changed from calc(100vh - 8rem) to 100% to fit container perfectly
         >
             {/* Grouping controls with dropdown */}
             <div className="absolute top-4 left-4 z-10 bg-gray-800 bg-opacity-80 p-2 rounded shadow-lg">
@@ -1759,26 +1784,10 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                 </div>
             </div>
             
-            {/* View tabs - positioned in the top-right corner of the map itself */}
-            <div className="absolute top-4 right-4 z-10 flex gap-2">
-                <button
-                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-800 text-blue-400"
-                    onClick={() => setActiveTab('topology')}
-                >
-                    <FaNetworkWired /> Topology
-                </button>
-                <button
-                    className="flex items-center gap-2 px-4 py-2 rounded-t bg-gray-700 text-gray-300 hover:bg-gray-600"
-                    onClick={() => setActiveTab('performance')}
-                >
-                    <FaChartLine /> Performance
-                </button>
-            </div>
-            
-            {/* Selected filter indicator - moved below the tabs */}
+            {/* Selected filter indicator */}
             {selectedGroup && (
                 <div 
-                    className="absolute top-16 right-4 z-10 bg-gray-800 bg-opacity-80 px-3 py-1 rounded shadow-lg text-sm flex items-center"
+                    className="absolute top-4 right-4 z-10 bg-gray-800 bg-opacity-80 px-3 py-1 rounded shadow-lg text-sm flex items-center"
                     style={{
                         borderLeft: `3px solid ${groupColors[selectedGroup.toLowerCase()] || '#9CA3AF'}`
                     }}
@@ -1816,7 +1825,7 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                     style={{ 
                         top: '80px',  // Fixed distance from top
                         right: '20px', // Fixed distance from right
-                        maxWidth: '300px'
+                        maxWidth: '350px' // Slightly increased to accommodate more info
                     }}
                 >
                     <div className="flex justify-between items-center mb-3">
@@ -1829,30 +1838,68 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                         </button>
                     </div>
                     
-                    <div className="space-y-2 text-sm hide-scrollbar">
+                    <div className="space-y-2 text-sm hide-scrollbar max-h-[400px] overflow-y-auto">
+                        {/* Basic Information */}
                         <div>
                             <span className="font-semibold">IP:</span> {contextMenu.device.ip}
                         </div>
+                        
                         {customNames?.[contextMenu.device.ip]?.name && (
                             <div>
                                 <span className="font-semibold">Name:</span> {customNames[contextMenu.device.ip].name}
                             </div>
                         )}
-                        {contextMenu.device.vendor && (
+                        
+                        {/* MAC Address Information */}
+                        {contextMenu.device.macInfo?.available && (
+                            <div>
+                                <div className="flex items-center">
+                                    <FaAddressCard className="mr-1 text-blue-400" />
+                                    <span className="font-semibold">MAC Address:</span>
+                                </div>
+                                <div className="ml-5 mt-1">
+                                    <div>{contextMenu.device.macInfo.address}</div>
+                                    {contextMenu.device.macInfo.vendor && (
+                                        <div><span className="font-semibold">Vendor:</span> {contextMenu.device.macInfo.vendor}</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* OS Information */}
+                        {contextMenu.device.osInfo?.available && (
+                            <div>
+                                <div className="flex items-center">
+                                    <FaDesktop className="mr-1 text-blue-400" />
+                                    <span className="font-semibold">Operating System:</span>
+                                </div>
+                                <div className="ml-5 mt-1">
+                                    <div>{contextMenu.device.osInfo.name}</div>
+                                    {contextMenu.device.osInfo.accuracy && (
+                                        <div><span className="font-semibold">Accuracy:</span> {contextMenu.device.osInfo.accuracy}%</div>
+                                    )}
+                                    {contextMenu.device.osInfo.type && (
+                                        <div><span className="font-semibold">Type:</span> {contextMenu.device.osInfo.type}</div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Fallback for traditional vendor field if MAC info not available */}
+                        {(!contextMenu.device.macInfo?.available && contextMenu.device.vendor) && (
                             <div>
                                 <span className="font-semibold">Vendor:</span> {contextMenu.device.vendor}
                             </div>
                         )}
-                        {contextMenu.device.mac && (
-                            <div>
-                                <span className="font-semibold">MAC:</span> {contextMenu.device.mac}
-                            </div>
-                        )}
+                        
+                        {/* Status */}
                         {contextMenu.device.status && (
                             <div>
                                 <span className="font-semibold">Status:</span> {contextMenu.device.status}
                             </div>
                         )}
+                        
+                        {/* Ports */}
                         {contextMenu.device.ports && contextMenu.device.ports.length > 0 && (
                             <div>
                                 <span className="font-semibold">Ports:</span> 
@@ -1861,11 +1908,15 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                                 </div>
                             </div>
                         )}
+                        
+                        {/* Category */}
                         {customNames?.[contextMenu.device.ip]?.category && (
                             <div>
                                 <span className="font-semibold">Category:</span> {customNames[contextMenu.device.ip].category}
                             </div>
                         )}
+                        
+                        {/* Notes */}
                         {customNames?.[contextMenu.device.ip]?.notes && (
                             <div>
                                 <span className="font-semibold">Notes:</span>
@@ -1915,7 +1966,7 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                                 }
                             }}
                         >
-                            Save
+                            Edit
                         </button>
                     </div>
                 </div>
