@@ -371,12 +371,32 @@ const NetworkPerformance = forwardRef(({
             return;
         }
         
+        // Find the original device object with complete information
+        let completeDevice = device;
+        
+        // If this is a performance data item, merge it with the original device data
+        if (device.ip && devices) {
+            const originalDevice = devices.find(d => d.ip === device.ip);
+            if (originalDevice) {
+                // Carefully merge, preserving important device properties
+                completeDevice = {
+                    ...device,                      // Add performance data
+                    mac: originalDevice.mac || device.mac,
+                    vendor: originalDevice.vendor || device.vendor,
+                    os: originalDevice.os || device.os,
+                    osInfo: originalDevice.osInfo || device.osInfo,
+                    hostname: originalDevice.hostname || device.hostname
+                };
+                console.log("Complete device data for modal:", completeDevice); // Debug log
+            }
+        }
+        
         // Make sure we set the modal to visible
         setDetailsModalVisible(true);
-        setSelectedDeviceForDetails(device);
+        setSelectedDeviceForDetails(completeDevice);
         
         // Get uptime data for this device if available
-        const uptimeData = performanceData.uptime.find(item => item.ip === device.ip);
+        const uptimeData = performanceData.uptime.find(item => item.ip === completeDevice.ip);
         if (uptimeData) {
             setSelectedDeviceUptime(uptimeData.systemUptime);
         } else {

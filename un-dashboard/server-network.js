@@ -67,6 +67,8 @@ const parseNmapOutput = (output) => {
     const lines = output.split('\n');
     const devices = [];
     let currentDevice = {};
+    let currentOSSection = false;
+    let osInfoArray = []; // Temporary array to store OS info lines
 
     lines.forEach((line) => {
         if (line.includes('Nmap scan report for')) {
@@ -86,10 +88,46 @@ const parseNmapOutput = (output) => {
                 ip: line.split('Nmap scan report for ')[1].trim(),
                 status: 'unknown'
             };
-        } else if (line.includes('MAC Address:')) {
-            const parts = line.split('MAC Address: ')[1].split(' ');
-            currentDevice.mac = parts[0];
-            currentDevice.vendor = parts.slice(1).join(' ').trim();
+            currentOSSection = false;
+            osInfoArray = []; // Reset OS info array for new device        } else if (line.includes('MAC Address:')) {
+            // Improved MAC address detection - extract address and vendor
+            const macLine = line.trim();
+            console.log(`[MAC DETECTION] Processing line: ${macLine}`);
+              // Extract MAC address - more flexible regex to handle different MAC formats
+            const macMatch = macLine.match(/MAC Address:\s+([0-9A-Fa-f:]{12,17})/);
+            if (macMatch) {
+                currentDevice.mac = macMatch[1];
+                console.log(`[MAC DETECTION] Found MAC: ${currentDevice.mac} for IP: ${currentDevice.ip}`);
+                
+                // Extract vendor information if available - more flexible regex
+                const vendorMatch = macLine.match(/MAC Address:\s+[0-9A-Fa-f:]{12,17}\s+(?:\(([^)]+)\)|([^(].*$))/);
+                if (vendorMatch) {
+                    // Use either the first or second capture group (depending on which format was matched)
+                    currentDevice.vendor = vendorMatch[1] || vendorMatch[2];
+                    console.log(`[MAC DETECTION] Found vendor: ${currentDevice.vendor} for IP: ${currentDevice.ip}`);
+                }
+            } else {
+                // Try alternate format
+                const parts = line.split('MAC Address: ')[1]?.split(' ');
+                if (parts && parts.length > 0) {
+                    currentDevice.mac = parts[0];
+                    currentDevice.vendor = parts.slice(1).join(' ').trim();
+                    console.log(`[MAC DETECTION] Alternate format - MAC: ${currentDevice.mac}, Vendor: ${currentDevice.vendor} for IP: ${currentDevice.ip}`);
+                    // Remove parentheses if present
+                    if (currentDevice.vendor && currentDevice.vendor.startsWith('(') && currentDevice.vendor.endsWith(')')) {
+                        currentDevice.vendor = currentDevice.vendor.substring(1, currentDevice.vendor.length - 1);
+                    }
+                }
+            }
+              // Create the macInfo object for structured data
+            if (currentDevice.mac) {
+                currentDevice.macInfo = {
+                    available: true,
+                    address: currentDevice.mac,
+                    vendor: currentDevice.vendor || ''
+                };
+                console.log(`[MAC DETECTION] Created macInfo object: ${JSON.stringify(currentDevice.macInfo)} for IP: ${currentDevice.ip}`);
+            }
         } else if (line.includes('Host is up')) {
             currentDevice.status = 'up';
             // Extract latency if available
@@ -107,10 +145,53 @@ const parseNmapOutput = (output) => {
                     available: true,
                     version: line.includes('ssh') ? line.split('ssh')[1].trim() : 'unknown'
                 };
+                // Create the ssh object for structured data
+                currentDevice.ssh = {
+                    available: true,
+                    port: 22,
+                    version: line.includes('ssh') ? line.split('ssh')[1].trim() : 'unknown'
+                };
             }
-        } else if (line.includes('OS:') || line.includes('Service Info:')) {
-            if (!currentDevice.osInfo) currentDevice.osInfo = [];
-            currentDevice.osInfo.push(line.trim());
+        } else if (line.includes('OS detection performed.') || line.includes('OS fingerprint:')) {
+            currentOSSection = true;
+        } else if (currentOSSection || 
+                   line.includes('OS:') || 
+                   line.includes('Service Info:') || 
+                   line.includes('Device type:') || 
+                   line.includes('Running:') || 
+                   line.includes('OS CPE:') || 
+                   line.includes('OS details:') ||
+                   line.includes('Uptime guess:') ||
+                   line.includes('Network Distance:') ||
+                   line.includes('TCP Sequence Prediction:') ||
+                   line.includes('IP ID Sequence Generation:')) {
+            
+            // Add OS info to temporary array instead of directly to currentDevice.osInfo
+            osInfoArray.push(line.trim());
+            
+            // Extract structured OS information
+            if (line.includes('OS details:')) {
+                // Create osDetails object if needed
+                if (!currentDevice.osDetails) {
+                    currentDevice.osDetails = {
+                        name: null,
+                        accuracy: null,
+                        uptime: null,
+                        uptimeLastBoot: null,
+                        networkDistance: null,
+                        tcpSequence: null,
+                        ipIdSequence: null
+                    };
+                }
+                
+                currentDevice.osDetails.name = line.split('OS details:')[1].trim();
+            } else if (line.includes('Accuracy:')) {
+                if (!currentDevice.osDetails) currentDevice.osDetails = {};
+                const accuracyMatch = line.match(/Accuracy:\s*(\d+)/i);
+                if (accuracyMatch) {
+                    currentDevice.osDetails.accuracy = parseInt(accuracyMatch[1]);
+                }
+            }
         } else if (line.includes('ssh-auth-methods')) {
             // Extract SSH authentication methods
             if (!currentDevice.sshAuthMethods) {
@@ -136,6 +217,20 @@ const parseNmapOutput = (output) => {
             }
         }
     });
+    
+    // After processing all lines, create the structured OS info from collected array
+    if (osInfoArray.length > 0) {
+        // First, save the raw OS info lines array
+        currentDevice.rawOSInfo = osInfoArray;
+        
+        // Then create the structured osInfo object with the collected data
+        currentDevice.osInfo = {
+            available: true,
+            name: currentDevice.osDetails ? currentDevice.osDetails.name || 'Unknown OS' : 'Unknown OS',
+            accuracy: currentDevice.osDetails ? currentDevice.osDetails.accuracy || null : null,
+            full: osInfoArray
+        };
+    }
 
     // Add the last device if there is one
     if (Object.keys(currentDevice).length) {
@@ -149,24 +244,101 @@ const parseNmapOutput = (output) => {
             );
         }
         devices.push(currentDevice);
+    }    // Filter to only include devices that are actually online
+    // This fixes the issue of showing all 255 IPs instead of only active ones
+    const activeDevices = devices.filter(device => device.status === 'up');
+    console.log(`[PARSE] Filtering ${devices.length} total devices to ${activeDevices.length} active devices`);
+    
+    // MAC address simulation disabled by default - user doesn't want simulated MAC addresses
+    const ENABLE_MAC_SIMULATION = false; // Set to false to disable MAC simulation
+    
+    if (ENABLE_MAC_SIMULATION) {
+        // Add simulated MAC addresses and vendor information for testing if real ones weren't detected
+        activeDevices.forEach((device, index) => {
+            if (!device.mac && !device.macInfo) {
+                // Generate a simulated MAC address based on IP
+                const ip = device.ip.split('.');
+                const lastOctet = ip[3];
+                const simulatedMac = `00:11:22:33:44:${lastOctet.padStart(2, '0')}`;
+                const simulatedVendor = ['Intel', 'Apple', 'Samsung', 'Dell', 'HP', 'Cisco'][index % 6];
+                
+                // Add the simulated MAC and vendor
+                device.mac = simulatedMac;
+                device.vendor = simulatedVendor;
+                
+                // Create macInfo object
+                device.macInfo = {
+                    available: true,
+                    address: simulatedMac,
+                    vendor: simulatedVendor
+                };
+                
+                console.log(`[MAC SIMULATION] Added simulated MAC: ${simulatedMac} and vendor: ${simulatedVendor} for IP: ${device.ip}`);
+            }
+        });
+    } else {
+        console.log(`[MAC DETECTION] MAC simulation disabled - only showing real detected MAC addresses`);
     }
-
-    // Group devices by vendor
-    const groupedDevices = devices.reduce((acc, device) => {
+    
+    // Group devices by vendor - only include active devices
+    const groupedDevices = activeDevices.reduce((acc, device) => {
         const vendor = device.vendor || 'Unknown';
         if (!acc[vendor]) acc[vendor] = [];
         acc[vendor].push(device);
         return acc;
-    }, {});
-
-    // Log statistics about detected SSH servers
-    const sshDevices = devices.filter(device => device.sshAvailable);
-    console.log(`[PARSE] Found ${sshDevices.length} devices with open SSH ports out of ${devices.length} total devices`);
+    }, {});// Log statistics about detected SSH servers - only count from active devices
+    const sshDevices = activeDevices.filter(device => device.sshAvailable);
+    console.log(`[PARSE] Found ${sshDevices.length} devices with open SSH ports out of ${activeDevices.length} active devices`);
     if (sshDevices.length > 0) {
         console.log('[PARSE] SSH-enabled devices:', sshDevices.map(d => d.ip).join(', '));
     }
     
     return groupedDevices;
+};
+
+// Function to save scan results to history
+const saveScanResultsToHistory = (devices) => {
+    const timestamp = new Date().toISOString();
+    
+    // Process each device and store scan results in history
+    devices.forEach(device => {
+        const ip = device.ip;
+        
+        if (!performanceHistory.scanResults[ip]) {
+            performanceHistory.scanResults[ip] = [];
+        }
+        
+        // Extract relevant information
+        const scanEntry = {
+            timestamp,
+            status: device.status || 'unknown',
+            latency: device.latency || null,
+            ports: device.ports || [],
+            mac: device.mac || null,
+            vendor: device.vendor || 'Unknown',
+            sshAvailable: device.sshAvailable || false,
+            sshDetails: {
+                available: device.sshAvailable || false,
+                version: device.sshService ? device.sshService.version : null,
+                authMethods: device.sshAuthMethods || []
+            }
+        };
+        
+        // Add OS information if available
+        if (device.osInfo && device.osInfo.length > 0) {
+            scanEntry.osInfo = device.osInfo;
+        }
+        
+        // Add to history
+        performanceHistory.scanResults[ip].push(scanEntry);
+        
+        // Trim to max length
+        if (performanceHistory.scanResults[ip].length > MAX_HISTORY_ITEMS) {
+            performanceHistory.scanResults[ip] = performanceHistory.scanResults[ip].slice(-MAX_HISTORY_ITEMS);
+        }
+        
+        console.log(`[HISTORY] Saved scan results for ${ip} with ${scanEntry.ports.length} ports`);
+    });
 };
 
 // Change from const to let so we can reassign it later
@@ -176,7 +348,32 @@ let docker = new Docker({
     port: 2375 // Standard Docker daemon port
 });
 
-const handleDockerScan = async (range, socket) => {
+// Function to test Docker connection and re-initialize if needed
+const testDockerConnection = async () => {
+    try {
+        console.log('[DOCKER] Testing Docker connection to 10.5.1.212:2375');
+        // Simple test to list containers
+        await docker.listContainers();
+        console.log('[DOCKER] Docker connection successful');
+        return true;
+    } catch (error) {
+        console.error('[DOCKER] Connection test failed:', error.message);
+        console.log('[DOCKER] Attempting to reconnect with different configuration...');
+        
+        try {
+            // Try with default Docker socket (for local Docker)
+            docker = new Docker();
+            await docker.listContainers();
+            console.log('[DOCKER] Reconnected to Docker using default socket');
+            return true;
+        } catch (innerError) {
+            console.error('[DOCKER] All connection attempts failed:', innerError.message);
+            return false;
+        }
+    }
+};
+
+const handleDockerScan = async (range, socket, scanOptions = {}) => {
     try {
         const sanitizedRange = sanitizeInput(range);
         console.log(`[SCAN] Starting Docker-based scan for range: ${sanitizedRange}`);
@@ -185,46 +382,45 @@ const handleDockerScan = async (range, socket) => {
             status: 'Scan in progress...', 
             output: `Starting network scan for range: ${sanitizedRange}` 
         });
-        
-        socket.emit('networkScanStatus', { 
+          socket.emit('networkScanStatus', { 
             status: 'Setting up scan...', 
-            output: `Using jonlabelle/network-tools container for SSH detection` 
-        });
-        
-        // Tell user we're using the optimized scan mode now
-        socket.emit('networkScanStatus', { 
-            status: 'Starting optimized SSH scan...',
-            output: 'Using parameters proven to detect SSH services'
-        });
-        
-        // Use the same exact parameters from the successful test script
+            output: `Using jonlabelle/network-tools container for network scanning` 
+        });        // FAST SCAN: More efficient scan parameters that only checks common ports
+        // This scan is much faster because it only scans specific ports rather than all 65,535 ports
+        // ENHANCED: Added better host discovery to only show active hosts
         const nmapCmd = [
             'nmap',
-            '-sS',                              // SYN scan
-            '-sV',                              // Version detection
-            '--script=ssh-auth-methods,ssh-hostkey',  // SSH scripts
-            '-T4',                              // Aggressive timing
-            '--max-retries=1',                  // Minimize retries for faster results
-            '--host-timeout=15s',               // Don't spend too long on each host
-            '-p', DEFAULT_PORTS,                // Use configured ports, usually includes 22
+            // '--host-timeout=30s',              // Don't spend too long on unresponsive hosts
+            // '-PR',                             // ARP discovery (best for local networks)
+            // '-sS',                             // SYN scan which is better for MAC detection
+            // '-sV',                             // Service version detection (lighter than -A)
+            // '-O',                              // OS detection flag
+            // '--osscan-limit',                  // Limit OS detection to promising targets
+            '-A',                             // Aggressive scan for detailed information
+            '-v',                              // Verbose output
+            '-T4',                             // Faster timing template
+            '--max-os-tries=1',                // Limit OS tries for faster scan of large range
+            '--max-retries=1',                 // Limit retries for faster scan
+            '-p', '22,80,443,3000,4000',       // Common ports including SSH and web servers
+            '--script=ssh-auth-methods,ssh-hostkey', // Keep SSH scripts for auth methods detection
             sanitizedRange
         ];
         
         console.log(`[DOCKER] NMAP command: ${nmapCmd.join(' ')}`);
         
-        // Create a container for this scan using the exact same configuration as the test script
+        // Create a container for this scan - Always use bridge mode to match test-nmap.js
         const container = await docker.createContainer({
             Image: 'jonlabelle/network-tools',
             Cmd: nmapCmd,
             Tty: true,
             HostConfig: {
-                NetworkMode: 'bridge',  // Match the bridge mode from test script
+                NetworkMode: 'bridge',  // Consistently use bridge mode which works in test-nmap.js
             }
         });
 
         socket.emit('networkScanStatus', { 
             status: 'Scan started...',
-            output: 'Scanning network for SSH devices'
+            output: 'Scanning network with enhanced host discovery for active devices and services'
         });
         
         await container.start();
@@ -239,7 +435,7 @@ const handleDockerScan = async (range, socket) => {
         await container.wait();
         console.log(`[DOCKER] Container execution completed`);
 
-        // Get container logs
+        // Get container logs with detailed logging
         console.log(`[DOCKER] Retrieving container logs`);
         const stream = await container.logs({
             stdout: true,
@@ -251,6 +447,11 @@ const handleDockerScan = async (range, socket) => {
         console.log(`[DOCKER] Container removed`);
 
         const output = stream.toString();
+        console.log(`[DOCKER] Raw output length: ${output.length}`);
+        
+        // Debug: Log the first few hundred characters of output
+        console.log(`[DOCKER] Output sample: ${output.substring(0, 500)}...`);
+        
         if (!output || !output.trim()) {
             throw new Error('No output from Docker-based scan');
         }
@@ -270,6 +471,9 @@ const handleDockerScan = async (range, socket) => {
             devices.push(...group);
         });
         const sshDevices = devices.filter(device => device.sshAvailable);
+        
+        // Store scan results in history
+        saveScanResultsToHistory(devices);
         
         // Log found SSH devices
         if (sshDevices.length > 0) {
@@ -341,7 +545,7 @@ const handleNmapProcess = (nmapProcess, socket) => {
     });
 };
 
-const handleHostScan = (range, socket) => {
+const handleHostScan = (range, socket, scanOptions = {}) => {
     try {
         const sanitizedRange = sanitizeInput(range);
         console.log(`[SCAN] Starting host-based scan for range: ${sanitizedRange}`);
@@ -349,24 +553,65 @@ const handleHostScan = (range, socket) => {
         // Tell user we're using accurate scan mode now
         socket.emit('networkScanStatus', { 
             status: 'Scanning active hosts...',
-            output: 'Performing accurate scan to detect only real devices'
-        });
-        
-        // Use the same enhanced NMAP parameters but without -Pn for accurate device discovery
+            output: 'Performing accurate scan with enhanced host discovery'
+        });        // FAST SCAN: Host-based scan using optimized parameters for speed
+        // This scan is faster as it uses ARP scan for local network discovery and only scans specific ports
+        // ENHANCED: Improved host discovery to only show active hosts
         const nmapProcess = spawn('nmap', [
-            // -Pn flag removed to get more accurate host discovery
-            '-sS', // SYN scan
-            '-sV', // Service version detection
-            '-O',  // OS detection
+            '-PR',                              // ARP scan for MAC address discovery (best for local networks)
+            '--reason',                         // Show why hosts are marked as up/down
+            '-sS',                              // SYN scan
+            '-sV',                              // Service version detection
+            '-O',                               // OS detection
+            '--osscan-limit',                   // Only do OS detection on promising targets
             '--script=ssh-auth-methods,ssh-hostkey', // SSH detection scripts
-            '-T4', // Faster timing template
-            '--max-retries=2',
-            '--host-timeout=30s',
-            '-p', DEFAULT_PORTS,
+            '-T4',                              // Faster timing template
+            '--max-retries=2',                  // Minimize retries for better performance
+            '--host-timeout=30s',               // Don't spend too long on each host
+            '-p', scanOptions.ports || DEFAULT_PORTS, // Use configured ports, usually includes 22
             sanitizedRange
         ]);
 
-        handleNmapProcess(nmapProcess, socket);
+        let outputData = '';
+
+        // Capture stdout data
+        nmapProcess.stdout.on('data', (data) => {
+            const chunk = data.toString();
+            outputData += chunk;
+            socket.emit('networkScanStatus', { status: 'Scan in progress...', output: chunk });
+        });
+
+        // Capture stderr data (errors from nmap)
+        nmapProcess.stderr.on('data', (data) => {
+            const errorMessage = data.toString();
+            console.error('[ERROR] Nmap stderr:', errorMessage);
+            socket.emit('networkScanStatus', { status: 'Error', error: `Nmap error: ${errorMessage}` });
+        });
+
+        // Handle process exit
+        nmapProcess.on('close', (code) => {
+            if (code === 0) {
+                console.log('[SCAN] Nmap process completed successfully');
+                
+                const groupedDevices = parseNmapOutput(outputData);
+                
+                // Find all devices for storing in history
+                const devices = [];
+                Object.values(groupedDevices).forEach(group => {
+                    devices.push(...group);
+                });
+                
+                // Store scan results in history
+                saveScanResultsToHistory(devices);
+                
+                socket.emit('networkData', groupedDevices);
+                socket.emit('networkScanStatus', { status: 'Scan complete' });
+            } else {
+                const errorDetails = `Nmap exited with code ${code}`;
+                console.error(`[ERROR] ${errorDetails}`);
+                socket.emit('networkScanStatus', { status: 'Error', error: errorDetails });
+            }
+        });
     } catch (error) {
         console.error('[ERROR] Host-based scan:', error.message);
         socket.emit('networkScanStatus', { status: 'Error during host-based scan', error: error.message });
@@ -382,7 +627,8 @@ const os = require('os');
 const performanceHistory = {
     latency: {},    // IP -> array of {timestamp, value} objects
     bandwidth: {},  // IP -> array of {timestamp, upload, download} objects
-    uptime: {}      // IP -> array of {timestamp, status} objects
+    uptime: {},     // IP -> array of {timestamp, status} objects
+    scanResults: {} // IP -> array of {timestamp, ports, services, sshDetails} objects
 };
 
 // Maximum history items per device
@@ -1392,7 +1638,7 @@ io.on('connection', (socket) => {
 
     socket.on('startNetworkScan', async (data) => {
         try {
-            const { range, useDocker } = data;
+            const { range, useDocker, scanType } = data;
 
             if (!range) {
                 throw new Error('IP range is required');
@@ -1402,13 +1648,32 @@ io.on('connection', (socket) => {
                 throw new Error('Invalid IP range format');
             }
 
+            console.log(`[SCAN] Starting network scan with type: ${scanType || 'default'}`);
+            
+            // Configure scan options based on scan type
+            const scanOptions = {
+                ports: DEFAULT_PORTS,
+                serviceDetection: true,
+                osDetection: false,
+                skipHostDiscovery: false
+            };
+            
+            // Adjust scan options based on scan type
+            if (scanType === 'os') {
+                console.log('[SCAN] Using OS detection scan type');
+                scanOptions.osDetection = true;
+            } else {
+                console.log('[SCAN] Using basic ping scan type');
+                // Use default options for basic scan
+            }
+
             if (useDocker) {
-                await handleDockerScan(range, socket);
+                await handleDockerScan(range, socket, scanOptions);
             } else {
                 if (!isNmapAvailable()) {
                     throw new Error('Nmap is not installed on the host system');
                 }
-                handleHostScan(range, socket);
+                handleHostScan(range, socket, scanOptions);
             }
         } catch (error) {
             console.error('[ERROR] startNetworkScan:', error.message);
@@ -1546,4 +1811,13 @@ app.use((err, req, res, next) => {
 // --- START SERVER ---
 server.listen(4000, '0.0.0.0', () => {
     console.log('Server running on http://0.0.0.0:4000');
+    
+    // Test Docker connection on startup
+    testDockerConnection().then(success => {
+        if (success) {
+            console.log('[STARTUP] Docker connection successful, container service available');
+        } else {
+            console.error('[STARTUP] Docker connection failed, network scan functionality may be limited');
+        }
+    });
 });

@@ -88,9 +88,11 @@ export const getMacInfo = (device) => {
         macInfo.available = true;
         macInfo.address = device.mac;
         
-        // Get vendor information if available
+        // Get vendor information if available - check all possible locations
         if (device.vendor) {
             macInfo.vendor = device.vendor;
+        } else if (device.macInfo && device.macInfo.vendor) {
+            macInfo.vendor = device.macInfo.vendor;
         }
         
         return macInfo;
@@ -128,6 +130,15 @@ export const getOSInfo = (device) => {
         type: '',
         detail: {}
     };
+    
+    // First check for osDetails from nmap
+    if (device.osDetails) {
+        osInfo.available = true;
+        osInfo.name = device.osDetails.name || 'Unknown OS';
+        osInfo.accuracy = device.osDetails.accuracy || 0;
+        osInfo.detail = { ...device.osDetails };
+        return osInfo;
+    }
     
     // Direct OS property
     if (device.os) {
@@ -197,6 +208,11 @@ export const formatScanResult = (device) => {
     
     // Add MAC information
     enhancedDevice.macInfo = getMacInfo(device);
+    
+    // Preserve osDetails from raw scan data
+    if (device.osDetails) {
+        enhancedDevice.osDetails = { ...device.osDetails };
+    }
     
     // Add OS information
     enhancedDevice.osInfo = getOSInfo(device);

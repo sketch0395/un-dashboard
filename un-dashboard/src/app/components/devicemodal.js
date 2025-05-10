@@ -10,13 +10,14 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
     const [iconAccordionOpen, setIconAccordionOpen] = useState(false);
     const [historyAccordionOpen, setHistoryAccordionOpen] = useState(false);
     const [deviceHistory, setDeviceHistory] = useState([]);
-    
-    // Enhance device with additional info if needed
+      // Enhance device with additional info if needed
     const enhancedDevice = modalDevice ? {
         ...modalDevice,
         ssh: modalDevice.ssh || getSSHStatus(modalDevice),
         macInfo: modalDevice.macInfo || getMacInfo(modalDevice),
-        osInfo: modalDevice.osInfo || getOSInfo(modalDevice)
+        osInfo: modalDevice.osInfo || getOSInfo(modalDevice),
+        // Keep original osDetails from raw scan data if available
+        osDetails: modalDevice.osDetails || null
     } : null;
     
     // Pre-defined device categories
@@ -158,11 +159,11 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                         <div>
                             {/* MAC Address Section */}
                             <div className="mb-2">
-                                <label className="block text-xs text-gray-400 mb-1 flex items-center">
+                                <label className="text-xs text-gray-400 mb-1 flex items-center">
                                     <FaAddressCard className="mr-1 text-blue-400" /> MAC Address
                                 </label>
                                 <p className="text-white bg-gray-800 px-3 py-1.5 rounded text-xs">
-                                    {enhancedDevice?.macInfo?.available ? enhancedDevice.macInfo.address : "Not available"}
+                                    {enhancedDevice?.mac || (enhancedDevice?.macInfo?.available ? enhancedDevice.macInfo.address : "Not available")}
                                 </p>
                             </div>
                             
@@ -170,17 +171,21 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                             <div className="mb-2">
                                 <label className="block text-xs text-gray-400 mb-1">Vendor</label>
                                 <p className="text-white bg-gray-800 px-3 py-1.5 rounded text-xs">
-                                    {enhancedDevice?.macInfo?.vendor || enhancedDevice?.vendor || "Unknown"}
+                                    {enhancedDevice?.vendor || enhancedDevice?.macInfo?.vendor || "Unknown"}
                                 </p>
                             </div>
-                            
-                            {/* OS Information */}
+                              {/* OS Information */}
                             <div className="mb-2">
-                                <label className="block text-xs text-gray-400 mb-1 flex items-center">
+                                <label className="text-xs text-gray-400 mb-1 flex items-center">
                                     <FaDesktop className="mr-1 text-blue-400" /> Operating System
                                 </label>
                                 <p className="text-white bg-gray-800 px-3 py-1.5 rounded text-xs">
-                                    {enhancedDevice?.osInfo?.available ? (
+                                    {enhancedDevice?.osDetails?.name ? (
+                                        <>
+                                            {enhancedDevice.osDetails.name}
+                                            {enhancedDevice.osDetails.accuracy ? ` (${enhancedDevice.osDetails.accuracy}% accuracy)` : ''}
+                                        </>
+                                    ) : enhancedDevice?.osInfo?.available ? (
                                         <>
                                             {enhancedDevice.osInfo.name} 
                                             {enhancedDevice.osInfo.accuracy ? ` (${enhancedDevice.osInfo.accuracy}% accuracy)` : ''}

@@ -186,19 +186,19 @@ const DeviceDetailsModal = ({
                                     </span>
                                 )}
                             </div>
-                        </div>
-                        
-                        {device.mac && (
+                        </div>                          {/* Enhanced MAC Address display - checks both direct property and macInfo object */}
+                          {(device.mac || (device.macInfo && device.macInfo.address)) && (
                             <div className="col-span-2 flex items-center justify-between">
                                 <div className="flex-1">MAC Address</div>
-                                <div className="text-gray-300">{device.mac}</div>
+                                <div className="text-gray-300">{device.mac || (device.macInfo && device.macInfo.address) || 'Not detected'}</div>
                             </div>
                         )}
                         
-                        {device.vendor && (
+                        {/* Enhanced Vendor display - checks both direct property and macInfo object */}
+                        {(device.vendor || (device.macInfo && device.macInfo.vendor)) && (
                             <div className="col-span-2 flex items-center justify-between">
                                 <div className="flex-1">Vendor</div>
-                                <div className="text-gray-300">{device.vendor}</div>
+                                <div className="text-gray-300">{device.vendor || (device.macInfo && device.macInfo.vendor) || 'Unknown'}</div>
                             </div>
                         )}
                         
@@ -213,6 +213,18 @@ const DeviceDetailsModal = ({
                             <div className="col-span-2 flex items-center justify-between">
                                 <div className="flex-1">Operating System</div>
                                 <div className="text-gray-300">{device.os}</div>
+                            </div>
+                        )}
+
+                        {/* Enhanced OS Information from nmap -O */}
+                        {device.osInfo && device.osInfo.length > 0 && (
+                            <div className="col-span-2 mt-2">
+                                <div className="flex-1 mb-1 font-medium">OS Fingerprint</div>
+                                <div className="bg-gray-700 p-2 rounded max-h-32 overflow-y-auto text-xs">
+                                    {device.osInfo.map((osDetail, index) => (
+                                        <div key={index} className="text-gray-300 mb-1">{osDetail}</div>
+                                    ))}
+                                </div>
                             </div>
                         )}
                         

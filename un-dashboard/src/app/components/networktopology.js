@@ -9,6 +9,34 @@ import { createRoot } from "react-dom/client";
 import { iconMap } from './icons/iconMapping'; // Import the iconMap directly
 import { getMacInfo, getOSInfo } from "../utils/sshScanUtils"; // Import utility functions for MAC and OS info
 
+// This is a utility function to process device data to ensure MAC and vendor info is available
+const processDeviceData = (device) => {
+    if (!device) return device;
+    
+    const processedDevice = { ...device };
+    
+    // If macInfo is not present but mac address is available, create a macInfo object
+    if (!processedDevice.macInfo && processedDevice.mac) {
+        processedDevice.macInfo = {
+            available: true,
+            address: processedDevice.mac,
+            vendor: processedDevice.vendor || ''
+        };
+    }
+    
+    // If vendor is not available directly but is in macInfo, add it to the device directly
+    if (!processedDevice.vendor && processedDevice.macInfo && processedDevice.macInfo.vendor) {
+        processedDevice.vendor = processedDevice.macInfo.vendor;
+    }
+    
+    // Ensure MAC address is available in direct property for backward compatibility
+    if (!processedDevice.mac && processedDevice.macInfo && processedDevice.macInfo.address) {
+        processedDevice.mac = processedDevice.macInfo.address;
+    }
+    
+    return processedDevice;
+};
+
 // Wrap component with forwardRef to expose refresh method
 const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHModal, setModalDevice }, ref) => {
     const svgRef = useRef();
@@ -695,17 +723,19 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                         // Prevent default context menu
                         event.preventDefault();
                         event.stopPropagation();
-                        
-                        console.log("Right click on device:", d.data.ip || d.data.name);
+                          console.log("Right click on device:", d.data.ip || d.data.name);
                         
                         // Open the device modal with this device data
                         if (setModalDevice && typeof setModalDevice === 'function') {
                             // Merge any existing custom properties from customNames
                             const customProps = customNames?.[d.data.ip] || {};
                             
+                            // Process the device to ensure MAC and vendor info is available
+                            const deviceWithMacInfo = processDeviceData(d.data);
+                            
                             // Set the modal device with merged data
                             setModalDevice({
-                                ...d.data,
+                                ...deviceWithMacInfo,
                                 ...customProps
                             });
                         }
@@ -1637,23 +1667,43 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
             }
             return port; // Return original if no match
         }).join(', ');
-    };
-
-    // Function to enhance device with additional information for context menu and display
+    };    // Function to enhance device with additional information for context menu and display
     const enhanceDeviceInfo = (device) => {
         if (!device) return device;
         
+        // Make a copy of the device to avoid modifying the original
+        const enhancedDevice = { ...device };
+        
         // Add MAC address information
-        if (!device.macInfo) {
-            device.macInfo = getMacInfo(device);
+        if (!enhancedDevice.macInfo) {
+            enhancedDevice.macInfo = getMacInfo(enhancedDevice);
+        }
+        
+        // Ensure vendor information is preserved
+        if (!enhancedDevice.vendor && enhancedDevice.macInfo && enhancedDevice.macInfo.vendor) {
+            enhancedDevice.vendor = enhancedDevice.macInfo.vendor;
+        }
+        
+        // Ensure MAC address is available in direct property for backward compatibility
+        if (!enhancedDevice.mac && enhancedDevice.macInfo && enhancedDevice.macInfo.address) {
+            enhancedDevice.mac = enhancedDevice.macInfo.address;
+        }
+        
+        // If we have mac but no macInfo, create it
+        if (enhancedDevice.mac && !enhancedDevice.macInfo) {
+            enhancedDevice.macInfo = {
+                available: true,
+                address: enhancedDevice.mac,
+                vendor: enhancedDevice.vendor || ''
+            };
         }
         
         // Add OS information
-        if (!device.osInfo) {
-            device.osInfo = getOSInfo(device);
+        if (!enhancedDevice.osInfo) {
+            enhancedDevice.osInfo = getOSInfo(enhancedDevice);
         }
         
-        return device;
+        return enhancedDevice;
     };
 
     return (

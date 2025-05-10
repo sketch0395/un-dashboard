@@ -38,7 +38,8 @@ async function runNmapSshScan() {
         console.log(`${colors.yellow}Creating container for SSH scan...${colors.reset}`);
         const container = await docker.createContainer({
             Image: 'jonlabelle/network-tools',
-            // Use a special set of flags optimized for SSH detection:
+            // FAST SCAN: Specialized and optimized scan just for SSH detection
+            // This scan is very fast because it only targets SSH-related ports and behaviors
             // -Pn: Skip host discovery
             // -sS: SYN scan (faster and less intrusive)
             // -sV: Version detection (helps identify SSH servers)
