@@ -2,6 +2,15 @@
 
 UN-Dashboard is a comprehensive network monitoring and Docker management system that provides real-time visibility into your network devices and Docker containers. It enables network scanning, performance monitoring, Docker container management, and secure SSH connections from a unified web interface.
 
+## Recent Updates
+
+**May 2025**
+- Enhanced network topology visualization with gateway-switch relationships
+- Added support for designating a main gateway with visual indicators
+- Improved connection visualization between network devices
+- Added tooltips and visual indicators for device relationships
+- Updated hierarchical view to properly display the network hierarchy
+
 ## Features
 
 ### Network Discovery & Visualization
@@ -9,6 +18,8 @@ UN-Dashboard is a comprehensive network monitoring and Docker management system 
 - Interactive network topology visualization with multiple view options (circular, hierarchical, timeline)
 - Device grouping by vendor, category, or scan source
 - SSH connectivity to network devices directly from the interface
+- Gateway and switch relationship visualization with parent-child connections
+- Main gateway designation with visual indicators across all topology views
 
 ### Network Performance Monitoring
 - Real-time latency, bandwidth, and uptime monitoring
@@ -126,6 +137,9 @@ DOCKER_HOST=tcp://<your-server-ip>:2375 docker ps
    - View discovered devices in topology view
    - Click on devices for detailed information
    - Connect to SSH-enabled devices directly
+   - Right-click on devices to edit properties or set network roles (gateway, switch)
+   - Designate a main gateway for hierarchical network visualization
+   - View gateway-switch connections with visual indicators
 
 3. **Performance Monitoring**:
    - Select devices to monitor
@@ -157,6 +171,30 @@ UN-Dashboard uses a client-server architecture:
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+## Network Topology Visualization
+
+UN-Dashboard provides multiple ways to visualize your network:
+
+### Visualization Types
+- **Circular View**: Displays devices in a radial layout, grouped by category, vendor, or scan source
+- **Hierarchical View**: Shows network relationships in a tree structure with the main gateway as the root
+- **Geographic View**: Places devices on a world map based on location data
+- **Timeline View**: Visualizes network changes over time, showing when devices appear or disappear
+
+### Network Role Features
+- **Device Roles**: Designate devices as gateways, switches, or regular devices
+- **Main Gateway**: Set a primary gateway that serves as the root node in the hierarchical view
+- **Connection Visualization**: 
+  - Switches connected to gateways are displayed with green borders
+  - Main gateway is highlighted with gold borders and a star icon
+  - Parent-child relationships are visually indicated
+
+### Interactive Elements
+- **Context Menu**: Right-click on devices to view detailed information or edit properties
+- **Tooltips**: Hover over devices to see connection relationships
+- **Visual Legend**: Legend shows all device types and relationship indicators
+- **Customization**: Edit device names, categories, colors, and icons
 
 ## License
 

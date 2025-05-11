@@ -1,5 +1,15 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
+## Project Overview
+
+UN-Dashboard is a comprehensive network monitoring and Docker management system with advanced network topology visualization features:
+
+- Interactive network maps with circular, hierarchical, and geographic views
+- Device categorization and custom naming
+- Gateway and switch role designation with visual relationships
+- Main gateway designation with visual indicators
+- Real-time SSH connectivity from the browser
+
 ## Getting Started
 
 First, run the development server:

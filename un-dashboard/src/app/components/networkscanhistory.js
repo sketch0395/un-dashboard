@@ -52,9 +52,7 @@ export const ScanHistoryProvider = ({ children }) => {
     const clearHistory = () => {
         setScanHistory([]);
         localStorage.removeItem("scanHistory");
-    };
-
-    // Add a function to update device data in scan history
+    };    // Add a function to update device data in scan history
     const updateDeviceInHistory = (deviceIP, updatedDeviceData) => {
         setScanHistory((prev) => {
             const updated = prev.map(entry => {
@@ -76,7 +74,10 @@ export const ScanHistoryProvider = ({ children }) => {
                                     color: updatedDeviceData.color,
                                     icon: updatedDeviceData.icon,
                                     category: updatedDeviceData.category,
-                                    notes: updatedDeviceData.notes
+                                    notes: updatedDeviceData.notes,
+                                    networkRole: updatedDeviceData.networkRole,
+                                    portCount: updatedDeviceData.portCount,
+                                    parentSwitch: updatedDeviceData.parentSwitch
                                 };
                             }
                             return device;
@@ -373,15 +374,22 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             setSSHModalVisible(false);
             setShowTerminal(true);
         }
-    };
-
-    const getDeviceChanges = (oldDevice, newDevice) => {
+    };    const getDeviceChanges = (oldDevice, newDevice) => {
         const changes = {};
         if (oldDevice.name !== newDevice.name) changes.name = newDevice.name;
         if (oldDevice.color !== newDevice.color) changes.color = newDevice.color;
         if (oldDevice.icon !== newDevice.icon) changes.icon = newDevice.icon;
         if (oldDevice.category !== newDevice.category) changes.category = newDevice.category;
         if (oldDevice.notes !== newDevice.notes) changes.notes = newDevice.notes;
+        if (oldDevice.networkRole !== newDevice.networkRole) {
+            changes.networkRole = newDevice.networkRole || 'Regular Device';
+        }
+        if (oldDevice.portCount !== newDevice.portCount) {
+            changes.portCount = newDevice.portCount ? `${newDevice.portCount} ports` : 'Not specified';
+        }
+        if (oldDevice.parentSwitch !== newDevice.parentSwitch) {
+            changes.parentSwitch = newDevice.parentSwitch || 'Not connected';
+        }
         return changes;
     };
 
@@ -400,8 +408,7 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             setSSHModalVisible(true);
             return; // Exit early, no need to save other changes
         }
-        
-        // First, update our persistent custom names in localStorage
+          // First, update our persistent custom names in localStorage
         const updatedCustomNames = {
             ...persistentCustomNames,
             [updatedDevice.ip]: {
@@ -411,6 +418,10 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                 // Add support for new device properties
                 category: updatedDevice.category || '',
                 notes: updatedDevice.notes || '',
+                // Add network topology properties
+                networkRole: updatedDevice.networkRole,
+                portCount: updatedDevice.portCount,
+                parentSwitch: updatedDevice.parentSwitch,
                 // Track change history with timestamp
                 history: [
                     ...(persistentCustomNames[updatedDevice.ip]?.history || []),
@@ -427,14 +438,16 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         
         // Update localStorage directly to ensure it persists
         localStorage.setItem("customDeviceProperties", JSON.stringify(updatedCustomNames));
-        
-        // Update the device in scan history using the context function
+          // Update the device in scan history using the context function
         updateDeviceInHistory(updatedDevice.ip, {
             name: updatedDevice.name,
             color: updatedDevice.color,
             icon: updatedDevice.icon,
             category: updatedDevice.category,
-            notes: updatedDevice.notes
+            notes: updatedDevice.notes,
+            networkRole: updatedDevice.networkRole,
+            portCount: updatedDevice.portCount,
+            parentSwitch: updatedDevice.parentSwitch
         });
         
         // Re-visualize current topology with updated device info

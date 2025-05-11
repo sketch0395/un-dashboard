@@ -35,10 +35,9 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
         "Camera",
         "Other"
     ];
-    
-    useEffect(() => {
+      useEffect(() => {
         // Load device history from localStorage when modal opens with a device
-        if (enhancedDevice?.ip) {
+        if (enhancedDevice?.ip && typeof window !== 'undefined') {
             const savedCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
             const deviceData = savedCustomProperties[enhancedDevice.ip] || {};
             setDeviceHistory(deviceData.history || []);
@@ -197,6 +196,147 @@ const DeviceModal = ({ modalDevice, setModalDevice, onSave }) => {
                         </div>
                     </div>
                 </div>
+                {/* Network Role */}
+                <div className="mb-4">
+                    <label className="block text-sm text-gray-300 mb-1">Network Role</label>
+                    <div className="flex gap-2">                        <button
+                            className={`px-3 py-2 rounded text-xs flex-1 ${enhancedDevice?.networkRole === 'gateway' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}
+                            onClick={() =>
+                                setModalDevice((prev) => ({ ...prev, networkRole: prev.networkRole === 'gateway' ? null : 'gateway' }))
+                            }
+                        >
+                            Gateway
+                        </button>
+                        <button
+                            className={`px-3 py-2 rounded text-xs flex-1 ${enhancedDevice?.networkRole === 'switch' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}
+                            onClick={() =>
+                                setModalDevice((prev) => ({ ...prev, networkRole: prev.networkRole === 'switch' ? null : 'switch' }))
+                            }
+                        >
+                            Main Switch
+                        </button>
+                        <button
+                            className={`px-3 py-2 rounded text-xs flex-1 ${enhancedDevice?.networkRole === null || enhancedDevice?.networkRole === undefined ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}
+                            onClick={() =>
+                                setModalDevice((prev) => ({ ...prev, networkRole: null }))
+                            }
+                        >
+                            Regular Device
+                        </button>
+                    </div>                    <p className="text-xs text-gray-400 mt-1">
+                        You can set multiple Gateway devices (one per subnet). Each Gateway can have Switches connected to it, 
+                        and regular devices can be connected to Switches. Switches connected to Gateways will have a green border.
+                    </p>
+                </div>
+                
+                {/* Port Configuration for Gateway or Switch */}
+                {(enhancedDevice?.networkRole === 'gateway' || enhancedDevice?.networkRole === 'switch') && (
+                    <div className="mb-4">
+                        <label className="block text-sm text-gray-300 mb-1">Port Configuration</label>
+                        <div className="flex gap-2">
+                            <button
+                                className={`px-3 py-2 rounded text-xs flex-1 ${enhancedDevice?.portCount === 12 ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}
+                                onClick={() =>
+                                    setModalDevice((prev) => ({ ...prev, portCount: prev.portCount === 12 ? null : 12 }))
+                                }
+                            >
+                                12 Ports
+                            </button>
+                            <button
+                                className={`px-3 py-2 rounded text-xs flex-1 ${enhancedDevice?.portCount === 24 ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}
+                                onClick={() =>
+                                    setModalDevice((prev) => ({ ...prev, portCount: prev.portCount === 24 ? null : 24 }))
+                                }
+                            >
+                                24 Ports
+                            </button>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Main Gateway Setting - Only visible for gateway devices */}
+                {enhancedDevice?.networkRole === 'gateway' && (
+                    <div className="mb-4">
+                        <label className="flex items-center space-x-2">
+                            <input
+                                type="checkbox"
+                                checked={enhancedDevice?.isMainGateway || false}
+                                onChange={(e) =>
+                                    setModalDevice((prev) => ({ ...prev, isMainGateway: e.target.checked }))
+                                }
+                                className="w-4 h-4 accent-blue-600 bg-gray-700 rounded"
+                            />
+                            <span className="text-sm text-gray-300">Set as Main Gateway</span>
+                        </label>
+                        <p className="text-xs text-gray-400 mt-1">
+                            The main gateway will be used as the root node in the hierarchical network view.
+                        </p>
+                    </div>
+                )}
+                
+                {/* Parent Connection for Regular Devices or Switches */}
+                {(enhancedDevice?.networkRole === null || enhancedDevice?.networkRole === undefined || enhancedDevice?.networkRole === 'switch') && (
+                    <div className="mb-4">
+                        <label className="block text-sm text-gray-300 mb-1">
+                            {enhancedDevice?.networkRole === 'switch' ? 'Connected to Gateway' : 'Connected to Switch'}
+                        </label>
+                        <select
+                            value={enhancedDevice?.networkRole === 'switch' ? (enhancedDevice?.parentGateway || "") : (enhancedDevice?.parentSwitch || "")}
+                            onChange={(e) => {
+                                if (enhancedDevice?.networkRole === 'switch') {
+                                    // Detect circular dependency - check if the gateway is connected to this switch
+                                    const selectedGateway = e.target.value;
+                                    if (selectedGateway) {
+                                        const customProps = typeof window !== 'undefined' ? 
+                                            JSON.parse(localStorage.getItem("customDeviceProperties") || "{}") : {};
+                                        
+                                        // Check if the gateway is connected to any switch
+                                        if (customProps[selectedGateway]?.parentSwitch === enhancedDevice.ip) {
+                                            alert("Circular dependency detected! This gateway is already connected to this switch.");
+                                            return;
+                                        }
+                                    }
+                                    setModalDevice((prev) => ({ ...prev, parentGateway: e.target.value }));
+                                } else {
+                                    setModalDevice((prev) => ({ ...prev, parentSwitch: e.target.value }));
+                                }
+                            }}
+                            className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                        >
+                            <option value="">
+                                {enhancedDevice?.networkRole === 'switch' ? 'Not connected to a gateway' : 'Not connected to a switch'}
+                            </option>
+                            {typeof window !== 'undefined' && 
+                             Object.entries(
+                                localStorage.getItem("customDeviceProperties") 
+                                ? JSON.parse(localStorage.getItem("customDeviceProperties")) 
+                                : {}
+                             )
+                                .filter(([ip, props]) => 
+                                    enhancedDevice?.networkRole === 'switch' 
+                                        ? props.networkRole === 'gateway' && ip !== enhancedDevice?.ip
+                                        : props.networkRole === 'switch' && ip !== enhancedDevice?.ip
+                                )
+                                .map(([ip, props]) => (
+                                    <option key={ip} value={ip}>
+                                        {props.name || ip} ({props.networkRole === 'gateway' ? 'Gateway' : 'Switch'})
+                                    </option>
+                                ))
+                            }
+                        </select>
+                        {enhancedDevice?.networkRole === 'switch' && enhancedDevice?.parentGateway && (
+                            <p className="text-xs text-green-500 mt-1">
+                                This switch is connected to gateway: {
+                                    typeof window !== 'undefined' && 
+                                    (() => {
+                                        const props = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                                        return props[enhancedDevice.parentGateway]?.name || enhancedDevice.parentGateway;
+                                    })()
+                                }
+                            </p>
+                        )}
+                    </div>
+                )}
                 
                 {/* Notes Field */}
                 <div className="mb-4">

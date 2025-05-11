@@ -71,9 +71,7 @@ export default function NetworkDashboard() {
             const devicesList = Object.values(devices).flat();
             setFlattenedDevices(devicesList);
         }
-    }, [devices]);
-
-    // Helper function to identify what's changed in the device
+    }, [devices]);    // Helper function to identify what's changed in the device
     const getDeviceChanges = (oldDevice, newDevice) => {
         const changes = {};
         if (oldDevice.name !== newDevice.name) changes.name = newDevice.name;
@@ -81,6 +79,15 @@ export default function NetworkDashboard() {
         if (oldDevice.icon !== newDevice.icon) changes.icon = newDevice.icon;
         if (oldDevice.category !== newDevice.category) changes.category = newDevice.category;
         if (oldDevice.notes !== newDevice.notes) changes.notes = newDevice.notes;
+        if (oldDevice.networkRole !== newDevice.networkRole) {
+            changes.networkRole = newDevice.networkRole || 'Regular Device';
+        }
+        if (oldDevice.portCount !== newDevice.portCount) {
+            changes.portCount = newDevice.portCount ? `${newDevice.portCount} ports` : 'Not specified';
+        }
+        if (oldDevice.parentSwitch !== newDevice.parentSwitch) {
+            changes.parentSwitch = newDevice.parentSwitch || 'Not connected';
+        }
         return changes;
     };
 
@@ -101,6 +108,16 @@ export default function NetworkDashboard() {
             const savedCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
             const oldDeviceData = savedCustomProperties[updatedDevice.ip] || {};
             
+            // Handle main gateway selection - ensure only one gateway is marked as main
+            if (updatedDevice.networkRole === 'gateway' && updatedDevice.isMainGateway) {
+                // If this gateway is being set as the main one, unset any other main gateways
+                Object.entries(savedCustomProperties).forEach(([ip, props]) => {
+                    if (ip !== updatedDevice.ip && props.networkRole === 'gateway' && props.isMainGateway) {
+                        savedCustomProperties[ip] = { ...props, isMainGateway: false };
+                    }
+                });
+            }
+            
             // First update the custom names tracking
             const newCustomNames = { ...customNames };
             newCustomNames[updatedDevice.ip] = {
@@ -110,6 +127,15 @@ export default function NetworkDashboard() {
                 color: updatedDevice.color,
                 icon: updatedDevice.icon,
                 notes: updatedDevice.notes,
+                networkRole: updatedDevice.networkRole,
+                // Add port configuration if specified
+                portCount: updatedDevice.portCount,
+                // Add parent switch if specified
+                parentSwitch: updatedDevice.parentSwitch,
+                // Add parent gateway for switches
+                parentGateway: updatedDevice.parentGateway,
+                // Add main gateway flag
+                isMainGateway: updatedDevice.isMainGateway,
                 // Track change history with timestamp
                 history: [
                     ...(oldDeviceData.history || []),
@@ -119,6 +145,14 @@ export default function NetworkDashboard() {
                     }
                 ].slice(-10) // Keep last 10 history entries
             };
+            
+            // Update customNames with the updated data for all devices
+            Object.entries(savedCustomProperties).forEach(([ip, props]) => {
+                if (ip !== updatedDevice.ip) {
+                    newCustomNames[ip] = props;
+                }
+            });
+            
             setCustomNames(newCustomNames);
             
             // Update localStorage directly to ensure persistence between components
