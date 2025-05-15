@@ -2,6 +2,43 @@ import React, { memo, useEffect, useState, useMemo } from "react";
 import { FaStickyNote, FaTag, FaNetworkWired, FaDesktop, FaAddressCard } from "react-icons/fa";
 import SSHBadge from "./SSHBadge";
 import { countSSHDevices, getSSHStatus, getMacInfo, getOSInfo } from "../utils/sshScanUtils";
+import { getDeviceHierarchy } from "../utils/deviceManagementUtils";
+
+const getHierarchyInfo = (device) => {
+    const hierarchy = getDeviceHierarchy(device.ip);
+    return hierarchy;
+};
+
+const HierarchyDisplay = ({ device }) => {
+    const hierarchy = getHierarchyInfo(device);
+    if (!hierarchy.parents.length && !hierarchy.children.length) return null;
+
+    return (
+        <div className="mt-2 text-xs text-gray-400">
+            {hierarchy.parents.length > 0 && (
+                <div className="flex items-center gap-1">
+                    <span>Connected to:</span>
+                    {hierarchy.parents.map((parent, i) => (
+                        <React.Fragment key={parent.ip}>
+                            {i > 0 && <span>→</span>}
+                            <span className="bg-gray-700 px-1.5 py-0.5 rounded">
+                                {parent.name} ({parent.role})
+                            </span>
+                        </React.Fragment>
+                    ))}
+                </div>
+            )}
+            {hierarchy.children.length > 0 && (
+                <div className="flex items-center gap-1 mt-1">
+                    <span>{hierarchy.children.length > 1 ? 'Devices:' : 'Device:'}</span>
+                    <span className="bg-gray-700 px-1.5 py-0.5 rounded">
+                        {hierarchy.children.length} connected
+                    </span>
+                </div>
+            )}
+        </div>
+    );
+};
 
 const DeviceList = ({ devices, openModal, isSSHAvailable, openSSHModal }) => {
     // Create a map of colors for categories and vendors
@@ -13,7 +50,7 @@ const DeviceList = ({ devices, openModal, isSSHAvailable, openSSHModal }) => {
     // Use useMemo to process devices only when the devices array changes
     const processedDevices = useMemo(() => {
         return devices.map(device => {
-            // Create a new object to avoid mutating the original
+            const hierarchy = getDeviceHierarchy(device.ip);
             return {
                 ...device,
                 // Add SSH status info if not present
@@ -21,7 +58,9 @@ const DeviceList = ({ devices, openModal, isSSHAvailable, openSSHModal }) => {
                 // Add MAC info if not present
                 macInfo: device.macInfo || getMacInfo(device),
                 // Add OS info if not present
-                osInfo: device.osInfo || getOSInfo(device)
+                osInfo: device.osInfo || getOSInfo(device),
+                // Add hierarchy information
+                hierarchy
             };
         });
     }, [devices]); // Only recompute when devices change
@@ -107,10 +146,9 @@ const DeviceList = ({ devices, openModal, isSSHAvailable, openSSHModal }) => {
                                 onClick={openSSHModal} 
                                 size="md"
                             />
-                            
-                            {/* Notes indicator */}
-                            {device.notes && device.notes.trim() !== "" && (
-                                <span className="text-amber-400 bg-gray-700 p-1 rounded" title={device.notes}>
+                              {/* Notes indicator */}
+                            {device.notes && Array.isArray(device.notes) && device.notes.length > 0 && (
+                                <span className="text-amber-400 bg-gray-700 p-1 rounded" title={device.notes.map(note => note.text).join('\n')}>
                                     <FaStickyNote size={12} />
                                 </span>
                             )}
@@ -185,6 +223,47 @@ const DeviceList = ({ devices, openModal, isSSHAvailable, openSSHModal }) => {
                             </div>
                         )}
                     </div>
+
+                    {/* Display hierarchy information */}
+                    <HierarchyDisplay device={device} />
+
+                    {/* Hierarchy Display */}
+                    {(device.hierarchy.parents.length > 0 || device.hierarchy.children.length > 0) && (
+                        <div className="mt-2 text-xs text-gray-400">
+                            {device.hierarchy.parents.length > 0 && (
+                                <div className="flex items-center gap-1">
+                                    <span>Connected to:</span>
+                                    {device.hierarchy.parents.map((parent, i) => (
+                                        <React.Fragment key={parent.ip}>
+                                            {i > 0 && <span>→</span>}
+                                            <span className="bg-gray-700 px-1.5 py-0.5 rounded">
+                                                {parent.name} ({parent.role})
+                                            </span>
+                                        </React.Fragment>
+                                    ))}
+                                </div>
+                            )}                            {device.hierarchy.children.length > 0 && (
+                                <div className="flex items-center gap-1 mt-1">
+                                    <span>{device.hierarchy.children.length > 1 ? 'Devices:' : 'Device:'}</span>
+                                    <span className="bg-gray-700 px-1.5 py-0.5 rounded">
+                                        {device.hierarchy.children.length} connected
+                                    </span>
+                                </div>
+                            )}
+                            {device.hierarchy.adjacentGateways?.length > 0 && (
+                                <div className="flex items-center gap-1 mt-1">
+                                    <span>Adjacent Gateways:</span>
+                                    <div className="flex gap-1 flex-wrap">
+                                        {device.hierarchy.adjacentGateways.map((gateway) => (
+                                            <span key={gateway.ip} className="bg-blue-800 text-blue-200 px-1.5 py-0.5 rounded">
+                                                {gateway.name}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             ))}
         </div>

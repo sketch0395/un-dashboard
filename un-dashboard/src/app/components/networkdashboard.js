@@ -3,7 +3,7 @@
 import { useState, lazy, Suspense, useEffect, useRef } from "react";
 import NetworkScanControl from "./networkscancontrol";
 import TopologyMap from "./networktopology";
-import DeviceModal from "./devicemodal";
+import UnifiedDeviceModal from "./UnifiedDeviceModal";
 import { FaChevronLeft, FaChevronRight, FaCog } from "react-icons/fa";
 import { format } from "date-fns";
 
@@ -107,15 +107,10 @@ export default function NetworkDashboard() {
             // Get existing custom properties from localStorage
             const savedCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
             const oldDeviceData = savedCustomProperties[updatedDevice.ip] || {};
-            
-            // Handle main gateway selection - ensure only one gateway is marked as main
+              // Handle main gateway selection - multiple main gateways are now supported
             if (updatedDevice.networkRole === 'gateway' && updatedDevice.isMainGateway) {
-                // If this gateway is being set as the main one, unset any other main gateways
-                Object.entries(savedCustomProperties).forEach(([ip, props]) => {
-                    if (ip !== updatedDevice.ip && props.networkRole === 'gateway' && props.isMainGateway) {
-                        savedCustomProperties[ip] = { ...props, isMainGateway: false };
-                    }
-                });
+                // No need to unset other main gateways as multiple are now supported
+                console.log(`Setting ${updatedDevice.name} as a main gateway`);
             }
             
             // First update the custom names tracking
@@ -290,13 +285,15 @@ export default function NetworkDashboard() {
                         />
                     </div>
                 </div>
-            </div>
-
-            {/* Device Modal */}
-            <DeviceModal
+            </div>            {/* Device Modal */}
+            <UnifiedDeviceModal
                 modalDevice={modalDevice}
                 setModalDevice={setModalDevice}
                 onSave={handleSaveDevice}
+                onStartSSH={(device) => {
+                    setSSHTarget(device);
+                    setSSHModalVisible(true);
+                }}
             />
             
             {/* SSH Modal */}

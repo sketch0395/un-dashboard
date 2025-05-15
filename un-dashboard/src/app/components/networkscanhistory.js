@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 import { createContext, useContext } from "react";
 import { FixedSizeList as List } from "react-window";
 
-const DeviceModal = lazy(() => import("./devicemodal"));
+const UnifiedDeviceModal = lazy(() => import("./UnifiedDeviceModal"));
 const SSHTerminal = lazy(() => import("./sshterminal"));
 const MemoizedDeviceList = lazy(() => import("./MemoizedDeviceList"));
 
@@ -653,13 +653,15 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                 >
                     Add Selected to Topology as Zones
                 </button>
-            )}
-
-            <Suspense fallback={<div>Loading modal...</div>}>
-                <DeviceModal
+            )}            <Suspense fallback={<div>Loading modal...</div>}>
+                <UnifiedDeviceModal
                     modalDevice={modalDevice}
                     setModalDevice={setModalDevice}
                     onSave={saveDeviceChanges}
+                    onStartSSH={(device) => {
+                        setSSHTarget(device);
+                        setSSHModalVisible(true);
+                    }}
                 />
             </Suspense>
 

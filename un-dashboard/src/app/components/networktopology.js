@@ -8,6 +8,7 @@ import { MdTimeline } from "react-icons/md";
 import { createRoot } from "react-dom/client";
 import { iconMap } from './icons/iconMapping'; // Import the iconMap directly
 import { getMacInfo, getOSInfo } from "../utils/sshScanUtils"; // Import utility functions for MAC and OS info
+import { determineDeviceRoles } from "../utils/deviceManagementUtils";
 
 // This is a utility function to process device data to ensure MAC and vendor info is available
 const processDeviceData = (device) => {
@@ -36,6 +37,8 @@ const processDeviceData = (device) => {
     
     return processedDevice;
 };
+
+// determineDeviceRoles has been moved to deviceManagementUtils.js
 
 // Wrap component with forwardRef to expose refresh method
 const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHModal, setModalDevice }, ref) => {
@@ -75,6 +78,190 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
             setRefreshTrigger(prev => prev + 1);
         }
     }));
+
+    // Add tooltip component at the component level
+    const Tooltip = ({ visible, x, y, content }) => {
+        if (!visible) return null;
+        
+        return (
+            <div
+                style={{
+                    position: 'absolute',
+                    left: x,
+                    top: y,
+                    background: 'rgba(55, 65, 81, 0.9)',
+                    color: 'white',
+                    padding: '8px 12px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    zIndex: 1000,
+                    pointerEvents: 'none',
+                    maxWidth: '300px',
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                }}
+            >
+                {content}
+            </div>
+        );
+    };
+
+    // State for tooltip
+    const [tooltip, setTooltip] = useState({
+        visible: false,
+        x: 0,
+        y: 0,
+        content: ''
+    });
+
+    // Function to show tooltip
+    const showTooltip = (event, content) => {
+        setTooltip({
+            visible: true,
+            x: event.pageX + 10,
+            y: event.pageY - 10,
+            content
+        });
+    };
+
+    // Function to hide tooltip
+    const hideTooltip = () => {
+        setTooltip({ ...tooltip, visible: false });
+    };
+
+    // Function to get status based on connection data
+    const getConnectionStatus = (connection) => {
+        if (!connection) return 'unknown';
+        
+        // Determine status based on connection properties
+        if (connection.health >= 90) return 'active';
+        if (connection.health >= 50) return 'degraded';
+        return 'inactive';
+    };
+
+    // Function to get connection information
+    const getConnectionInfo = (device) => {
+        // If there's no connection info, check port status
+        if (!device.ports || !Array.isArray(device.ports)) {
+            return 'No connection information available';
+        }
+
+        const openPorts = device.ports.filter(port => port.includes('open'));
+        const closedPorts = device.ports.filter(port => port.includes('closed'));
+        const filteredPorts = device.ports.filter(port => port.includes('filtered'));
+
+        return `
+            Connection Status:
+            ${openPorts.length} Open Ports
+            ${closedPorts.length} Closed Ports
+            ${filteredPorts.length} Filtered Ports
+            ${formatPorts(device.ports)}
+        `;
+    };    // Enhanced function to get link style with transitions
+    const getLinkStyle = (connection) => {
+        // For hierarchical view links
+        if (connection.source && connection.target) {
+            const isMainGateway = connection.target.data?.isMainGateway;
+            const isGatewayToSwitch = 
+                connection.source.data?.type === "gateway" && 
+                connection.target.data?.type === "switch";
+            const isSwitchToDevice = 
+                connection.source.data?.type === "switch" && 
+                connection.target.data?.type === "device";
+            
+            if (isMainGateway) {
+                return {
+                    stroke: '#f59e0b',  // Gold color for main gateway connections
+                    strokeWidth: 2,
+                    strokeOpacity: 0.8,
+                    transition: 'all 0.3s ease-in-out'
+                };
+            } else if (isGatewayToSwitch) {
+                return {
+                    stroke: '#10b981',  // Green for gateway-switch connections
+                    strokeWidth: 2,
+                    strokeOpacity: 0.7,
+                    transition: 'all 0.3s ease-in-out'
+                };
+            } else if (isSwitchToDevice) {
+                return {
+                    stroke: '#6366f1',  // Purple for switch-device connections
+                    strokeWidth: 1.5,
+                    strokeOpacity: 0.6,
+                    transition: 'all 0.3s ease-in-out'
+                };
+            }
+        }
+
+        // For regular connections
+        const baseStyle = {
+            stroke: '#999',
+            strokeWidth: 2,
+            strokeOpacity: 0.6,
+            transition: 'all 0.3s ease-in-out'
+        };
+
+        const status = getConnectionStatus(connection);
+
+        switch (status) {
+            case 'active':
+                return {
+                    ...baseStyle,
+                    stroke: '#4CAF50',
+                    strokeWidth: 3,
+                    strokeOpacity: 0.8
+                };
+            case 'inactive':
+                return {
+                    ...baseStyle,
+                    stroke: '#f44336',
+                    strokeOpacity: 0.4,
+                    strokeDasharray: '5,5'
+                };
+            case 'degraded':
+                return {
+                    ...baseStyle,
+                    stroke: '#ff9800',
+                    strokeWidth: 2.5,
+                    strokeDasharray: '3,3'
+                };
+            default:
+                return baseStyle;
+        }
+    };
+    
+    // Add a function to determine device status
+    const getDeviceStatus = (device) => {
+        if (!device) return 'unknown';
+        
+        // Check if device has active ports
+        const hasActivePorts = device.ports?.some(port => port.includes('open'));
+        // Check if device has recent activity
+        const hasRecentActivity = device.lastSeen && (Date.now() - new Date(device.lastSeen).getTime() < 24 * 60 * 60 * 1000);
+        
+        if (hasActivePorts && hasRecentActivity) return 'active';
+        if (hasActivePorts || hasRecentActivity) return 'degraded';
+        return 'inactive';
+    };
+
+    // Function to get device information for tooltips
+    const getDeviceInfo = (device) => {
+        if (!device) return '';
+        
+        const enhancedDevice = processDeviceData(device);
+        const status = getDeviceStatus(device);
+        const macInfo = getMacInfo(device);
+        const osInfo = getOSInfo(device);
+        
+        return `
+            Device: ${customNames?.[device.ip]?.name || device.ip}
+            Status: ${status.charAt(0).toUpperCase() + status.slice(1)}
+            IP: ${device.ip || 'Unknown'}
+            MAC: ${macInfo?.address || 'Unknown'}
+            Vendor: ${enhancedDevice.vendor || 'Unknown'}
+            OS: ${osInfo || 'Unknown'}
+            ${getConnectionInfo(device)}
+        `;
+    };
 
     // Handle container resize
     useLayoutEffect(() => {
@@ -427,11 +614,11 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                     const deviceAngle = (2 * Math.PI * deviceIndex) / devices.length;
                     const x = groupCenterX + groupInnerRadius * Math.cos(deviceAngle);
                     const y = groupCenterY + groupInnerRadius * Math.sin(deviceAngle);
-                    
-                    // Add node to the list
+                      // Add node to the list
                     nodes.push({
                         ...device,
                         id: device.ip || `device-${groupIndex}-${deviceIndex}`,
+                        name: (device.ip && customNames?.[device.ip]?.name) || device.name || device.ip,
                         x,
                         y,
                         group: groupKey,
@@ -490,10 +677,10 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                     groupKey = device.vendor.toLowerCase();
                     groupColor = newGroupColors[groupKey];
                 }
-                
-                return {
+                  return {
                     ...device,
                     id: device.ip || `device-${index}`,
+                    name: (device.ip && customNames?.[device.ip]?.name) || device.name || device.ip,
                     x: width / 2 + radius * Math.cos(angle),
                     y: height / 2 + radius * Math.sin(angle),
                     group: groupKey,
@@ -517,10 +704,11 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                     .text(`${selectedGroup} (${nodes.length} ${nodes.length === 1 ? 'device' : 'devices'})`);
             }
         }
-        
-        // Draw device nodes
-        renderDeviceNodes(zoomLayer, nodes);    };
-    
+            
+        // Draw device nodes, passing the node data that already includes device role information
+        renderDeviceNodes(zoomLayer, nodes);
+    }
+
     // Render hierarchical tree visualization
     const renderHierarchicalView = (svg, zoomLayer, filteredDevices, width, height) => {
         // Title at the top
@@ -550,833 +738,605 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
         
         // When using subnet grouping, we create a different hierarchical structure
         const useSubnetGrouping = Object.keys(subnetGroups).length > 0;
-          // Find any devices that have been designated with a specific network role
+
+        // Find any devices that have been designated with a specific network role
         const findNetworkRoleDevices = (role) => {
             return filteredDevices
                 .filter(device => device.ip && customNames?.[device.ip]?.networkRole === role)
-                .map(device => ({
-                    ...device,
-                    name: customNames[device.ip]?.name || device.ip,
-                    networkRole: customNames[device.ip].networkRole
-                }));
+                .map(device => {
+                    // Use device name from customNames if available, then device.name, then IP
+                    const deviceName = (device.ip && customNames?.[device.ip]?.name) || device.name || device.ip;
+                    return {
+                        ...device,
+                        name: deviceName,
+                        networkRole: role
+                    };
+                });
         };
-          // Find all gateway devices and switch devices
+
+        // Find all gateway devices
         const gatewayDevices = findNetworkRoleDevices('gateway');
-          // Find all devices marked as switches
-        const switchDevices = filteredDevices.filter(device => 
-            device.ip && customNames?.[device.ip]?.networkRole === 'switch'
-        ).map(device => ({
-            ...device,
-            name: customNames[device.ip]?.name || device.ip,
-            networkRole: 'switch'
-        }));
-          // Find the main gateway if set
-        const mainGateway = gatewayDevices.find(gateway => customNames?.[gateway.ip]?.isMainGateway);
+
+        // Find all devices marked as switches
+        const switchDevices = filteredDevices
+            .filter(device => device.ip && customNames?.[device.ip]?.networkRole === 'switch')
+            .map(device => ({
+                ...device,
+                name: (device.ip && customNames?.[device.ip]?.name) || device.name || device.ip,
+                networkRole: 'switch'
+            }));        // Find all main gateways        const mainGateways = gatewayDevices.filter(gateway => customNames?.[gateway.ip]?.isMainGateway);
+        
+        // Check if we have any switches that are connected to gateways
+        const hasSwitchesUnderGateway = switchDevices.some(device => 
+            customNames?.[device.ip]?.parentGateway
+        );        // Filter main gateways from gateway devices
+        const mainGateways = gatewayDevices.filter(gateway => customNames?.[gateway.ip]?.isMainGateway);
         
         // If we're doing subnet grouping, we'll have multiple gateways (one per subnet)
-        // If not, use main gateway if available, then any gateway, then any switch, or no root
-        const rootDevice = mainGateway || 
-                          (gatewayDevices.length > 0 ? gatewayDevices[0] : 
-                          (switchDevices.length > 0 ? switchDevices[0] : null));
+        // Use first main gateway if available, then any gateway, then any switch, or no root
+        const rootDevice = mainGateways.length > 0 ? mainGateways[0] : 
+                          gatewayDevices.length > 0 ? gatewayDevices[0] : 
+                          switchDevices.length > 0 ? switchDevices[0] : null;
         
-        // Create hierarchical data structure for D3 tree layout
-        const createHierarchy = () => {
-            // Root node of the hierarchy - use gateway if available
-            const root = {
-                name: rootDevice 
-                    ? `${rootDevice.name} (${rootDevice.networkRole === 'gateway' ? 'Gateway' : 'Switch'})`
-                    : "Network",
+    // Create hierarchical data structure for D3 tree layout
+    const createHierarchy = () => {
+        const root = {
+            name: "",
+            type: "virtual-root",
+            children: []
+        };
+    
+        // Create maps to store references to nodes for quick access
+        const nodeMap = new Map();
+
+        // Helper to add a device to the hierarchy
+        const addDeviceToHierarchy = (device, parentNode) => {
+            const deviceName = customNames?.[device.ip]?.name || device.ip;
+            const deviceNode = {
+                ...device,
+                name: deviceName,
+                type: "device",
+                data: device,
                 children: []
             };
-              // If rootDevice is a gateway and we have switches, add them under the gateway
-            const hasSwitchesUnderGateway = gatewayDevices.length > 0 && switchDevices.length > 0;
-              // Remove devices that are already used as root nodes
-            let devicesToDisplay = filteredDevices.filter(d => {
-                if (!d.ip) return true;
-                
-                // Exclude the root device
-                if (rootDevice && d.ip === rootDevice.ip) return false;
-                
-                // In non-subnet mode, exclude all additional gateway devices as they're added separately
-                if (!useSubnetGrouping && 
-                    customNames?.[d.ip]?.networkRole === 'gateway' && 
-                    d.ip !== rootDevice?.ip) {
-                    return false;
-                }
-                
-                // If gateway is root and this is a switch device that will be placed under gateway
-                if (hasSwitchesUnderGateway && customNames?.[d.ip]?.networkRole === 'switch') {
-                    return false; // Filter out switches as they'll be added separately
-                }
-                
-                return true;
-            });// Helper to extract subnet from IP (local version to use within this function)
-            const getSubnet = (ip) => {
-                if (!ip) return "Unknown";
-                // Extract the first three octets to get the /24 subnet
-                const match = ip.match(/^(\d+\.\d+\.\d+)\.\d+$/);
-                return match ? `${match[1]}.0/24` : "Unknown";
-            };
             
-            if (useSubnetGrouping) {
-                // Group by subnets first
-                Object.entries(subnetGroups).forEach(([subnet, group]) => {
-                    // Filter to include only devices that are in the filtered set and not the root device
-                    const subnetDevices = group.devices.filter(device => 
-                        devicesToDisplay.some(fd => fd.ip === device.ip)
-                    );
-                    
-                    if (subnetDevices.length > 0) {
-                        // Find gateway for this subnet
-                        const subnetGateway = gatewayDevices.find(gw => {
-                            const gwSubnet = getSubnet(gw.ip);
-                            return gwSubnet === subnet;
-                        });
-                          // Create subnet node - with or without a subnet-specific gateway
-                        const subnetNode = {
-                            name: subnet,
-                            type: "subnet",
-                            gateway: subnetGateway, // Store gateway reference
-                            children: []
-                        };
-                        
-                        // If this subnet has a dedicated gateway, add it as the first child
-                        if (subnetGateway) {
-                            subnetNode.children.push({
-                                ...subnetGateway,
-                                name: `${subnetGateway.name} (Gateway)`,
-                                type: "gateway",
-                                children: []
-                            });
-                        }
-                        
-                        // Further group by category if available
-                        const devicesByCategory = {};
-                        subnetDevices.forEach(device => {
-                            const category = customNames?.[device.ip]?.category || "Uncategorized";
-                            if (!devicesByCategory[category]) {
-                                devicesByCategory[category] = [];
-                            }
-                            devicesByCategory[category].push(device);
-                        });
-                        
-                        // Add category nodes
-                        Object.entries(devicesByCategory).forEach(([category, devices]) => {
-                            const categoryNode = {
-                                name: category,
-                                type: "category",
-                                children: devices.map(device => ({
-                                    ...device,
-                                    name: customNames?.[device.ip]?.name || device.ip,
-                                    type: "device",
-                                }))
-                            };
-                            subnetNode.children.push(categoryNode);
-                        });
-                        
-                        root.children.push(subnetNode);
-                    }
-                });            } else {            // Create hierarchy based on categories or vendors
-                const groupKey = groupBy === "vendor" ? "vendor" : "category";
-                const deviceGroups = {};                // Add all gateway devices to the hierarchy
-                if (gatewayDevices.length > 1) {
-                    // If we have multiple gateways but aren't using subnet grouping,
-                    // add all additional gateways (except the root one) as direct children of the root
-                    const additionalGateways = gatewayDevices.slice(1).map(gateway => {
-                        // For each additional gateway, prepare it as a node
-                        return {
-                            ...gateway,
-                            name: `${gateway.name} (Gateway)`,
-                            type: "gateway",
-                            children: [], // Will be populated with devices connected to this gateway
-                            ip: gateway.ip // Keep track of the IP to find connected devices
-                        };
-                    });
-                    
-                    root.children.push(...additionalGateways);
-                }
-                
-                // Create a map of gateway devices for quick lookup when assigning switches to gateways
-                const gatewayMap = {};
-                gatewayDevices.forEach(gateway => {
-                    gatewayMap[gateway.ip] = {
-                        ...gateway,
-                        nodeRef: gateway.ip === rootDevice?.ip ? root : root.children.find(child => 
-                            child.type === "gateway" && child.ip === gateway.ip
-                        )
-                    };
-                });
-                
-                // Create switch nodes with references to their parent gateway if applicable
-                const switchNodes = switchDevices
-                    .filter(device => device.ip !== rootDevice?.ip) // Don't include the root device if it's a switch
-                    .map(device => {
-                        return {
-                            ...device,
-                            name: `${device.name} (Switch${device.portCount ? ` - ${device.portCount} ports` : ''})`,
-                            type: "switch",
-                            children: [], // Each switch will get its own children later
-                            ip: device.ip, // Store IP to identify this switch
-                            parentGateway: customNames?.[device.ip]?.parentGateway
-                        };
-                    });
-                
-                // Create a map of switches for quick lookup
-                const switchMap = {};
-                switchNodes.forEach(switchNode => {
-                    switchMap[switchNode.ip] = switchNode;
-                });
-                
-                // First, assign switches to their parent gateways if specified
-                const assignedSwitches = new Set();
-                switchNodes.forEach(switchNode => {
-                    if (switchNode.parentGateway && gatewayMap[switchNode.parentGateway]) {
-                        // This switch has a parent gateway, add it to that gateway's children
-                        const parentGatewayNode = gatewayMap[switchNode.parentGateway].nodeRef;
-                        if (parentGatewayNode) {
-                            parentGatewayNode.children.push(switchNode);
-                            assignedSwitches.add(switchNode.ip);
-                        }
-                    }
-                });
-                
-                // Add remaining switches as direct children of the root
-                const remainingSwitches = switchNodes.filter(switchNode => !assignedSwitches.has(switchNode.ip));
-                if (remainingSwitches.length > 0) {
-                    root.children.push(...remainingSwitches);
-                }
-                
-                // Collection of devices assigned to switches
-                const devicesAssignedToSwitches = new Set();
-                  // First, assign devices to their parent switches if specified
-                devicesToDisplay.forEach(device => {
-                    // Skip devices that are switches or gateways (they're already handled separately)
-                    if (customNames?.[device.ip]?.networkRole === 'switch' || 
-                        customNames?.[device.ip]?.networkRole === 'gateway') {
-                        return;
-                    }
-                    
-                    // Check if the device has a parent switch assigned
-                    const parentSwitchIp = customNames?.[device.ip]?.parentSwitch;
-                    
-                    // If the device has a parent switch, find that switch node and add the device to its children
-                    if (parentSwitchIp) {
-                        // Find the switch node in root.children that matches this IP
-                        const switchNode = root.children.find(child => 
-                            child.type === "switch" && child.ip === parentSwitchIp
-                        );
-                        
-                        if (switchNode) {
-                            // Add this device to the switch's children
-                            switchNode.children.push({
-                                ...device,
-                                name: customNames?.[device.ip]?.name || device.ip,
-                                type: "device"
-                            });
-                            
-                            // Mark this device as already assigned
-                            devicesAssignedToSwitches.add(device.ip);
-                        }
-                    }
-                });
-                  // Then handle remaining devices by category/vendor groups
-                devicesToDisplay.forEach(device => {
-                    // Skip devices that are switches or gateways (they're already handled)
-                    if (customNames?.[device.ip]?.networkRole === 'switch' || 
-                        customNames?.[device.ip]?.networkRole === 'gateway') {
-                        return;
-                    }
-                    
-                    // Skip devices already assigned to a switch
-                    if (devicesAssignedToSwitches.has(device.ip)) {
-                        return;
-                    }
-                    
-                    let groupValue;
-                    
-                    if (groupKey === "category") {
-                        groupValue = customNames?.[device.ip]?.category || "Uncategorized";
-                    } else {
-                        groupValue = device.vendor || "Unknown";
-                    }
-                    
-                    if (!deviceGroups[groupValue]) {
-                        deviceGroups[groupValue] = [];
-                    }
-                    
-                    deviceGroups[groupValue].push(device);
-                });
-                
-                // Add groups to the hierarchy
-                Object.entries(deviceGroups).forEach(([groupValue, devices]) => {
-                    // Skip empty groups
-                    if (devices.length === 0) return;
-                    
-                    const groupNode = {
-                        name: groupValue,
-                        type: groupKey,
-                        children: devices.map(device => ({
-                            ...device,
-                            name: customNames?.[device.ip]?.name || device.ip,
-                            type: "device",
-                        }))
-                    };
-                    
-                    root.children.push(groupNode);
-                });
+            if (parentNode.children) {
+                parentNode.children.push(deviceNode);
+            } else {
+                parentNode.children = [deviceNode];
             }
             
-            return d3.hierarchy(root);
+            nodeMap.set(device.ip, deviceNode);
+            return deviceNode;
         };
-        
-        const hierarchyRoot = createHierarchy();
-          // Calculate the tree layout - VERTICAL layout
+    
+        // Find main gateways first
+        const mainGateways = gatewayDevices.filter(gateway => customNames?.[gateway.ip]?.isMainGateway);
+    
+        // Use first main gateway if available, then any gateway, then any switch, or no root
+        const rootDevice = mainGateways.length > 0 ? mainGateways[0] : 
+                        gatewayDevices.length > 0 ? gatewayDevices[0] : 
+                        switchDevices.length > 0 ? switchDevices[0] : null;
+    
+        // Create the root of our hierarchy
+        if (rootDevice) {
+            const rootName = customNames?.[rootDevice.ip]?.name || rootDevice.ip;
+            const isMain = customNames?.[rootDevice.ip]?.isMainGateway;
+            const rootLabel = isMain ? ' (Main Gateway)' : ' (Gateway)';
+            
+            const rootNode = {
+                ...rootDevice,
+                name: `${rootName}${rootLabel}`,
+                type: "gateway",
+                data: rootDevice,
+                children: []
+            };
+            
+            root.children.push(rootNode);
+            nodeMap.set(rootDevice.ip, rootNode);
+        }
+
+        // Add all gateway devices except the root
+        if (gatewayDevices.length > 1) {
+            const additionalGateways = gatewayDevices
+                .filter(gateway => !rootDevice || gateway.ip !== rootDevice.ip)
+                .forEach(gateway => {
+                    const gatewayName = customNames?.[gateway.ip]?.name || gateway.ip;
+                    const gatewayNode = {
+                        ...gateway,
+                        name: `${gatewayName} (Gateway)`,
+                        type: "gateway",
+                        data: gateway,
+                        children: []
+                    };
+                    
+                    root.children.push(gatewayNode);
+                    nodeMap.set(gateway.ip, gatewayNode);
+                });
+        }
+
+        // Add all switch devices under their respective gateways or directly to root
+        switchDevices.forEach(switchDevice => {
+            const switchName = customNames?.[switchDevice.ip]?.name || switchDevice.ip;
+            const switchNode = {
+                ...switchDevice,
+                name: `${switchName} (Switch)`,
+                type: "switch",
+                data: switchDevice,
+                children: []
+            };
+            
+            const parentGatewayIP = customNames?.[switchDevice.ip]?.parentGateway;
+            const parentGatewayNode = parentGatewayIP ? nodeMap.get(parentGatewayIP) : null;
+            
+            if (parentGatewayNode) {
+                parentGatewayNode.children.push(switchNode);
+            } else {
+                root.children.push(switchNode);
+            }
+            
+            nodeMap.set(switchDevice.ip, switchNode);
+        });
+
+        // Add remaining devices under their assigned switches or gateways
+        const remainingDevices = filteredDevices.filter(device => 
+            !gatewayDevices.some(g => g.ip === device.ip) && 
+            !switchDevices.some(s => s.ip === device.ip)
+        );
+
+        remainingDevices.forEach(device => {
+            // Check if device has an assigned parent switch
+            const parentSwitchIP = customNames?.[device.ip]?.parentSwitch;
+            const parentSwitchNode = parentSwitchIP ? nodeMap.get(parentSwitchIP) : null;
+            
+            // If no parent switch, check for parent gateway
+            const parentGatewayIP = customNames?.[device.ip]?.parentGateway;
+            const parentGatewayNode = parentGatewayIP ? nodeMap.get(parentGatewayIP) : null;
+            
+            // Add device to its parent, or to root if no parent found
+            if (parentSwitchNode) {
+                addDeviceToHierarchy(device, parentSwitchNode);
+            } else if (parentGatewayNode) {
+                addDeviceToHierarchy(device, parentGatewayNode);
+            } else {
+                addDeviceToHierarchy(device, root);
+            }
+        });
+    
+        return d3.hierarchy(root);
+    };
+          const hierarchyRoot = createHierarchy();          // Calculate the tree layout with cluster for better sibling arrangement
         const treeLayout = d3.tree()
-            .size([width - 100, height - 200]) // Use standard dimensions for vertical layout
-            .nodeSize([50, 85]) // Set specific node size [horizontal, vertical] spacing
-            .separation((a, b) => { 
-                // Custom separation logic for better spacing
-                // Increase separation between different types of nodes
-                return a.parent === b.parent ? 1.2 : 2.0;
+            .nodeSize([100, 100]) // Wider node spacing for better readability
+            .separation((a, b) => {
+                // More space between different types of nodes
+                if (a.parent !== b.parent) return 2.5;
+                // Regular sibling separation
+                return 1.5;
             });
         
         // Apply the layout to the hierarchy
         const treeData = treeLayout(hierarchyRoot);
+
+        // Helper to calculate node dimensions for different shapes
+        const getNodeDimensions = (node) => {
+            // Check if this is a switch (which uses rectangles)
+            const isSwitch = node.data?.networkRole === 'switch' || 
+                            (node.data?.ip && customNames?.[node.data.ip]?.networkRole === 'switch');
+            
+            // Get node size (default to 20 if not specified)
+            const size = node.data?.size || 20;
+            
+            if (isSwitch) {
+                return {
+                    type: "rect",
+                    width: size * 2,
+                    height: size * 1.6
+                };
+            } else {
+                return {
+                    type: "circle",
+                    radius: size
+                };
+            }
+        };
+    
+        // Helper to calculate intersection with a circle
+        const getCircleIntersection = (cx, cy, radius, tx, ty) => {
+            const dx = tx - cx;
+            const dy = ty - cy;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // If target is at center of circle, move slightly right
+            if (distance === 0) {
+                return {
+                    x: cx + radius,
+                    y: cy
+                };
+            }
+            
+            // Calculate the point on the circle's circumference
+            return {
+                x: cx + (dx * radius) / distance,
+                y: cy + (dy * radius) / distance
+            };
+        };
+    
+        // Helper to calculate intersection with a rectangle
+        const getRectIntersection = (cx, cy, width, height, tx, ty) => {
+            const hw = width / 2;   // half width
+            const hh = height / 2;  // half height
+            const dx = tx - cx;
+            const dy = ty - cy;
+            
+            // Handle case where target is at rectangle's center
+            if (dx === 0 && dy === 0) {
+                return { x: cx + hw, y: cy };
+            }
+            
+            const angle = Math.atan2(dy, dx);
+            
+            // Calculate possible intersection points with all edges
+            const intersections = [
+                // right edge
+                {
+                    x: cx + hw,
+                    y: cy + hw * Math.tan(angle)
+                },
+                // left edge
+                {
+                    x: cx - hw,
+                    y: cy - hw * Math.tan(angle)
+                },
+                // top edge
+                {
+                    x: cx + hh / Math.tan(angle),
+                    y: cy - hh
+                },
+                // bottom edge
+                {
+                    x: cx - hh / Math.tan(angle),
+                    y: cy + hh
+                }
+            ];
+            
+            // Find the first intersection point that lies within the bounds of its edge
+            return intersections.find(point => {
+                // Check if point lies within rectangle bounds
+                const validX = point.x >= cx - hw && point.x <= cx + hw;
+                const validY = point.y >= cy - hh && point.y <= cy + hh;
+                
+                // Point must be between source and target
+                const betweenX = (dx > 0) ? 
+                    (point.x >= cx && point.x <= tx) : 
+                    (point.x >= tx && point.x <= cx);
+                const betweenY = (dy > 0) ?
+                    (point.y >= cy && point.y <= ty) :
+                    (point.y >= ty && point.y <= cy);
+                    
+                return validX && validY && betweenX && betweenY;
+            }) || { 
+                // Fallback to rectangle center edge if no valid intersection found
+                x: dx > 0 ? cx + hw : cx - hw,
+                y: cy
+            };
+        };
+
+        // Add connecting links with centered curved paths
+        // Custom curve generator for smooth S-curves between nodes with accurate boundary intersections
+        const linkGenerator = (d) => {
+            const sourceX = d.source.x;
+            const sourceY = d.source.y;
+            const targetX = d.target.x;
+            const targetY = d.target.y;
+
+            // Calculate boundary intersections for both nodes
+            const sourceDim = getNodeDimensions(d.source);
+            const targetDim = getNodeDimensions(d.target);
+
+            // Calculate intersection points for both ends
+            let startPoint;
+            if (sourceDim.type === "circle") {
+                startPoint = getCircleIntersection(sourceX, sourceY, sourceDim.radius, targetX, targetY);
+            } else {
+                startPoint = getRectIntersection(sourceX, sourceY, sourceDim.width, sourceDim.height, targetX, targetY);
+            }
+
+            let endPoint;
+            if (targetDim.type === "circle") {
+                endPoint = getCircleIntersection(targetX, targetY, targetDim.radius, sourceX, sourceY);
+            } else {
+                endPoint = getRectIntersection(targetX, targetY, targetDim.width, targetDim.height, sourceX, sourceY);
+            }
+
+            // Calculate angle and distance between points
+            const dx = endPoint.x - startPoint.x;
+            const dy = endPoint.y - startPoint.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx);
+
+            // Dynamic tension based on distance and connection type
+            const baseTension = Math.min(0.3, distance * 0.001); // Scale tension with distance
+            let tension = baseTension;
+
+            // Adjust tension based on connection type
+            if (d.target.data.type === "gateway" && d.target.data.isMainGateway) {
+                tension *= 1.2; // More pronounced curves for main gateway connections
+            } else if (d.target.data.type === "switch" && d.source.data.type === "gateway") {
+                tension *= 1.1; // Slightly more curved for gateway-to-switch connections
+            }            // Calculate perpendicular offset for control points with dynamic tension
+            const perpOffset = distance * tension;
+
+            // Calculate midpoint
+            const midX = (startPoint.x + endPoint.x) / 2;
+            const midY = (startPoint.y + endPoint.y) / 2;
+
+            // Calculate control points for smooth curve
+            const cp1x = startPoint.x + (midX - startPoint.x) * 0.5;
+            const cp1y = startPoint.y;
+            const cp2x = endPoint.x - (endPoint.x - midX) * 0.5;
+            const cp2y = endPoint.y;
+
+            // Create SVG path with adjusted control points for a smoother curve
+            return `M${startPoint.x},${startPoint.y} C${cp1x},${cp1y} ${cp2x},${cp2y} ${endPoint.x},${endPoint.y}`;
+        };        // Link style control function
+        const getLinkStyle = (link) => {
+            const baseStyle = {
+                stroke: '#999',
+                strokeWidth: 2,
+                strokeOpacity: 0.6,
+                transition: 'all 0.3s ease-in-out'
+            };
+            if (link.status === 'active') {
+                return {
+                    ...baseStyle,
+                    stroke: '#4CAF50',
+                    strokeWidth: 3,
+                    strokeOpacity: 0.8
+                };
+            } else if (link.status === 'inactive') {
+                return {
+                    ...baseStyle,
+                    stroke: '#f44336',
+                    strokeOpacity: 0.4,
+                    strokeDasharray: '5,5'
+                };
+            } else if (link.status === 'degraded') {
+                return {
+                    ...baseStyle,
+                    stroke: '#ff9800',
+                    strokeWidth: 2.5,
+                    strokeDasharray: '3,3'
+                };
+            }
+            return baseStyle;
+        };
+
+        // Calculate bounds excluding virtual root
+        const bounds = treeData.descendants()
+            .filter(node => node.data.type !== "virtual-root")
+            .reduce((acc, node) => {
+                acc.minX = Math.min(acc.minX, node.x);
+                acc.maxX = Math.max(acc.maxX, node.x);
+                acc.minY = Math.min(acc.minY, node.y);
+                acc.maxY = Math.max(acc.maxY, node.y);
+                return acc;
+            }, { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });        // Calculate centering transformations
+        const midX = (bounds.maxX + bounds.minX) / 2;
+        const treeWidth = bounds.maxX - bounds.minX;
+        const treeHeight = bounds.maxY - bounds.minY;
         
-        // Add connecting links - use standard vertical link
-        zoomLayer.append("g")
+        // Set the positioning constants
+        const rootY = 60; // Reduced top margin since network node is gone
+        const centerX = width / 2;        // Create group for all network elements that need to be positioned together
+        const networkGroup = zoomLayer.append("g");
+        
+        // Initialize linkGroup for the links
+        const linkGroup = networkGroup.append("g");
+        
+        // Create tree links with proper styling and ensure they're behind nodes
+        const links = linkGroup.append("g")
+            .attr("class", "links")
             .attr("fill", "none")
-            .attr("stroke", "#555")
-            .attr("stroke-opacity", 0.6)
-            .attr("stroke-width", 1.5)
             .selectAll("path")
-            .data(treeData.links())
+            .data(treeData.links().filter(d => d.source.data.type !== "virtual-root"))
             .join("path")
-            .attr("d", d3.linkVertical()
-                .x(d => d.x) // Standard x coordinate
-                .y(d => d.y)  // Standard y coordinate
-            );
-        
-        // Create node groups - Standard positioning for vertical layout
-        const nodeGroups = zoomLayer.append("g")
-            .attr("class", "nodes")
-            .selectAll("g")
+            .attr("d", linkGenerator)  // Use our linkGenerator function directly
+            .each(function(d) {
+                const style = getLinkStyle(d);
+                d3.select(this)
+                    .attr("stroke", style.stroke)
+                    .attr("stroke-width", style.strokeWidth)
+                    .attr("stroke-opacity", style.strokeOpacity)
+                    .attr("stroke-dasharray", style.strokeDasharray)
+                    .on("mouseover", function() {
+                        d3.select(this)
+                            .attr("stroke-opacity", 1)
+                            .attr("stroke-width", style.strokeWidth + 1);
+                    })
+                    .on("mouseout", function() {
+                        d3.select(this)
+                            .attr("stroke-opacity", style.strokeOpacity)
+                            .attr("stroke-width", style.strokeWidth);
+                    });
+            });        // Create node groups in the same container as the links
+        const nodeGroup = networkGroup.append("g");
+
+        const nodeGroups = nodeGroup.selectAll("g")
             .data(treeData.descendants())
             .join("g")
-            .attr("transform", d => `translate(${d.x},${d.y})`); // Standard vertical layout
+            .attr("transform", d => `translate(${d.x},${d.y})`);
         
         // Add different styling based on node type
         nodeGroups.each(function(d) {
-            const node = d3.select(this);            // Different styling based on node depth and type
-            if (d.depth === 0) {                // Check if we have a rootDevice (gateway or switch)
-                const isGateway = rootDevice?.networkRole === 'gateway';
-                const isMainGateway = isGateway && rootDevice?.isMainGateway;
-                const isSwitch = rootDevice?.networkRole === 'switch';
-                const fillColor = isGateway ? "#10b981" : isSwitch ? "#6366f1" : "#1d4ed8";
-                  if (isSwitch) {
-                    // For switches, use a rectangle shape
-                    node.append("rect")
-                        .attr("width", 50)
-                        .attr("height", 40)
-                        .attr("x", -25)
-                        .attr("y", -20)
-                        .attr("rx", 5)
-                        .attr("ry", 5)
-                        .attr("fill", fillColor)
-                        .attr("stroke", "white")
-                        .attr("stroke-width", 2);
-                    
-                    // Add port count information if available
-                    const portCount = rootDevice?.portCount || null;
-                    if (portCount) {
-                        node.append("text")
-                            .attr("x", 30)
-                            .attr("y", -5)
-                            .attr("text-anchor", "end")
-                            .attr("font-size", "10px")
-                            .attr("fill", "white")
-                            .text(`${portCount} ports`);
-                    }
-                } else {                    // For gateway or default network, use a circle
-                    node.append("circle")
-                        .attr("r", 25)
-                        .attr("fill", fillColor)
-                        .attr("stroke", isMainGateway ? "#f59e0b" : "white") // Gold stroke for main gateway
-                        .attr("stroke-width", isMainGateway ? 3 : 2);
-                    
-                    // Add star symbol for main gateway
-                    if (isMainGateway) {
-                        node.append("text")
-                            .attr("x", 0)
-                            .attr("y", -30)
-                            .attr("text-anchor", "middle")
-                            .attr("font-size", "16px")
-                            .attr("fill", "#f59e0b")
-                            .text("★");
-                    }
-                    
-                    // Add port count information if available (for gateways)
-                    const portCount = rootDevice?.portCount || null;
-                    if (portCount) {
-                        node.append("text")
-                            .attr("x", 30)
-                            .attr("y", -5)
-                            .attr("text-anchor", "end")
-                            .attr("font-size", "10px")
-                            .attr("fill", "white")
-                            .text(`${portCount} ports`);
-                    }
+            const node = d3.select(this);
+            
+            // Get device roles using helper function
+            const { isGateway, isSwitch } = determineDeviceRoles(d);
+
+            // Choose color based on type
+            const deviceColor = () => {
+                if (d.ip && customNames?.[d.ip]?.color) {
+                    return customNames[d.ip].color;
                 }
+                if (isGateway) return "#10b981";
+                if (isSwitch) return "#6366f1";
+                return d.groupColor || "#6b7280";
+            };
+
+            const nodeShape = node.append(isSwitch ? "rect" : "circle")
+                .attr("fill", deviceColor())
+                .attr("stroke", "white")
+                .attr("stroke-width", 1.5)
+                .attr("cursor", "pointer");
                 
-                // Add tooltip for main gateway in the root node
-                if (isMainGateway) {
-                    // Create a tooltip element
-                    node.append("title")
-                        .text("Main Gateway (Primary Network Default Gateway)");
-                }
-                
-                // Add appropriate icon based on the root type
-                const iconContainer = document.createElement('div');
-                iconContainer.style.position = 'absolute';
-                iconContainer.style.top = '50%';
-                iconContainer.style.left = '50%';
-                iconContainer.style.width = '40px';
-                iconContainer.style.height = '40px';
-                iconContainer.style.transform = 'translate(-50%, -50%)';
-                iconContainer.style.display = 'flex';
-                iconContainer.style.justifyContent = 'center';
-                iconContainer.style.alignItems = 'center';
-                iconContainer.style.pointerEvents = 'none';
-                iconContainer.style.color = 'white';
-                
-                // Select icon based on whether it's a gateway, switch, or generic network
-                let iconComponent;
-                if (isGateway) {
-                    iconComponent = iconMap.router || iconMap.network;
-                } else if (isSwitch) {
-                    iconComponent = iconMap.switch || iconMap.network;
-                } else {
-                    iconComponent = iconMap.network;
-                }
-                
-                const root = createRoot(iconContainer);
-                root.render(React.createElement(iconComponent, { size: 20 }));
-                
-                // Use D3's append function for foreign objects
-                node.append('foreignObject')
-                    .attr('width', 40)
-                    .attr('height', 40)
-                    .attr('x', -20)
-                    .attr('y', -20)
-                    .node().appendChild(iconContainer);
-            }            else if (d.data.type === "device") {
-                // Device nodes
-                const nodeSize = 18;
-                
-                // Check if this device is a switch
-                const isSwitch = customNames?.[d.data.ip]?.networkRole === 'switch';
-                
-                // Choose color
-                const nodeColor = () => {
-                    // Use custom color if available
-                    if (customNames?.[d.data.ip]?.color) {
-                        return customNames[d.data.ip].color;
-                    }
-                    // If it's a switch, use the switch color
-                    if (isSwitch) return "#6366f1";
-                    // Default colors based on vendor or category
-                    if (d.data.vendor?.toLowerCase().includes('cisco')) return "#00BCEB"; 
-                    if (d.data.vendor?.toLowerCase().includes('apple')) return "#A2AAAD"; 
-                    return "#6366f1"; // Default purple
-                };
-                
-                // Draw different shape based on device type
-                let deviceShape;
-                  if (isSwitch) {
-                    // For switches, use a rectangle shape
-                    deviceShape = node.append("rect")
-                        .attr("width", nodeSize * 2)
-                        .attr("height", nodeSize * 1.6)
-                        .attr("x", -nodeSize)
-                        .attr("y", -nodeSize * 0.8)
-                        .attr("rx", 4)
-                        .attr("ry", 4)
-                        .attr("fill", nodeColor())
-                        .attr("stroke", "white")
-                        .attr("stroke-width", 1.5)
-                        .attr("cursor", "pointer");
-                    
-                    // Add port count information if available
-                    const portCount = d.data.portCount || customNames?.[d.data.ip]?.portCount;
-                    if (portCount) {
-                        node.append("text")
-                            .attr("x", nodeSize - 2) // Position slightly left of center
-                            .attr("y", nodeSize + 5) // Position below the node
-                            .attr("text-anchor", "middle")
-                            .attr("font-size", "9px")
-                            .attr("fill", "white")
-                            .text(`${portCount} ports`);
-                    }
-                } else {
-                    // For regular devices, use a circle
-                    deviceShape = node.append("circle")
-                        .attr("r", nodeSize)
-                        .attr("fill", nodeColor())
-                        .attr("stroke", "white")
-                        .attr("stroke-width", 1.5)
-                        .attr("cursor", "pointer");
-                    
-                    // If this device has a parent switch, add an indicator line
-                    const parentSwitchIp = customNames?.[d.data.ip]?.parentSwitch;
-                    if (parentSwitchIp && !d.data.parentSwitchDisplayed) {
-                        // Add a small indicator near the device to show it's connected to a switch
-                        node.append("text")
-                            .attr("x", -nodeSize * 1.5)
-                            .attr("y", nodeSize / 2)
-                            .attr("font-size", "8px")
-                            .attr("fill", "#6366f1")
-                            .text("↪")
-                            .append("title")
-                            .text(`Connected to ${customNames?.[parentSwitchIp]?.name || parentSwitchIp}`);
-                            
-                        // Mark this device to avoid duplicate indicators
-                        d.data.parentSwitchDisplayed = true;
-                    }
-                }
-                  // Add event handlers to the device shape (both left and right click)
-                deviceShape
-                    .on("click", (event, d) => {
-                        event.stopPropagation();
-                        setContextMenu({
-                            visible: true,
-                            device: d.data,
-                            x: event.clientX,
-                            y: event.clientY
-                        });
-                    })
-                    .on("contextmenu", (event, d) => {
-                        // Prevent default context menu
-                        event.preventDefault();
-                        event.stopPropagation();
-                        console.log("Right click on device:", d.data.ip || d.data.name);
-                        
-                        // Open the device modal with this device data
-                        if (setModalDevice && typeof setModalDevice === 'function') {
-                            // Merge any existing custom properties from customNames
-                            const customProps = customNames?.[d.data.ip] || {};
-                            
-                            // Process the device to ensure MAC and vendor info is available
-                            const deviceWithMacInfo = processDeviceData(d.data);
-                            
-                            // Set the modal device with merged data
-                            setModalDevice({
-                                ...deviceWithMacInfo,
-                                ...customProps
-                            });
-                        }
-                    });
-                
-                // Add icon for the device
-                try {
-                    // Determine which icon to use
-                    let iconComponent;
-                    
-                    if (isSwitch) {
-                        // For switch devices, use the switch icon or fallback to network icon
-                        iconComponent = iconMap.switch || iconMap.network;
-                    } else if (customNames?.[d.data.ip]?.icon) {
-                        // Use custom icon if specified
-                        const iconName = customNames[d.data.ip].icon;
-                        iconComponent = iconMap[iconName];
-                    } else {
-                        // Use default icon based on vendor
-                        const vendor = d.data.vendor?.toLowerCase() || '';
-                        
-                        if (vendor.includes('cisco')) {
-                            iconComponent = iconMap.cisco;
-                        } else if (vendor.includes('raspberry')) {
-                            iconComponent = iconMap.raspberry;
-                        } else if (vendor.includes('apple')) {
-                            iconComponent = iconMap.apple;
-                        } else if (vendor.includes('intel')) {
-                            iconComponent = iconMap.intel;
-                        } else if (vendor.includes('nvidia')) {
-                            iconComponent = iconMap.nvidia;
-                        } else if (vendor.includes('samsung')) {
-                            iconComponent = iconMap.samsung;
-                        } else {
-                            // Default to network icon
-                            iconComponent = iconMap.network;
-                        }
-                    }
-                    
-                    if (iconComponent) {
-                        const iconContainer = document.createElement('div');
-                        iconContainer.style.position = 'absolute';
-                        iconContainer.style.top = '50%';
-                        iconContainer.style.left = '50%';
-                        iconContainer.style.width = `${nodeSize * 2}px`;
-                        iconContainer.style.height = `${nodeSize * 2}px`;
-                        iconContainer.style.transform = 'translate(-50%, -50%)';
-                        iconContainer.style.display = 'flex';
-                        iconContainer.style.justifyContent = 'center';
-                        iconContainer.style.alignItems = 'center';
-                        iconContainer.style.pointerEvents = 'none'; // Make icon absolutely non-interactive
-                        
-                        const root = createRoot(iconContainer);
-                        root.render(React.createElement(iconComponent, { size: nodeSize }));
-                        
-                        // Use D3's append function for foreign objects with pointer-events disabled
-                        const foreignObject = node.append('foreignObject')
-                            .attr('width', nodeSize * 2)
-                            .attr('height', nodeSize * 2)
-                            .attr('x', -nodeSize)
-                            .attr('y', -nodeSize)
-                            .style('pointer-events', 'none'); // Critical: disable pointer events on the foreignObject too
-                            
-                        foreignObject.node().appendChild(iconContainer);
-                    }
-                } catch (error) {
-                    console.error("Error rendering device icon:", error);
-                }
-            }            else if (d.data.type === "switch") {
-                // Switch nodes (when they're direct children of gateway)
-                const nodeSize = 20;
-                
-                // Check if this switch is connected to a gateway
-                const connectedToGateway = d.data.parentGateway && d.parent && d.parent.data.type === "gateway";
-                
-                // For switches, use a rectangle shape
-                const switchShape = node.append("rect")
+            if (isSwitch) {
+                const nodeSize = d.size || 20;
+                nodeShape
                     .attr("width", nodeSize * 2)
                     .attr("height", nodeSize * 1.6)
                     .attr("x", -nodeSize)
                     .attr("y", -nodeSize * 0.8)
                     .attr("rx", 4)
-                    .attr("ry", 4)
-                    .attr("fill", "#6366f1")
-                    .attr("stroke", connectedToGateway ? "#10b981" : "white") // Green border when connected to gateway
-                    .attr("stroke-width", connectedToGateway ? 2.5 : 1.5)
-                    .attr("cursor", "pointer");
-                    
-                // Add port count information if available
-                const portCount = d.data.portCount || customNames?.[d.data.ip]?.portCount;
+                    .attr("ry", 4);
+
+                // Add port count if available
+                const portCount = d.portCount || customNames?.[d.ip]?.portCount;
                 if (portCount) {
                     node.append("text")
-                        .attr("x", nodeSize - 2) // Position slightly left of center
-                        .attr("y", nodeSize + 5) // Position below the node
+                        .attr("x", 0)
+                        .attr("y", d.size + 5)
                         .attr("text-anchor", "middle")
                         .attr("font-size", "9px")
                         .attr("fill", "white")
                         .text(`${portCount} ports`);
                 }
-                
-                // Add tooltip for gateway connection information
-                if (connectedToGateway) {
-                    const gatewayName = customNames?.[customNames[d.data.ip].parentGateway]?.name || customNames[d.data.ip].parentGateway;
-                    switchShape.append("title")
-                        .text(`Connected to Gateway: ${gatewayName}`);
+            } else {
+                const nodeSize = d.size || 20;
+                nodeShape.attr("r", nodeSize);
+
+                // Add parent switch indicator
+                const parentSwitchIp = d.ip && customNames?.[d.ip]?.parentSwitch;
+                if (parentSwitchIp) {
+                    const nodeName = customNames?.[parentSwitchIp]?.name || parentSwitchIp;
+                    node.append("text")
+                        .attr("x", -nodeSize * 1.5)
+                        .attr("y", 0)
+                        .attr("font-size", "8px")
+                        .attr("fill", "#6366f1")
+                        .text("↪")
+                        .append("title")
+                        .text(`Connected to ${nodeName}`);
                 }
-                    
-                // Add event handlers to the switch shape (both left and right click)
-                switchShape
-                    .on("click", (event, d) => {
-                        event.stopPropagation();
-                        setContextMenu({
-                            visible: true,
-                            device: d.data,
-                            x: event.clientX,
-                            y: event.clientY
-                        });
-                    })
-                    .on("contextmenu", (event, d) => {
-                        // Prevent default context menu
-                        event.preventDefault();
-                        event.stopPropagation();
-                        
-                        // Open the device modal with this device data
-                        if (setModalDevice && typeof setModalDevice === 'function') {
-                            // Merge any existing custom properties from customNames
-                            const customProps = customNames?.[d.data.ip] || {};
-                            
-                            // Process the device to ensure MAC and vendor info is available
-                            const deviceWithMacInfo = processDeviceData(d.data);
-                            
-                            // Set the modal device with merged data
-                            setModalDevice({
-                                ...deviceWithMacInfo,
-                                ...customProps
-                            });
-                        }
-                    });
-                    
-                // Add the network icon for switches
+            }
+
+            // Add device label below node
+            node.append("text")
+                .attr("text-anchor", "middle")
+                .attr("dy", d => (d.size || 12) + 12)
+                .attr("fill", "white")
+                .attr("font-size", "10px")
+                .attr("pointer-events", "none")
+                .text(d => {
+                    // First check hierarchy node name
+                    if (d.data?.name) return d.data.name;
+                    // Then check customNames
+                    if (d.data?.ip && customNames?.[d.data.ip]?.name) return customNames[d.data.ip].name;
+                    // Then use device name if available
+                    if (d.data?.name) return d.data.name;
+                    // Fall back to IP
+                    if (d.data?.ip) return d.data.ip;
+                    // If all else fails
+                    return "Unknown Device";
+                });
+
+            // Add icon
+            try {
+                const iconSize = ((d.size || 12) * 1.2);
                 const iconContainer = document.createElement('div');
                 iconContainer.style.position = 'absolute';
                 iconContainer.style.top = '50%';
                 iconContainer.style.left = '50%';
-                iconContainer.style.width = `${nodeSize * 2}px`;
-                iconContainer.style.height = `${nodeSize * 2}px`;
-                iconContainer.style.transform = 'translate(-50%, -50%)';
-                iconContainer.style.display = 'flex';
-                iconContainer.style.justifyContent = 'center';
-                iconContainer.style.alignItems = 'center';
-                iconContainer.style.pointerEvents = 'none';
-                
-                const root = createRoot(iconContainer);
-                root.render(React.createElement(iconMap.switch || iconMap.network, { size: nodeSize }));
-                
-                // Use D3's append function for foreign objects
-                const foreignObject = node.append('foreignObject')
-                    .attr('width', nodeSize * 2)
-                    .attr('height', nodeSize * 2)
-                    .attr('x', -nodeSize)
-                    .attr('y', -nodeSize)
-                    .style('pointer-events', 'none');
-                    
-                foreignObject.node().appendChild(iconContainer);
-            }            else if (d.data.type === "gateway") {
-                // Subnet gateway nodes
-                const gatewayShape = node.append("circle")
-                    .attr("r", 20)
-                    .attr("fill", "#10b981") // Green color for gateways
-                    .attr("stroke", "white")
-                    .attr("stroke-width", 2)
-                    .attr("cursor", "pointer");
-                    
-                // Add click handlers for gateway nodes
-                gatewayShape
-                    .on("click", (event, d) => {
-                        event.stopPropagation();
-                        setContextMenu({
-                            visible: true,
-                            device: d.data,
-                            x: event.clientX,
-                            y: event.clientY
-                        });
-                    })
-                    .on("contextmenu", (event, d) => {
-                        // Prevent default context menu
-                        event.preventDefault();
-                        event.stopPropagation();
-                        
-                        // Open the device modal with this device data
-                        if (setModalDevice && typeof setModalDevice === 'function') {
-                            // Process the device to ensure MAC and vendor info is available
-                            const deviceWithMacInfo = processDeviceData(d.data);
-                            
-                            // Merge any existing custom properties from customNames
-                            const customProps = customNames?.[d.data.ip] || {};
-                            
-                            // Set the modal device with merged data
-                            setModalDevice({
-                                ...deviceWithMacInfo,
-                                ...customProps
-                            });
-                        }
-                    });
-                
-                // Add gateway icon
-                const iconContainer = document.createElement('div');
-                iconContainer.style.position = 'absolute';
-                iconContainer.style.top = '50%';
-                iconContainer.style.left = '50%';
-                iconContainer.style.width = '30px';
-                iconContainer.style.height = '30px';
+                iconContainer.style.width = `${iconSize * 2}px`;
+                iconContainer.style.height = `${iconSize * 2}px`;
                 iconContainer.style.transform = 'translate(-50%, -50%)';
                 iconContainer.style.display = 'flex';
                 iconContainer.style.justifyContent = 'center';
                 iconContainer.style.alignItems = 'center';
                 iconContainer.style.pointerEvents = 'none';
                 iconContainer.style.color = 'white';
-                
-                const root = createRoot(iconContainer);
-                root.render(React.createElement(iconMap.router || iconMap.network, { size: 16 }));
-                
-                // Use D3's append function for foreign objects
-                node.append('foreignObject')
-                    .attr('width', 30)
-                    .attr('height', 30)
-                    .attr('x', -15)
-                    .attr('y', -15)
-                    .node().appendChild(iconContainer);
+
+                // Determine icon component
+                let iconComponent;
+                if (customNames?.[d.ip]?.networkRole === 'switch') {
+                    iconComponent = iconMap.switch || iconMap.network;
+                } else if (customNames?.[d.ip]?.icon) {
+                    iconComponent = iconMap[customNames[d.ip].icon];
+                } else if (d.vendor) {
+                    const vendor = d.vendor.toLowerCase();
+                    iconComponent = 
+                        vendor.includes('cisco') ? iconMap.cisco :
+                        vendor.includes('raspberry') ? iconMap.raspberry :
+                        vendor.includes('apple') ? iconMap.apple :
+                        vendor.includes('intel') ? iconMap.intel :
+                        vendor.includes('nvidia') ? iconMap.nvidia :
+                        vendor.includes('samsung') ? iconMap.samsung :
+                        iconMap.network;
+                } else {
+                    iconComponent = iconMap.network;
+                }
+
+                if (iconComponent) {
+                    const root = createRoot(iconContainer);
+                    root.render(React.createElement(iconComponent, { size: iconSize }));
+
+                    const foreignObject = node.append('foreignObject')
+                        .attr('width', iconSize * 2)
+                        .attr('height', iconSize * 2)
+                        .attr('x', -iconSize)
+                        .attr('y', -iconSize)
+                        .style('pointer-events', 'none');
+                        
+                    foreignObject.node().appendChild(iconContainer);
+                }
+            } catch (error) {
+                console.error("Error rendering device icon:", error);
             }
-            else if (d.data.type === "subnet") {
-                // Subnet group nodes
-                node.append("rect")
-                    .attr("width", 50)
-                    .attr("height", 30)
-                    .attr("x", -25)
-                    .attr("y", -15)
-                    .attr("rx", 5)
-                    .attr("ry", 5)
-                    .attr("fill", "#2563eb")
-                    .attr("stroke", "white")
-                    .attr("stroke-width", 1);
-            } 
-            else if (d.data.type === "category") {
-                // Category group nodes
-                node.append("rect")
-                    .attr("width", 50)
-                    .attr("height", 30)
-                    .attr("x", -25)
-                    .attr("y", -15)
-                    .attr("rx", 5)
-                    .attr("ry", 5)
-                    .attr("fill", "#059669")
-                    .attr("stroke", "white")
-                    .attr("stroke-width", 1);
-            } 
-            else {
-                // Other group nodes (vendor, etc.)
-                node.append("rect")
-                    .attr("width", 50)
-                    .attr("height", 30)
-                    .attr("x", -25)
-                    .attr("y", -15)
-                    .attr("rx", 5)
-                    .attr("ry", 5)
-                    .attr("fill", "#7c3aed")
-                    .attr("stroke", "white")
-                    .attr("stroke-width", 1);
-            }
-            
-            // Add labels - adjust for horizontal layout
-            node.append("text")
-                .attr("dy", 30) // Position labels below nodes for horizontal layout
-                .attr("text-anchor", "middle")
-                .attr("fill", "white")
-                .attr("font-size", d => d.depth === 0 ? "16px" : "12px")
-                .text(d => {
-                    if (d.data.type === "device") {
-                        // For devices, show name or IP
-                        return d.data.name;
-                    } else {
-                        // For other nodes, show the node name
-                        return d.data.name;
-                    }
+
+            // Add click handlers for all nodes
+            node.on("click", (event, d) => {
+                event.stopPropagation();
+                setContextMenu({
+                    visible: true,
+                    device: d.data || d,
+                    x: event.clientX,
+                    y: event.clientY
                 });
-            
-            // Add child count for non-device nodes that have children
-            if (d.data.type !== "device" && d.children) {
-                node.append("text")
-                    .attr("dy", -20) // Position count above nodes for horizontal layout
-                    .attr("text-anchor", "middle")
-                    .attr("fill", "white")
-                    .attr("font-size", "10px")
-                    .text(`${d.children.length} ${d.children.length === 1 ? 'item' : 'items'}`);
-            }
-        });
-          // Position the entire tree with some padding
-        zoomLayer.attr("transform", "translate(100, 60)");
-          // Add a legend for the relationships
-        const legendData = [
-            { color: "#10b981", strokeColor: "#f59e0b", strokeWidth: 3, label: "Main Gateway" },
-            { color: "#10b981", label: "Gateway Device" },
-            { color: "#6366f1", label: "Switch Device" },
-            { strokeColor: "#10b981", strokeWidth: 2.5, fillColor: "#6366f1", label: "Switch Connected to Gateway" },
-            { color: "#3b82f6", label: "Regular Device" }
-        ];
+            });
+        });        // Center the entire visualization and apply zoom to fit
+        const margin = 60;
+        const scale = Math.min(
+            (width - margin * 2) / treeWidth,
+            (height - margin * 2) / treeHeight,
+            1.5 // Maximum zoom level
+        );
+
+        // Calculate translation to center the tree
+        const xTranslate = (width - treeWidth * scale) / 2;
+        const yTranslate = margin + 40; // Add some top margin for the title
+        
+        zoomLayer.attr("transform", `translate(${xTranslate}, ${yTranslate}) scale(${scale})`);
+
+        // Add a legend for the relationships (device types and connections)
+        const legendData = {
+            items: [
+                { color: "#10b981", strokeColor: "#f59e0b", strokeWidth: 3, label: "Main Gateway" },
+                { color: "#10b981", label: "Regular Gateway" },
+                { color: "#6366f1", label: "Switch" },
+                { color: "#3b82f6", label: "Device" },
+                { strokeColor: "#10b981", strokeWidth: 2, fillColor: "#6366f1", label: "Connected to Gateway" }
+            ]
+        };
         
         const legend = zoomLayer.append("g")
             .attr("transform", `translate(${width - 220}, 30)`);
@@ -1385,15 +1345,15 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
             .attr("x", 0)
             .attr("y", 0)
             .attr("text-anchor", "start")
-            .attr("fill", "#FFFFFF")
-            .attr("font-size", "14px")
+            .attr("fill", "#FFFFFF")            .attr("font-size", "14px")
             .attr("font-weight", "bold")
             .text("Network Legend");
             
-        legendData.forEach((item, i) => {
+        legendData.items.forEach((item, i) => {
             const legendRow = legend.append("g")
                 .attr("transform", `translate(0, ${i * 25 + 20})`);
-                  if (item.strokeColor && item.fillColor) {
+                
+            if (item.strokeColor && item.fillColor) {
                 // For items with special stroke and fill (like connected switches)
                 legendRow.append("rect")
                     .attr("width", 20)
@@ -1469,8 +1429,6 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
 
         // Add world map outline
         zoomLayer.append("path")
-            .attr("d", "M53.4,109.4c-0.8-0.9-1.8-1.6-2.8-2.2c-0.2-0.1-0.4,0-0.6,0.1c-0.5,0.3-1.1,0.6-1.6,0.9 c-0.3,0.2-0.7,0.1-1-0.1c-1-0.9-2-1.8-3-2.7c-0.3-0.3-0.7-0.3-1-0.1c-0.6,0.3-1.1,0.7-1.7,1c-0.3,0.2-0.7,0.1-1-0.1 c-0.4-0.4-0.8-0.8-1.2-1.2c-0.3-0.3-0.6-0.4-1-0.3c-0.6,0.2-1.1,0.4-1.7,0.6c-0.4,0.1-0.8,0-1.1-0.3c-0.5-0.6-1.1-1.2-1.6-1.8 c-0.3-0.3-0.6-0.4-1-0.3c-0.6,0.2-1.2,0.4-1.8,0.6c-0.3,0.1-0.7,0-1-0.2c-0.6-0.6-1.3-1.1-1.9-1.7c-0.3-0.3-0.6-0.3-1-0.1 c-0.5,0.2-1,0.5-1.5,0.7c-0.3,0.2-0.7,0.1-1-0.1c-0.6-0.6-1.3-1.1-1.9-1.7c-0.3-0.2-0.6-0.3-0.9-0.1c-0.6,0.3-1.2,0.5-1.9,0.8 c-0.3,0.1-0.7,0-1-0.2c-0.6-0.6-1.2-1.2-1.9-1.8c-0.3-0.3-0.6-0.3-1-0.1c-0.5,0.2-1,0.4-1.5,0.7c-0.3,0.2-0.7,0.1-1-0.1 c-0.9-0.8-1.8-1.6-2.6-2.4c-0.3-0.2-0.6-0.3-0.9-0.1c-0.6,0.3-1.1,0.5-1.7,0.8c-0.3,0.1-0.7,0.1-1-0.1c-0.7-0.6-1.4-1.3-2.1-1.9 c-0.3-0.3-0.6-0.3-1-0.1c-0.5,0.2-1,0.4-1.5,0.6c-0.3,0.1-0.7,0.1-1-0.2c-0.6-0.6-1.3-1.2-1.9-1.8c-0.3-0.3-0.6-0.3-0.9-0.1 c-0.6,0.2-1.1,0.5-1.7,0.7c-0.4,0.1-0.7,0-1-0.2c-0.5-0.6-1.1-1.1-1.6-1.6c-0.3-0.3-0.7-0.3-1-0.1c-0.4,0.3-0.9,0.5-1.3,0.8 c-0.3,0.2-0.6,0.1-0.9-0.1c-0.2-0.2-0.4-0.5-0.6-0.7c-0.5-0.5-1-0.9-1.5-1.4c-0.3-0.2-0.6-0.3-0.9-0.1c-0.3,0.2-0.6,0.3-0.9,0.5")
-            .attr("fill", "none")
             .attr("stroke", "#3b82f6")
             .attr("stroke-opacity", 0.3)
             .attr("stroke-width", 0.5);
@@ -1666,54 +1624,49 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
 
     // Render device nodes - shared between all visualization types
     const renderDeviceNodes = (zoomLayer, nodes) => {
-        // Add nodes for devices
         const nodeGroups = zoomLayer.append("g")
             .attr("class", "nodes")
             .selectAll("g")
             .data(nodes)
             .join("g")
             .attr("transform", d => `translate(${d.x},${d.y})`);
-            
-        // Add shapes for each node based on type (rectangle for switches, circle for others)
+
         nodeGroups.each(function(d) {
             const node = d3.select(this);
-            // Check if this node is a switch
-            const isSwitch = d.ip && customNames?.[d.ip]?.networkRole === 'switch';
-              if (isSwitch) {
-                // For switches, use a rectangle shape
+            
+            // Get device roles using helper function
+            const { isGateway, isSwitch } = determineDeviceRoles(d.data || d);
+
+            // Choose color based on type
+            const deviceColor = () => {
+                const deviceData = d.data || d;
+                if (deviceData.ip && customNames?.[deviceData.ip]?.color) {
+                    return customNames[deviceData.ip].color;
+                }
+                if (isGateway) return "#10b981";
+                if (isSwitch) return "#6366f1";
+                return d.groupColor || "#6b7280";
+            };
+
+            const nodeShape = node.append(isSwitch ? "rect" : "circle")
+                .attr("fill", deviceColor())
+                .attr("stroke", "white")
+                .attr("stroke-width", 1.5)
+                .attr("cursor", "pointer");
+                
+            if (isSwitch) {
                 const nodeSize = d.size || 20;
-                
-                // Check if this switch is connected to a gateway
-                const connectedToGateway = d.ip && customNames?.[d.ip]?.parentGateway;
-                
-                const switchShape = node.append("rect")
+                nodeShape
                     .attr("width", nodeSize * 2)
                     .attr("height", nodeSize * 1.6)
                     .attr("x", -nodeSize)
                     .attr("y", -nodeSize * 0.8)
                     .attr("rx", 4)
-                    .attr("ry", 4)
-                    .attr("fill", d => {
-                        // Check for custom color first
-                        if (d.ip && customNames?.[d.ip]?.color) {
-                            return customNames[d.ip].color;
-                        }
-                        // Use switch color
-                        return "#6366f1"; 
-                    })
-                    .attr("stroke", connectedToGateway ? "#10b981" : "white") // Green border when connected to gateway
-                    .attr("stroke-width", connectedToGateway ? 2.5 : 1.5)
-                    .attr("cursor", "pointer");
-                
-                // Add tooltip for gateway connection information
-                if (connectedToGateway) {
-                    const gatewayName = customNames?.[customNames[d.ip].parentGateway]?.name || customNames[d.ip].parentGateway;
-                    switchShape.append("title")
-                        .text(`Connected to Gateway: ${gatewayName}`);
-                }
-                
+                    .attr("ry", 4);
+
                 // Add port count if available
-                const portCount = customNames?.[d.ip]?.portCount;
+                const deviceData = d.data || d;
+                const portCount = deviceData.portCount || customNames?.[deviceData.ip]?.portCount;
                 if (portCount) {
                     node.append("text")
                         .attr("x", 0)
@@ -1722,77 +1675,18 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                         .attr("font-size", "9px")
                         .attr("fill", "white")
                         .text(`${portCount} ports`);
-                }            } else {
-                // For regular devices, use the original circle
-                // Check if this device is a gateway to highlight it specifically
-                const isGateway = d.ip && customNames?.[d.ip]?.networkRole === 'gateway';
-                const isMainGateway = isGateway && customNames?.[d.ip]?.isMainGateway;
-                
-                // Create the circle element for the node
-                const circleNode = node.append("circle")
-                    .attr("r", d => d.size || 20)
-                    .attr("fill", d => {
-                        // If it's a gateway, use the gateway color
-                        if (isGateway) return "#10b981"; // Green color for gateways
-                        
-                        // Check for custom color first
-                        if (d.ip && customNames?.[d.ip]?.color) {
-                            return customNames[d.ip].color;
-                        }
-                        // Next check for group color for visual consistency
-                        if (d.groupColor) return d.groupColor;
-                        // Fallback to default
-                        return "#6b7280";
-                    })
-                    .attr("stroke", isMainGateway ? "#f59e0b" : "white") // Gold stroke for main gateway
-                    .attr("stroke-width", isMainGateway ? 3 : 1.5)
-                    .attr("cursor", "pointer")
-                    .on("click", (event, d) => {
-                        event.stopPropagation();
-                        setContextMenu({
-                            visible: true,
-                            device: d,
-                            x: event.clientX,
-                            y: event.clientY
-                        });
-                    })
-                    .on("contextmenu", (event, d) => {
-                        // Prevent default context menu
-                        event.preventDefault();
-                        event.stopPropagation();
-                        
-                        // Open the device modal with this device data
-                        if (setModalDevice && typeof setModalDevice === 'function') {
-                            // Merge any existing custom properties from customNames
-                            const customProps = customNames?.[d.ip] || {};
-                            setModalDevice({
-                                ...processDeviceData(d),
-                                ...customProps
-                            });
-                        }                    });
-                
-                // Add tooltip and visual indicator for the main gateway
-                if (isMainGateway) {
-                    // Add tooltip to show this is the main gateway
-                    node.append("title")
-                        .text("Main Gateway (Primary Network Default Gateway)");
-                    
-                    // Add a star icon above the main gateway
-                    node.append("text")
-                        .attr("x", 0)
-                        .attr("y", -(d.size || 20) - 5)
-                        .attr("text-anchor", "middle")
-                        .attr("font-size", "12px")
-                        .attr("fill", "#f59e0b") // Gold color
-                        .text("★"); // Star symbol to indicate main gateway
                 }
-                
-                // If this device has a parent switch, add an indicator
-                const parentSwitchIp = d.ip && customNames?.[d.ip]?.parentSwitch;
+            } else {
+                const nodeSize = d.size || 20;
+                nodeShape.attr("r", nodeSize);
+
+                // Add parent switch indicator
+                const deviceData = d.data || d;
+                const parentSwitchIp = deviceData.ip && customNames?.[deviceData.ip]?.parentSwitch;
                 if (parentSwitchIp) {
                     const nodeName = customNames?.[parentSwitchIp]?.name || parentSwitchIp;
                     node.append("text")
-                        .attr("x", -d.size * 1.5)
+                        .attr("x", -nodeSize * 1.5)
                         .attr("y", 0)
                         .attr("font-size", "8px")
                         .attr("fill", "#6366f1")
@@ -1801,100 +1695,37 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                         .text(`Connected to ${nodeName}`);
                 }
             }
-        });
 
-        // Add device IP/name as text below node
-        nodeGroups.append("text")
-            .attr("text-anchor", "middle")
-            .attr("dy", d => (d.size || 12) + 12)
-            .attr("fill", "white")
-            .attr("font-size", "10px")
-            .text(d => {
-                // Use custom name from customNames if available, otherwise show IP
-                if (customNames?.[d.ip]?.name) {
-                    return customNames[d.ip].name;
-                }
-                // If no custom name, show the IP
-                return d.ip;
-            })
-            .attr("pointer-events", "none"); // Make text non-interactive to avoid capturing clicks
+            // Add device label below node
+            node.append("text")
+                .attr("text-anchor", "middle")
+                .attr("dy", d => (d.size || 12) + 12)
+                .attr("fill", "white")
+                .attr("font-size", "10px")
+                .attr("pointer-events", "none")
+                .text(d => {
+                    const deviceData = d.data || d;
+                    // First try the name field that we explicitly set when creating nodes
+                    if (d.name) return d.name;
+                    // Then try customNames
+                    if (deviceData.ip && customNames?.[deviceData.ip]?.name) return customNames[deviceData.ip].name;
+                    // Then try device's own name field
+                    if (deviceData.name) return deviceData.name;
+                    // Then fall back to IP
+                    if (deviceData.ip) return deviceData.ip;
+                    return "Unknown Device";
+                });
 
-        // Add icons to devices
-        nodeGroups.each(function(d) {
-            const group = d3.select(this);
-            // Increase icon size - using 1.2x the previous size
-            const iconSize = ((d.size || 12) * 1.2);
-            
-            try {                // Get icon from customNames or use default based on device vendor
-                let iconComponent;
-                
-                // For switches, always use network icon
-                if (customNames?.[d.ip]?.networkRole === 'switch') {
-                    iconComponent = iconMap.switch || iconMap.network;
-                } else if (customNames?.[d.ip]?.icon) {
-                    // Use custom icon if specified
-                    const iconName = customNames[d.ip].icon;
-                    iconComponent = iconMap[iconName];
-                } else {
-                    // Use default icon based on vendor
-                    const vendor = d.vendor?.toLowerCase() || '';
-                    
-                    if (vendor.includes('cisco')) {
-                        iconComponent = iconMap.cisco;
-                    } else if (vendor.includes('raspberry')) {
-                        iconComponent = iconMap.raspberry;
-                    } else if (vendor.includes('apple')) {
-                        iconComponent = iconMap.apple;
-                    } else if (vendor.includes('intel')) {
-                        iconComponent = iconMap.intel;
-                    } else if (vendor.includes('nvidia')) {
-                        iconComponent = iconMap.nvidia;
-                    } else if (vendor.includes('samsung')) {
-                        iconComponent = iconMap.samsung;
-                    } else {
-                        // Default to network icon
-                        iconComponent = iconMap.network;
-                    }
-                }
-                
-                if (iconComponent) {
-                    // Create a centered container for the icon
-                    const iconContainer = document.createElement('div');
-                    iconContainer.style.position = 'absolute';
-                    iconContainer.style.top = '50%';
-                    iconContainer.style.left = '50%';
-                    iconContainer.style.width = `${iconSize * 2}px`;
-                    iconContainer.style.height = `${iconSize * 2}px`;
-                    iconContainer.style.transform = 'translate(-50%, -50%)';
-                    iconContainer.style.display = 'flex';
-                    iconContainer.style.justifyContent = 'center';
-                    iconContainer.style.alignItems = 'center';
-                    iconContainer.style.pointerEvents = 'none'; // Make icon non-interactive
-                    iconContainer.style.color = 'white';
-                    
-                    // Use React's createRoot to render the icon into the div
-                    const root = createRoot(iconContainer);
-                    root.render(React.createElement(iconComponent, { size: iconSize }));
-                    
-                    // Use D3's append function for foreign objects
-                    group.append('foreignObject')
-                        .attr('width', iconSize * 2)
-                        .attr('height', iconSize * 2)
-                        .attr('x', -iconSize)
-                        .attr('y', -iconSize)
-                        .node().appendChild(iconContainer);
-                }
-            } catch (error) {
-                console.error('Error rendering icon:', error);
-                // Fallback: add a simple text label
-                group.append("text")
-                    .attr("text-anchor", "middle")
-                    .attr("dy", "0.3em")
-                    .attr("fill", "white")
-                    .attr("font-size", "10px")
-                    .attr("pointer-events", "none")
-                    .text("?");
-            }
+            // Add click handlers for all nodes
+            node.on("click", (event, d) => {
+                event.stopPropagation();
+                setContextMenu({
+                    visible: true,
+                    device: d.data || d,
+                    x: event.clientX,
+                    y: event.clientY
+                });
+            });
         });
     };
 
@@ -2356,6 +2187,173 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
         return enhancedDevice;
     };
 
+    // Helper to calculate node dimensions for different shapes
+    const getNodeDimensions = (node) => {
+        // Check if this is a switch (which uses rectangles)
+        const isSwitch = node.data?.networkRole === 'switch' || 
+                        (node.data?.ip && customNames?.[node.data.ip]?.networkRole === 'switch');
+        
+        // Get node size (default to 20 if not specified)
+        const size = node.data?.size || 20;
+        
+        if (isSwitch) {
+            return {
+                type: "rect",
+                width: size * 2,
+                height: size * 1.6
+            };
+        } else {
+            return {
+                type: "circle",
+                radius: size
+            };
+        }
+    };
+
+    // Helper to calculate intersection with a circle
+    const getCircleIntersection = (cx, cy, radius, tx, ty) => {
+        const dx = tx - cx;
+        const dy = ty - cy;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // If target is at center of circle, move slightly right
+        if (distance === 0) {
+            return {
+                x: cx + radius,
+                y: cy
+            };
+        }
+        
+        // Calculate the point on the circle's circumference
+        return {
+            x: cx + (dx * radius) / distance,
+            y: cy + (dy * radius) / distance
+        };
+    };
+
+    // Helper to calculate intersection with a rectangle
+    const getRectIntersection = (cx, cy, width, height, tx, ty) => {
+        const hw = width / 2;   // half width
+        const hh = height / 2;  // half height
+        const dx = tx - cx;
+        const dy = ty - cy;
+        
+        // Handle case where target is at rectangle's center
+        if (dx === 0 && dy === 0) {
+            return { x: cx + hw, y: cy };
+        }
+        
+        const angle = Math.atan2(dy, dx);
+        
+        // Calculate possible intersection points with all edges
+        const intersections = [
+            // right edge
+            {
+                x: cx + hw,
+                y: cy + hw * Math.tan(angle)
+            },
+            // left edge
+            {
+                x: cx - hw,
+                y: cy - hw * Math.tan(angle)
+            },
+            // top edge
+            {
+                x: cx + hh / Math.tan(angle),
+                y: cy - hh
+            },
+            // bottom edge
+            {
+                x: cx - hh / Math.tan(angle),
+                y: cy + hh
+            }
+        ];
+        
+        // Find the first intersection point that lies within the bounds of its edge
+        return intersections.find(point => {
+            // Check if point lies within rectangle bounds
+            const validX = point.x >= cx - hw && point.x <= cx + hw;
+            const validY = point.y >= cy - hh && point.y <= cy + hh;
+            
+            // Point must be between source and target
+            const betweenX = (dx > 0) ? 
+                (point.x >= cx && point.x <= tx) : 
+                (point.x >= tx && point.x <= cx);
+            const betweenY = (dy > 0) ?
+                (point.y >= cy && point.y <= ty) :
+                (point.y >= ty && point.y <= cy);
+                
+            return validX && validY && betweenX && betweenY;
+        }) || { 
+            // Fallback to rectangle center edge if no valid intersection found
+            x: dx > 0 ? cx + hw : cx - hw,
+            y: cy
+        };
+    };
+
+    // Helper function to calculate control points for Bezier curves
+    const getControlPoints = (source, target, startPoint, endPoint, distance) => {
+        const tension = Math.min(0.3, distance * 0.001); // Scale tension with distance
+        const controlDistance = distance * tension;
+        
+        // Calculate the midpoint
+        const midX = (startPoint.x + endPoint.x) / 2;
+        const midY = (startPoint.y + endPoint.y) / 2;
+        
+        // Source control point
+        const cp1x = startPoint.x + (midX - startPoint.x) * 0.5;
+        const cp1y = startPoint.y + controlDistance * (source.y < target.y ? 1 : -1);
+        
+        // Target control point
+        const cp2x = endPoint.x - (endPoint.x - midX) * 0.5;
+        const cp2y = endPoint.y - controlDistance * (source.y < target.y ? 1 : -1);
+        
+        return { cp1x, cp1y, cp2x, cp2y };
+    };
+
+    // Custom curve generator for smooth paths between nodes with accurate boundary intersections
+    const linkGenerator = (d) => {
+        const sourceX = d.source.x;
+        const sourceY = d.source.y;
+        const targetX = d.target.x;
+        const targetY = d.target.y;
+
+        // Calculate boundary intersections for both nodes
+        const sourceDim = getNodeDimensions(d.source);
+        const targetDim = getNodeDimensions(d.target);
+
+        // Calculate intersection points for both ends
+        let startPoint;
+        if (sourceDim.type === "circle") {
+            startPoint = getCircleIntersection(sourceX, sourceY, sourceDim.radius, targetX, targetY);
+        } else {
+            startPoint = getRectIntersection(sourceX, sourceY, sourceDim.width, sourceDim.height, targetX, targetY);
+        }
+
+        let endPoint;
+        if (targetDim.type === "circle") {
+            endPoint = getCircleIntersection(targetX, targetY, targetDim.radius, sourceX, sourceY);
+        } else {
+            endPoint = getRectIntersection(targetX, targetY, targetDim.width, targetDim.height, sourceX, sourceY);
+        }
+
+        // Calculate distance between points
+        const dx = endPoint.x - startPoint.x;
+        const dy = endPoint.y - startPoint.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Adjust tension based on connection type
+        const tension = d.target.data?.isMainGateway ? 0.36 : 
+                       (d.source.data?.type === "gateway" && d.target.data?.type === "switch") ? 0.33 :
+                       (d.source.data?.type === "switch" && d.target.data?.type === "device") ? 0.3 : 0.25;
+
+        // Get control points for the Bezier curve
+        const { cp1x, cp1y, cp2x, cp2y } = getControlPoints(d.source, d.target, startPoint, endPoint, distance * tension);
+
+        // Create SVG path
+        return `M${startPoint.x},${startPoint.y} C${cp1x},${cp1y} ${cp2x},${cp2y} ${endPoint.x},${endPoint.y}`;
+    };
+
     return (
         <div className="relative w-full h-full overflow-hidden" 
              ref={containerRef}
@@ -2623,11 +2621,19 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, openSSHMod
                                             'Main Gateway' : 'Gateway' : 
                                     customNames[contextMenu.device.ip].networkRole === 'switch' ? 'Switch' : 
                                     'Regular Device'
-                                }
-                                {/* Add badge for main gateway */}
+                                }                                {/* Add badges for main gateway */}
                                 {customNames[contextMenu.device.ip].networkRole === 'gateway' && 
                                  customNames[contextMenu.device.ip].isMainGateway && (
-                                    <span className="ml-2 px-1.5 py-0.5 bg-green-600 text-white text-xs rounded">Primary</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="px-1.5 py-0.5 bg-green-600 text-white text-xs rounded">Primary</span>
+                                        {Object.entries(customNames).filter(([ip, props]) => 
+                                            ip !== contextMenu.device.ip && 
+                                            props.networkRole === 'gateway' && 
+                                            props.isMainGateway
+                                        ).length > 0 && (
+                                            <span className="px-1.5 py-0.5 bg-blue-600 text-white text-xs rounded">Multi-Gateway</span>
+                                        )}
+                                    </div>
                                 )}
                             </div>
                         )}

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "re
 import { io } from "socket.io-client";
 import { Line } from "react-chartjs-2";
 import { FaWifi, FaServer, FaChartLine, FaExclamationTriangle, FaCheck, FaTimes, FaInfoCircle, FaNetworkWired, FaDocker, FaDesktop, FaClock, FaEdit, FaTerminal } from "react-icons/fa";
-import DeviceDetailsModal from "./DeviceDetailsModal";
+import UnifiedDeviceModal from "./UnifiedDeviceModal";
 import SSHTerminal from "./sshterminal";
 import {
     Chart as ChartJS,
@@ -990,13 +990,17 @@ const NetworkPerformance = forwardRef(({
                     </div>
                 </div>
             )}
-            
-            {/* Device Details Modal */}
-            <DeviceDetailsModal
-                isVisible={detailsModalVisible}
-                onClose={() => setDetailsModalVisible(false)}
-                device={selectedDeviceForDetails}
-                onSaveDeviceName={handleSaveDeviceName}
+              {/* Device Modal */}
+            <UnifiedDeviceModal
+                modalDevice={selectedDeviceForDetails}
+                setModalDevice={(device) => {
+                    setSelectedDeviceForDetails(device);
+                    if (!device) setDetailsModalVisible(false);
+                }}
+                onSave={(device) => {
+                    handleSaveDeviceName(device.ip, device.name);
+                    setDetailsModalVisible(false);
+                }}
                 onStartSSH={handleStartSSH}
                 systemUptime={selectedDeviceUptime}
             />
