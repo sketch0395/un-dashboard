@@ -1,4 +1,4 @@
-'use client';
+                                                                                                                                                                                                                                                                                                                                        'use client';
 
 import React, { useState, useEffect } from "react";
 import Modal from "./Modal";
@@ -44,11 +44,11 @@ const UnifiedDeviceModal = ({
             const deviceData = savedCustomProperties[enhancedDevice.ip] || {};
             setDeviceHistory(deviceData.history || []);
         }
-    }, [enhancedDevice?.ip]);
-      // Handle main device save
+    }, [enhancedDevice?.ip]);    // Handle main device save
     const handleSave = () => {
         if (enhancedDevice) {
             console.log("Saving device with the following relationships:", {
+                ip: enhancedDevice.ip,
                 networkRole: enhancedDevice.networkRole,
                 parentGateway: enhancedDevice.parentGateway,
                 parentSwitch: enhancedDevice.parentSwitch
@@ -67,27 +67,20 @@ const UnifiedDeviceModal = ({
                     notes: enhancedDevice.notes
                 }
             });
-
-            // Clear parent relationships based on network role
-            let parentGateway = null;
-            let parentSwitch = null;
             
-            // If it's a switch, it can have a parent gateway
+            // DEBUG: Check if parentGateway is properly set for switches
             if (enhancedDevice.networkRole === 'switch') {
-                parentGateway = enhancedDevice.parentGateway || null;
-            } 
-            // Regular devices can have parent switches
-            else if (!enhancedDevice.networkRole || enhancedDevice.networkRole !== 'gateway') {
-                parentSwitch = enhancedDevice.parentSwitch || null;
+                console.log(`DEBUG - Switch parentGateway before save: "${enhancedDevice.parentGateway}"`);
             }
+
+            // DO NOT modify or nullify the parent relationships that are already set in the enhancedDevice
+            // Instead, use them directly
             
-            // Add history to the device and ensure parent relationships are included
+            // Add history to the device without overriding parent connections
             const deviceToSave = {
                 ...enhancedDevice,
-                history: newHistory,
-                // Explicitly set the parent relationships
-                parentGateway: parentGateway,
-                parentSwitch: parentSwitch
+                history: newHistory
+                // DO NOT explicitly set parentGateway/parentSwitch here, as they are already in enhancedDevice
             };
 
             // Update device properties in localStorage
@@ -268,26 +261,26 @@ const UnifiedDeviceModal = ({
                                     'Not connected to any switch')
                             }
                         </div>
-                        
-                        <select
+                          <select
                             value={enhancedDevice?.networkRole === 'switch' ? 
                                   (enhancedDevice?.parentGateway || "") : 
                                   (enhancedDevice?.parentSwitch || "")}
                             onChange={(e) => {
-                                const selectedValue = e.target.value || null;
+                                // Keep the raw selected value - don't convert empty string to null yet
+                                const selectedValue = e.target.value;
                                 
                                 if (enhancedDevice?.networkRole === 'switch') {
-                                    console.log(`Setting switch ${enhancedDevice.ip} parent gateway to: ${selectedValue}`);
+                                    console.log(`Setting switch ${enhancedDevice.ip} parent gateway to: "${selectedValue}"`);
                                     setModalDevice((prev) => ({
                                         ...prev, 
-                                        parentGateway: selectedValue,
+                                        parentGateway: selectedValue === "" ? null : selectedValue,
                                         parentSwitch: null
                                     }));
                                 } else {
-                                    console.log(`Setting device ${enhancedDevice.ip} parent switch to: ${selectedValue}`);
+                                    console.log(`Setting device ${enhancedDevice.ip} parent switch to: "${selectedValue}"`);
                                     setModalDevice((prev) => ({
                                         ...prev, 
-                                        parentSwitch: selectedValue,
+                                        parentSwitch: selectedValue === "" ? null : selectedValue,
                                         parentGateway: null
                                     }));
                                 }
@@ -373,16 +366,14 @@ const UnifiedDeviceModal = ({
                     </div>
                 </div>
 
-                {/* Action Buttons */}
-                <div className="flex justify-end gap-2 sticky bottom-0 bg-gray-800 py-3">
+                {/* Action Buttons */}                <div className="flex justify-end gap-2 sticky bottom-0 bg-gray-800 py-3">
                     <button
                         onClick={() => setModalDevice(null)}
                         className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
                     >
                         Cancel
-                    </button>
-                    <button
-                        onClick={handleSave}
+                    </button>                    <button
+                        onClick={enhancedHandleSave} /* Use the enhanced save function */
                         className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
                     >
                         Save
@@ -391,6 +382,47 @@ const UnifiedDeviceModal = ({
             </div>
         </Modal>
     );
+};
+
+// Function to manually check parent relationships for switches
+const debugParentRelationships = () => {
+    try {
+        const devices = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+        
+        console.log("========== PARENT RELATIONSHIP DEBUG ==========");
+        
+        // Check all switches
+        const switches = Object.entries(devices).filter(([_, props]) => props.networkRole === 'switch');
+        console.log(`Found ${switches.length} switches`);
+        
+        switches.forEach(([ip, props]) => {
+            console.log(`Switch: ${ip}, Parent Gateway: ${props.parentGateway || 'None'}`);
+        });
+        
+        // Check all gateways
+        const gateways = Object.entries(devices).filter(([_, props]) => props.networkRole === 'gateway');
+        console.log(`Found ${gateways.length} gateways`);
+        
+        gateways.forEach(([ip, props]) => {
+            console.log(`Gateway: ${ip}, Name: ${props.name || ip}`);
+            
+            // Find all devices that reference this gateway
+            const connectedSwitches = Object.entries(devices).filter(([_, p]) => p.parentGateway === ip);
+            console.log(`  Connected switches: ${connectedSwitches.length}`);
+        });
+        
+        console.log("==============================================");
+    } catch (error) {
+        console.error("Debug error:", error);
+    }
+};
+
+// Call the debug function when the save button is clicked
+const enhancedHandleSave = () => {
+    handleSave();
+    setTimeout(() => {
+        debugParentRelationships();
+    }, 500);
 };
 
 export default UnifiedDeviceModal;

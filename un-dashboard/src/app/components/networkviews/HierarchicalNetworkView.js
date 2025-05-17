@@ -42,10 +42,14 @@ const HierarchicalNetworkView = ({
             
             console.log("Switch devices:", switchDevices);
             console.log("Gateway devices:", gatewayDevices);
-            
-            // More detailed check of switch-to-gateway connections
+              // More detailed check of switch-to-gateway connections
             console.log("=== NETWORK RELATIONSHIP VALIDATION ===");
+            console.log("CUSTOM NAMES FULL DATA:", JSON.stringify(customNames, null, 2));
+            
             switchDevices.forEach(([ip, props]) => {
+                // Check the raw value of parentGateway
+                console.log(`Raw parentGateway value for switch ${ip}: "${props.parentGateway}"`);
+                
                 if (props.parentGateway) {
                     const gateway = customNames[props.parentGateway];
                     if (gateway) {
@@ -259,9 +263,23 @@ const HierarchicalNetworkView = ({
                     data: switchDevice,
                     children: []
                 };
-                  // Get the parent gateway IP from customNames
+                
+                // Get the parent gateway IP from customNames - ensure we get the actual value
+                // Read directly from customNames to avoid any modification that might have happened
                 const parentGatewayIP = customNames?.[switchDevice.ip]?.parentGateway;
-                const parentGatewayNode = parentGatewayIP ? nodeMap.get(parentGatewayIP) : null;
+                
+                // Log the relationship for debugging with more detailed info
+                console.log(`PARENT CHECK: Switch ${switchDevice.ip} parent gateway value:`, 
+                          parentGatewayIP === null ? "null" : 
+                          parentGatewayIP === undefined ? "undefined" : 
+                          `"${parentGatewayIP}"`);
+                
+                // Use parentGatewayIP directly without additional checks that might convert it to null
+                // Only nullify if it's explicitly empty string
+                const validParentIP = parentGatewayIP === "" ? null : parentGatewayIP;
+                
+                // Find the corresponding gateway node
+                const parentGatewayNode = validParentIP ? nodeMap.get(validParentIP) : null;
                 
                 // Debug output to track parent relationships
                 console.log(`Switch ${switchDevice.ip} parent gateway: ${parentGatewayIP}`, 
@@ -273,7 +291,7 @@ const HierarchicalNetworkView = ({
                 }
                 
                 // Only add the switch to its parent gateway if the relationship exists
-                if (parentGatewayNode) {
+                if (parentGatewayIP && parentGatewayNode) {
                     parentGatewayNode.children.push(switchNode);
                     switchNode.parent = parentGatewayNode; // Track parent reference
                 } else {

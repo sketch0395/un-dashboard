@@ -4,8 +4,9 @@ import { useState, lazy, Suspense, useEffect, useRef } from "react";
 import NetworkScanControl from "./networkscancontrol";
 import TopologyMap from "./networktopology";
 import UnifiedDeviceModal from "./UnifiedDeviceModal";
-import { FaChevronLeft, FaChevronRight, FaCog } from "react-icons/fa";
+import { FaChevronLeft, FaChevronRight, FaCog, FaBug } from "react-icons/fa";
 import { format } from "date-fns";
+import { debugNetworkRelationships, fixSwitchParentGateway } from "../utils/networkRelationshipDebug";
 
 // Lazy load the SSH terminal component
 const SSHTerminal = lazy(() => import("./sshterminal"));
@@ -89,9 +90,7 @@ export default function NetworkDashboard() {
             changes.parentSwitch = newDevice.parentSwitch || 'Not connected';
         }
         return changes;
-    };
-
-    const handleSaveDevice = (updatedDevice) => {
+    };    const handleSaveDevice = (updatedDevice) => {
         // Check if this is an SSH request from the device modal
         if (updatedDevice._requestSSH) {
             // Remove the special flag
@@ -102,6 +101,14 @@ export default function NetworkDashboard() {
             return;
         }
         
+        // Debug output for troubleshooting
+        console.log("Saving device with relationships:", {
+            ip: updatedDevice.ip,
+            networkRole: updatedDevice.networkRole,
+            parentGateway: updatedDevice.parentGateway,
+            parentSwitch: updatedDevice.parentSwitch
+        });
+        
         // Check if network role is changing
         let networkRoleChanged = false;
         if (customNames[updatedDevice.ip]) {
@@ -109,9 +116,21 @@ export default function NetworkDashboard() {
                 customNames[updatedDevice.ip].networkRole !== updatedDevice.networkRole ||
                 customNames[updatedDevice.ip].parentGateway !== updatedDevice.parentGateway ||
                 customNames[updatedDevice.ip].parentSwitch !== updatedDevice.parentSwitch;
+        }        // We need to preserve the parent relationships exactly as they are in the updatedDevice
+        // Do not modify or set to null unless specifically intended
+        console.log("NETWORK DASHBOARD - Device being saved:", {
+            ip: updatedDevice.ip,
+            networkRole: updatedDevice.networkRole,
+            parentGateway: updatedDevice.parentGateway,
+            parentSwitch: updatedDevice.parentSwitch
+        });
+        
+        // IMPORTANT: For switch devices, ensure parent gateway is preserved
+        if (updatedDevice.networkRole === 'switch') {
+            console.log(`Ensuring switch ${updatedDevice.ip} connection to gateway ${updatedDevice.parentGateway} is preserved`);
         }
         
-        // Update the device in the local state
+        // Update the device in the local state WITHOUT overriding parent relationships
         const updatedCustomNames = {
             ...customNames,
             [updatedDevice.ip]: {
@@ -119,6 +138,12 @@ export default function NetworkDashboard() {
                 ...updatedDevice
             }
         };
+        
+        console.log(`Updated device ${updatedDevice.ip} relationships:`, {
+            networkRole: updatedDevice.networkRole,
+            parentGateway,
+            parentSwitch
+        });
         
         setCustomNames(updatedCustomNames);
         
@@ -143,7 +168,64 @@ export default function NetworkDashboard() {
         }
     };
     
-    // Handle SSH connection request
+    // Handle SSH connection request    // Function to manually fix gateway-switch connections
+    const fixGatewaySwitchConnections = () => {
+        try {
+            const storedDevices = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+            let fixed = false;
+            
+            // Find all switches
+            const switches = Object.entries(storedDevices)
+                .filter(([_, props]) => props.networkRole === 'switch');
+                
+            console.log(`Found ${switches.length} switches to check for gateway connections`);
+            
+            // Find all gateways 
+            const gateways = Object.entries(storedDevices)
+                .filter(([_, props]) => props.networkRole === 'gateway')
+                .map(([ip]) => ip);
+                
+            if (gateways.length === 0) {
+                console.log("No gateways found. Please set a device as a gateway first.");
+                return;
+            }
+            
+            // Default to the first gateway if multiple exist
+            const defaultGateway = gateways[0];
+            
+            // Fix switch-gateway connections
+            switches.forEach(([ip, props]) => {
+                if (!props.parentGateway) {
+                    console.log(`Switch ${ip} has no parent gateway, setting to ${defaultGateway}`);
+                    storedDevices[ip] = {
+                        ...props,
+                        parentGateway: defaultGateway
+                    };
+                    fixed = true;
+                }
+            });
+            
+            if (fixed) {
+                localStorage.setItem("customDeviceProperties", JSON.stringify(storedDevices));
+                setCustomNames(storedDevices);
+                
+                // Refresh the topology map
+                if (topologyMapRef.current) {
+                    topologyMapRef.current.refresh();
+                }
+                
+                console.log("Fixed gateway-switch connections");
+                return true;
+            } else {
+                console.log("No fixes needed for gateway-switch connections");
+                return false;
+            }
+        } catch (error) {
+            console.error("Error fixing gateway-switch connections:", error);
+            return false;
+        }
+    };
+    
     const handleOpenSSH = (device) => {
         setSSHTarget(device);
         setSSHUsername(""); // Reset username
@@ -220,12 +302,35 @@ export default function NetworkDashboard() {
                     />
                 </div>
                 
-                {/* Minimized state shows only icons */}
-                {controlsMinimized && (
+                {/* Minimized state shows only icons */}                {controlsMinimized && (
                     <div className="flex flex-col items-center gap-3 mt-4">
                         <button 
                             className="bg-gray-700 p-2 rounded-full hover:bg-gray-600"
                             title="Network settings"
+                        >
+                            <FaCog />
+                        </button>                        <button 
+                            className="bg-gray-700 p-2 rounded-full hover:bg-gray-600"
+                            title="Debug Network Relationships"
+                            onClick={() => {
+                                debugNetworkRelationships();
+                                if (topologyMapRef.current) {
+                                    topologyMapRef.current.refresh();
+                                }
+                            }}
+                        >
+                            <FaBug />
+                        </button>
+                        <button 
+                            className="bg-yellow-700 p-2 rounded-full hover:bg-yellow-600"
+                            title="Fix Switch-Gateway Connections"
+                            onClick={() => {
+                                if (fixGatewaySwitchConnections()) {
+                                    alert("Fixed switch-gateway connections. Topology map will refresh.");
+                                } else {
+                                    alert("No switch-gateway connection issues to fix or no gateways available.");
+                                }
+                            }}
                         >
                             <FaCog />
                         </button>

@@ -1,4 +1,4 @@
-// Network visualization utility functions shared between different views
+// Functions shared between different views
 import * as d3 from "d3";
 import { getMacInfo, getOSInfo } from "../../utils/sshScanUtils";
 import { determineDeviceRoles } from "../../utils/deviceManagementUtils";
@@ -59,24 +59,28 @@ export const validateNetworkRelationships = (devices, customNames) => {
             };
             changes = true;
         }
-    });
-      // Look for switches with missing parent gateways and try to auto-fix if possible
+    });      // Look for switches with missing parent gateways and try to auto-fix if possible
     if (Object.keys(devices || {}).length > 0) {
         const gatewayIPs = Object.entries(validatedNames)
             .filter(([_, props]) => props.networkRole === 'gateway')
             .map(([ip]) => ip);
             
+        console.log(`Found ${gatewayIPs.length} gateway(s) for auto-assignment:`, gatewayIPs);
+            
         // If there's at least one gateway available, assign switches without parents to it
         if (gatewayIPs.length > 0) {
             const defaultGateway = gatewayIPs[0];
             
-            Object.entries(validatedNames)
-                .filter(([_, props]) => props.networkRole === 'switch' && !props.parentGateway)
-                .forEach(([ip, props]) => {
-                    console.log(`Auto-fixing: Assigning switch ${ip} to default gateway ${defaultGateway}`);
-                    validatedNames[ip] = { ...props, parentGateway: defaultGateway };
-                    changes = true;
-                });
+            const switchesWithoutParents = Object.entries(validatedNames)
+                .filter(([_, props]) => props.networkRole === 'switch' && !props.parentGateway);
+                
+            console.log(`Found ${switchesWithoutParents.length} switches without parent gateways`);
+            
+            switchesWithoutParents.forEach(([ip, props]) => {
+                console.log(`Auto-fixing: Assigning switch ${ip} to default gateway ${defaultGateway}`);
+                validatedNames[ip] = { ...props, parentGateway: defaultGateway };
+                changes = true;
+            });
         }
     }
     

@@ -20,38 +20,50 @@ export const updateDeviceProperties = (device) => {
     try {
         // Get existing custom properties
         const storedProps = localStorage.getItem("customDeviceProperties") || "{}";
-        const customProps = JSON.parse(storedProps);        
+        const customProps = JSON.parse(storedProps);            // IMPORTANT: Don't override or set parent relationships to null here
+        // Use the values directly from the device object
         
-        // Handle parent relationships based on network role
-        let parentGateway = null;
-        let parentSwitch = null;
-        
-        // Only switches can have parent gateways
-        if (device.networkRole === 'switch' && device.parentGateway) {
-            parentGateway = device.parentGateway === '' ? null : device.parentGateway;
-            console.log(`Setting switch ${device.ip} parent gateway to: ${parentGateway}`);
+        console.log(`Raw device values being saved for "${device.ip}":`);
+        console.log(`- networkRole: ${device.networkRole}`);
+        console.log(`- parentGateway: "${device.parentGateway}"`);
+        console.log(`- parentSwitch: "${device.parentSwitch}"`);
+
+        // For switches, ensure parentGateway is preserved as-is
+        if (device.networkRole === 'switch') {
+            console.log(`Preserving parent gateway "${device.parentGateway}" for switch ${device.ip}`);
         }
         
-        // Only regular devices can have parent switches
-        if (!device.networkRole || (device.networkRole !== 'gateway' && device.networkRole !== 'switch')) {
-            parentSwitch = device.parentSwitch === '' ? null : device.parentSwitch;
-            console.log(`Setting device ${device.ip} parent switch to: ${parentSwitch}`);
+        // For regular devices, ensure parentSwitch is preserved as-is
+        if (!device.networkRole || device.networkRole !== 'gateway') {
+            console.log(`Preserving parent switch "${device.parentSwitch}" for device ${device.ip}`);
         }
         
-        // Update the properties for this device
+        // Update the properties for this device - use the parent relationships directly from device
         customProps[device.ip] = {
             ...customProps[device.ip],
             name: device.name,
             category: device.category,
             networkRole: device.networkRole,
-            parentGateway: parentGateway,
-            parentSwitch: parentSwitch,
+            // Ensure we're setting the correct parent relationships based on role
+            parentGateway: device.networkRole === 'switch' ? device.parentGateway : null,
+            parentSwitch: (!device.networkRole || device.networkRole !== 'gateway' && device.networkRole !== 'switch') ? 
+                          device.parentSwitch : null,
             notes: device.notes || [],
             icon: device.icon,
             color: device.color,
             isMainGateway: device.isMainGateway || false,
             history: device.history || []
         };
+        
+        // Additional debug validation check
+        if (device.networkRole === 'switch' && device.parentGateway) {
+            // Verify the parent was actually saved
+            if (customProps[device.ip].parentGateway !== device.parentGateway) {
+                console.error(`ERROR: Failed to save parent gateway "${device.parentGateway}" for switch ${device.ip}`);
+                // Force it to be correct
+                customProps[device.ip].parentGateway = device.parentGateway;
+            }
+        }
         
         // Debug output for troubleshooting
         console.log("Saved device properties:", device.ip, customProps[device.ip]);
