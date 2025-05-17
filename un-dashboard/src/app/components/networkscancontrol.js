@@ -3,10 +3,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { io } from "socket.io-client";
 import { FaNetworkWired, FaDocker, FaTerminal, FaInfoCircle, FaPlay, FaPause, FaSpinner, FaCog, FaExclamationTriangle, FaCode, FaChevronDown, FaChevronUp, FaDatabase } from "react-icons/fa";
-import NetworkScanHistory from "./networkscanhistory";
+import NetworkScanHistory, { useScanHistory } from "./networkscanhistory";
+import NetworkScanExportImport from "./NetworkScanExportImport";
 
 export default function NetworkScanControl({ devices, setDevices, customNames, setCustomNames, onScanComplete, currentState = {} }) {
     const socketRef = useRef(null);
+    const { saveScanHistory } = useScanHistory();
 
     const [ipRange, setIpRange] = useState("10.5.1.1-255");
     const [status, setStatus] = useState("Idle");
@@ -104,6 +106,17 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
                         });
                     });
                     onScanComplete(flattenedDevices);
+                }
+            }
+        });        // Listen for saveToScanHistory events from the server
+        socket.on("saveToScanHistory", (data) => {
+            if (data && data.devices) {
+                try {
+                    console.log("Received saveToScanHistory event:", data);
+                    const ipRange = data.ipRange || "API Import";
+                    saveScanHistory(data.devices, ipRange);
+                } catch (error) {
+                    console.error("Error saving to scan history:", error);
                 }
             }
         });
@@ -330,7 +343,28 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
                     </div>
                 </div>
             )}
-            
+              {/* Export and Import functionality */}
+            <div className="mb-4 p-3 border border-gray-700 rounded bg-gray-800">
+                <h3 className="text-sm font-medium text-gray-300 mb-2">Export/Import Network Scan Data</h3>
+                <NetworkScanExportImport 
+                    devices={devices}
+                    customNames={customNames}
+                    onImport={(data) => {
+                        console.log("Importing scan data:", data);
+                        if (data.devices) {
+                            setDevices(data.devices);
+                        }
+                        if (data.customNames) {
+                            setCustomNames(data.customNames);
+                        }
+                        // Notify parent component
+                        if (onScanComplete) {
+                            onScanComplete(data);
+                        }
+                    }}
+                />
+            </div>
+
             {/* Network scan history display */}
             <NetworkScanHistory
                 scanHistoryData={scanHistoryData}

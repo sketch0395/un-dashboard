@@ -3,6 +3,7 @@ import * as d3 from 'd3';
 import { createRoot } from 'react-dom/client';
 import { iconMap } from '../icons/iconMapping';
 import { determineDeviceRoles } from "../../utils/deviceManagementUtils";
+import { validateNetworkRelationships } from './NetworkViewUtils';
 
 const HierarchicalNetworkView = ({ 
     devices, 
@@ -19,6 +20,65 @@ const HierarchicalNetworkView = ({
     useEffect(() => {
         if (!devices || devices.length === 0) return;
         if (!dimensions.width || !dimensions.height) return;
+        
+        // Validate network relationships before rendering
+        try {
+            const fixedRelationships = validateNetworkRelationships(devices, customNames);
+            if (fixedRelationships) {
+                console.log("Network relationships were fixed, using updated relationships");
+                // The customNames object will be updated on next render since localStorage changed
+            }
+        } catch (error) {
+            console.error("Error validating network relationships:", error);
+        }
+          
+        // Debug output for troubleshooting parent-child relationships
+        console.log("Rendering hierarchical network view with customNames:", customNames);
+        if (customNames) {
+            const switchDevices = Object.entries(customNames).filter(([_, props]) => props.networkRole === 'switch');
+            const gatewayDevices = Object.entries(customNames).filter(([_, props]) => props.networkRole === 'gateway');
+            
+            console.log(`Found ${switchDevices.length} switches and ${gatewayDevices.length} gateways`);
+            
+            console.log("Switch devices:", switchDevices);
+            console.log("Gateway devices:", gatewayDevices);
+            
+            // More detailed check of switch-to-gateway connections
+            console.log("=== NETWORK RELATIONSHIP VALIDATION ===");
+            switchDevices.forEach(([ip, props]) => {
+                if (props.parentGateway) {
+                    const gateway = customNames[props.parentGateway];
+                    if (gateway) {
+                        if (gateway.networkRole === 'gateway') {
+                            console.log(`✅ VALID: Switch ${ip} connected to gateway ${props.parentGateway}`);
+                        } else {
+                            console.error(`❌ INVALID: Switch ${ip} connected to non-gateway device ${props.parentGateway} (role: ${gateway.networkRole})`);
+                        }
+                    } else {
+                        console.error(`❌ MISSING: Switch ${ip} references non-existent gateway ${props.parentGateway}`);
+                    }
+                } else {
+                    console.warn(`⚠️ NOTE: Switch ${ip} has no parent gateway assigned`);
+                }
+            });
+            
+            // Check for regular devices with parent switches
+            Object.entries(customNames).filter(([_, props]) => !props.networkRole).forEach(([ip, props]) => {
+                if (props.parentSwitch) {
+                    const switchDevice = customNames[props.parentSwitch];
+                    if (switchDevice) {
+                        if (switchDevice.networkRole === 'switch') {
+                            console.log(`✅ VALID: Device ${ip} connected to switch ${props.parentSwitch}`);
+                        } else {
+                            console.error(`❌ INVALID: Device ${ip} connected to non-switch device ${props.parentSwitch} (role: ${switchDevice.networkRole})`);
+                        }
+                    } else {
+                        console.error(`❌ MISSING: Device ${ip} references non-existent switch ${props.parentSwitch}`);
+                    }
+                }
+            });
+            console.log("======================================");
+        }
         
         const { width, height } = dimensions;
         
@@ -189,9 +249,7 @@ const HierarchicalNetworkView = ({
                         root.children.push(gatewayNode);
                         nodeMap.set(gateway.ip, gatewayNode);
                     });
-            }
-
-            // Add all switch devices under their respective gateways or directly to root
+            }            // Add all switch devices under their respective gateways or directly to root
             switchDevices.forEach(switchDevice => {
                 const switchName = customNames?.[switchDevice.ip]?.name || switchDevice.ip;
                 const switchNode = {
@@ -201,14 +259,30 @@ const HierarchicalNetworkView = ({
                     data: switchDevice,
                     children: []
                 };
-                
+                  // Get the parent gateway IP from customNames
                 const parentGatewayIP = customNames?.[switchDevice.ip]?.parentGateway;
                 const parentGatewayNode = parentGatewayIP ? nodeMap.get(parentGatewayIP) : null;
                 
+                // Debug output to track parent relationships
+                console.log(`Switch ${switchDevice.ip} parent gateway: ${parentGatewayIP}`, 
+                          parentGatewayNode ? "Found parent node" : "No parent node found");
+                
+                // Add a visual indicator for switches connected to gateways
+                if (parentGatewayIP) {
+                    switchNode.connectedToGateway = true;
+                }
+                
+                // Only add the switch to its parent gateway if the relationship exists
                 if (parentGatewayNode) {
                     parentGatewayNode.children.push(switchNode);
+                    switchNode.parent = parentGatewayNode; // Track parent reference
                 } else {
                     root.children.push(switchNode);
+                    
+                    // Try to find an appropriate gateway to connect to if no parent specified
+                    if (!parentGatewayIP && gatewayDevices.length > 0) {
+                        console.log(`Switch ${switchDevice.ip} has no parent gateway but gateways exist; could connect to one`);
+                    }
                 }
                 
                 nodeMap.set(switchDevice.ip, switchNode);
@@ -528,8 +602,7 @@ const HierarchicalNetworkView = ({
                 .attr("stroke", "white")
                 .attr("stroke-width", 1.5)
                 .attr("cursor", "pointer");
-                
-            // Apply size and shape based on node type
+                  // Apply size and shape based on node type
             if (isSwitch) {
                 const nodeSize = 20;
                 nodeShape
@@ -539,9 +612,42 @@ const HierarchicalNetworkView = ({
                     .attr("y", -nodeSize * 0.8)
                     .attr("rx", 4)
                     .attr("ry", 4);
+                    
+                // Special styling for switches connected to gateways
+                if (d.data.connectedToGateway || deviceData.ip && customNames?.[deviceData.ip]?.parentGateway) {
+                    nodeShape
+                        .attr("stroke", "#10b981") // Green border for connected switches
+                        .attr("stroke-width", 2.5);
+                        
+                    // Add a small connector line indicator
+                    node.append("line")
+                        .attr("x1", 0)
+                        .attr("y1", -nodeSize * 0.9)
+                        .attr("x2", 0)
+                        .attr("y2", -nodeSize * 1.5)
+                        .attr("stroke", "#10b981")
+                        .attr("stroke-width", 2)
+                        .attr("stroke-dasharray", "2,1");
+                }
             } else {
                 const nodeSize = 16;
                 nodeShape.attr("r", nodeSize);
+                
+                // Special styling for main gateways
+                if (isGateway && deviceData.ip && customNames?.[deviceData.ip]?.isMainGateway) {
+                    nodeShape
+                        .attr("stroke", "#f59e0b") // Gold border for main gateway
+                        .attr("stroke-width", 3);
+                        
+                    // Add star indicator above gateway
+                    node.append("text")
+                        .attr("x", 0)
+                        .attr("y", -nodeSize - 8)
+                        .attr("text-anchor", "middle")
+                        .attr("font-size", "14px")
+                        .attr("fill", "#f59e0b")
+                        .text("★");
+                }
             }
 
             // Add device label below node

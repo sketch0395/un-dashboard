@@ -19,6 +19,11 @@ const io = socketIo(server, {
     },
 });
 
+// Configure Express to parse JSON
+app.use(express.json({ limit: '50mb' }));
+// Configure Express to parse URL-encoded data
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
 app.use(cors());
 
 if (!process.env.DEFAULT_IP_RANGE || !process.env.DEFAULT_PORTS) {
@@ -1791,11 +1796,214 @@ io.on('connection', (socket) => {
             console.error('[ERROR] Historical performance data:', error.message);
             socket.emit('networkPerformanceStatus', { status: 'Error', error: error.message });
         }
-    });
-
-    socket.on('disconnect', () => {
+    });    socket.on('disconnect', () => {
         console.log('User disconnected');
+    });    // Handle import of scan data
+    socket.on('importScanData', (data) => {
+        try {
+            console.log('[INFO] Received scan data import request via WebSocket');
+            
+            if (!data || (!data.devices && !data.customNames)) {
+                throw new Error('Invalid import data format');
+            }
+            
+            // Basic validation
+            const deviceCount = data.devices ? 
+                (Array.isArray(data.devices) ? 
+                    data.devices.length : 
+                    Object.values(data.devices).flat().length) : 0;
+                    
+            if (deviceCount === 0) {
+                throw new Error('No valid devices found in import data');
+            }
+            
+            // Extract or generate IP range for history
+            const ipRange = data.metadata?.ipRange || 'WebSocket Import';
+            
+            // Add scan source information to devices if missing
+            const timestamp = new Date().toISOString();
+            const formattedDate = new Intl.DateTimeFormat('en-US', {
+                year: 'numeric', month: '2-digit', day: '2-digit',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: false
+            }).format(new Date());
+            
+            if (data.devices) {
+                Object.values(data.devices).forEach(deviceList => {
+                    deviceList.forEach(device => {
+                        if (!device.scanSource) {
+                            device.scanSource = {
+                                id: require('crypto').randomUUID(),
+                                name: 'WebSocket Import',
+                                timestamp: formattedDate
+                            };
+                        }
+                    });
+                });
+            }
+            
+            // Log success
+            console.log(`[INFO] Successfully imported scan data with ${deviceCount} devices via WebSocket`);
+            
+            // Broadcast to all clients including this one
+            if (data.devices) {
+                io.emit('networkScanData', data.devices);
+            }
+            
+            if (data.customNames) {
+                io.emit('customNamesUpdate', data.customNames);
+            }
+            
+            // Emit event to save to scan history
+            io.emit('saveToScanHistory', {
+                devices: data.devices,
+                ipRange: ipRange,
+                timestamp: timestamp
+            });
+            
+            // Send validation success back to client
+            socket.emit('importScanStatus', { 
+                status: 'success', 
+                message: `Successfully imported ${deviceCount} devices and added to scan history`,
+                deviceCount
+            });
+            
+        } catch (error) {
+            console.error('[ERROR] Import scan data:', error.message);
+            socket.emit('importScanStatus', { status: 'error', error: error.message });
+        }
     });
+});
+
+// Add route to handle file uploads for import
+app.post('/api/network/import', (req, res) => {
+    try {
+        const data = req.body;
+        
+        if (!data || (!data.devices && !data.customNames)) {
+            return res.status(400).json({ 
+                status: 'error', 
+                error: 'Invalid import data format' 
+            });
+        }
+        
+        // Validate the imported data
+        const validateDeviceFormat = (device) => {
+            // Required fields
+            if (!device.ip) {
+                return false;
+            }
+            
+            // Validate IP format with regex
+            const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+            if (!ipRegex.test(device.ip)) {
+                return false;
+            }
+            
+            return true;
+        };
+        
+        // Check device format for at least some devices
+        if (data.devices) {
+            let deviceArray = [];
+            let isValid = true;
+            
+            // Flatten the devices object into an array
+            if (Array.isArray(data.devices)) {
+                deviceArray = data.devices;
+            } else {
+                // Handle object format where keys are IP addresses
+                Object.values(data.devices).forEach(devicesAtIP => {
+                    if (Array.isArray(devicesAtIP)) {
+                        deviceArray = [...deviceArray, ...devicesAtIP];
+                    } else if (typeof devicesAtIP === 'object') {
+                        deviceArray.push(devicesAtIP);
+                    }
+                });
+            }
+            
+            // Validate at least a subset of devices
+            const samplesToCheck = Math.min(deviceArray.length, 50);
+            for (let i = 0; i < samplesToCheck; i++) {
+                const index = Math.floor(Math.random() * deviceArray.length);
+                if (!validateDeviceFormat(deviceArray[index])) {
+                    isValid = false;
+                    break;
+                }
+            }
+            
+            if (!isValid) {
+                return res.status(400).json({
+                    status: 'error',
+                    error: 'Invalid device data format in import file'
+                });
+            }
+        }
+        
+        // Check customNames format if included
+        if (data.customNames && typeof data.customNames !== 'object') {
+            return res.status(400).json({
+                status: 'error',
+                error: 'Invalid customNames format in import file'
+            });
+        }
+        
+        const deviceCount = data.devices ? 
+            (Array.isArray(data.devices) ? 
+                data.devices.length : 
+                Object.values(data.devices).flat().length) : 0;
+                
+        console.log(`[INFO] Successfully validated import data with ${deviceCount} devices via API`);        // Extract or generate IP range for history
+        const ipRange = data.metadata?.ipRange || 'API Import';
+        
+        // Add scan source information to devices if missing
+        const timestamp = new Date().toISOString();
+        const formattedDate = new Intl.DateTimeFormat('en-US', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hour12: false
+        }).format(new Date());
+        
+        Object.values(data.devices).forEach(deviceList => {
+            deviceList.forEach(device => {
+                if (!device.scanSource) {
+                    device.scanSource = {
+                        id: require('crypto').randomUUID(),
+                        name: 'API Import',
+                        timestamp: formattedDate
+                    };
+                }
+            });
+        });
+        
+        // Broadcast data to all connected clients
+        io.emit('networkScanData', data.devices);
+        
+        if (data.customNames) {
+            io.emit('customNamesUpdate', data.customNames);
+        }
+        
+        // Emit event to save to scan history
+        io.emit('saveToScanHistory', {
+            devices: data.devices,
+            ipRange: ipRange,
+            timestamp: timestamp
+        });
+        
+        return res.status(200).json({
+            status: 'success',
+            message: `Successfully imported ${deviceCount} devices`,
+            deviceCount,
+            ipRange
+        });
+        
+    } catch (error) {
+        console.error('[ERROR] Import scan data API:', error.message);
+        return res.status(500).json({ 
+            status: 'error', 
+            error: error.message 
+        });
+    }
 });
 
 // Error-handling middleware

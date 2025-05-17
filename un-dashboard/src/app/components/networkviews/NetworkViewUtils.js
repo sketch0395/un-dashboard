@@ -6,6 +6,90 @@ import { determineDeviceRoles } from "../../utils/deviceManagementUtils";
 // Re-export the determineDeviceRoles function
 export { determineDeviceRoles };
 
+// Verify and validate parent-child relationships
+export const validateNetworkRelationships = (devices, customNames) => {
+    if (!customNames) return; // Nothing to validate
+    
+    console.log("Validating network relationships...");
+    let changes = false;
+    
+    // Create a copy of customNames to work with
+    const validatedNames = { ...customNames };
+    
+    // First pass: validate that all switches have valid gateway parents
+    Object.entries(validatedNames).forEach(([ip, props]) => {
+        // If this is a switch, make sure it has a valid parent gateway
+        if (props.networkRole === 'switch') {
+            if (props.parentGateway) {
+                const parentProps = validatedNames[props.parentGateway];
+                
+                // If parent doesn't exist or isn't a gateway, clear the relationship
+                if (!parentProps || parentProps.networkRole !== 'gateway') {
+                    console.warn(`Invalid parent gateway for switch ${ip}: ${props.parentGateway}`, 
+                               parentProps ? `Parent role: ${parentProps.networkRole}` : 'Parent not found');
+                    validatedNames[ip] = { ...props, parentGateway: null };
+                    changes = true;
+                } else {
+                    console.log(`Valid relationship: Switch ${ip} → Gateway ${props.parentGateway}`);
+                }
+            } else {
+                console.log(`Switch ${ip} has no parent gateway assigned`);
+            }
+        }
+        
+        // If this is a regular device, ensure it has a valid parent switch
+        if (!props.networkRole && props.parentSwitch) {
+            const parentProps = validatedNames[props.parentSwitch];
+            
+            // If parent doesn't exist or isn't a switch, clear the relationship
+            if (!parentProps || parentProps.networkRole !== 'switch') {
+                console.warn(`Invalid parent switch for device ${ip}: ${props.parentSwitch}`);
+                validatedNames[ip] = { ...props, parentSwitch: null };
+                changes = true;
+            }
+        }
+        
+        // Ensure device doesn't have conflicting relationships
+        if (props.networkRole === 'gateway' && (props.parentGateway || props.parentSwitch)) {
+            console.warn(`Gateway ${ip} has invalid parent relationships; removing them`);
+            validatedNames[ip] = { 
+                ...props, 
+                parentGateway: null,
+                parentSwitch: null
+            };
+            changes = true;
+        }
+    });
+      // Look for switches with missing parent gateways and try to auto-fix if possible
+    if (Object.keys(devices || {}).length > 0) {
+        const gatewayIPs = Object.entries(validatedNames)
+            .filter(([_, props]) => props.networkRole === 'gateway')
+            .map(([ip]) => ip);
+            
+        // If there's at least one gateway available, assign switches without parents to it
+        if (gatewayIPs.length > 0) {
+            const defaultGateway = gatewayIPs[0];
+            
+            Object.entries(validatedNames)
+                .filter(([_, props]) => props.networkRole === 'switch' && !props.parentGateway)
+                .forEach(([ip, props]) => {
+                    console.log(`Auto-fixing: Assigning switch ${ip} to default gateway ${defaultGateway}`);
+                    validatedNames[ip] = { ...props, parentGateway: defaultGateway };
+                    changes = true;
+                });
+        }
+    }
+    
+    if (changes) {
+        console.log("Network relationship issues found and fixed");
+        // Save the fixed relationships back to localStorage
+        localStorage.setItem("customDeviceProperties", JSON.stringify(validatedNames));
+        return validatedNames;
+    }
+    
+    return null; // No changes needed
+};
+
 // Process device data to ensure MAC and vendor info is available
 export const processDeviceData = (device) => {
     if (!device) return device;

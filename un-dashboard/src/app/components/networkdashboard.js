@@ -99,80 +99,47 @@ export default function NetworkDashboard() {
             
             // Open the SSH modal for this device
             handleOpenSSH(deviceWithoutFlag);
-            return; // Exit early, no need to save other changes
+            return;
         }
         
-        // Update both devices and customNames state to ensure re-rendering
-        if (updatedDevice.ip) {
-            // Get existing custom properties from localStorage
-            const savedCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
-            const oldDeviceData = savedCustomProperties[updatedDevice.ip] || {};
-              // Handle main gateway selection - multiple main gateways are now supported
-            if (updatedDevice.networkRole === 'gateway' && updatedDevice.isMainGateway) {
-                // No need to unset other main gateways as multiple are now supported
-                console.log(`Setting ${updatedDevice.name} as a main gateway`);
+        // Check if network role is changing
+        let networkRoleChanged = false;
+        if (customNames[updatedDevice.ip]) {
+            networkRoleChanged = 
+                customNames[updatedDevice.ip].networkRole !== updatedDevice.networkRole ||
+                customNames[updatedDevice.ip].parentGateway !== updatedDevice.parentGateway ||
+                customNames[updatedDevice.ip].parentSwitch !== updatedDevice.parentSwitch;
+        }
+        
+        // Update the device in the local state
+        const updatedCustomNames = {
+            ...customNames,
+            [updatedDevice.ip]: {
+                ...customNames[updatedDevice.ip],
+                ...updatedDevice
             }
-            
-            // First update the custom names tracking
-            const newCustomNames = { ...customNames };
-            newCustomNames[updatedDevice.ip] = {
-                ...(customNames[updatedDevice.ip] || {}),
-                name: updatedDevice.name,
-                category: updatedDevice.category,
-                color: updatedDevice.color,
-                icon: updatedDevice.icon,
-                notes: updatedDevice.notes,
-                networkRole: updatedDevice.networkRole,
-                // Add port configuration if specified
-                portCount: updatedDevice.portCount,
-                // Add parent switch if specified
-                parentSwitch: updatedDevice.parentSwitch,
-                // Add parent gateway for switches
-                parentGateway: updatedDevice.parentGateway,
-                // Add main gateway flag
-                isMainGateway: updatedDevice.isMainGateway,
-                // Track change history with timestamp
-                history: [
-                    ...(oldDeviceData.history || []),
-                    {
-                        timestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
-                        changes: getDeviceChanges(oldDeviceData, updatedDevice)
+        };
+        
+        setCustomNames(updatedCustomNames);
+        
+        // If network role changed, reload from localStorage to ensure consistency
+        if (networkRoleChanged) {
+            console.log("Network role or parent relationship changed, reloading custom names from localStorage");
+            setTimeout(() => {
+                try {
+                    const storedProps = localStorage.getItem("customDeviceProperties");
+                    if (storedProps) {
+                        setCustomNames(JSON.parse(storedProps));
+                        
+                        // Also refresh the topology map
+                        if (topologyMapRef.current) {
+                            topologyMapRef.current.refresh();
+                        }
                     }
-                ].slice(-10) // Keep last 10 history entries
-            };
-            
-            // Update customNames with the updated data for all devices
-            Object.entries(savedCustomProperties).forEach(([ip, props]) => {
-                if (ip !== updatedDevice.ip) {
-                    newCustomNames[ip] = props;
+                } catch (error) {
+                    console.error("Error reloading custom names:", error);
                 }
-            });
-            
-            setCustomNames(newCustomNames);
-            
-            // Update localStorage directly to ensure persistence between components
-            savedCustomProperties[updatedDevice.ip] = newCustomNames[updatedDevice.ip];
-            localStorage.setItem("customDeviceProperties", JSON.stringify(savedCustomProperties));
-            
-            // Then update devices state with merged data
-            setDevices(prevDevices => {
-                const newDevices = { ...prevDevices };
-                // Find the scan that contains this device
-                Object.keys(newDevices).forEach(scanKey => {
-                    if (Array.isArray(newDevices[scanKey])) {
-                        // Update the device in the array
-                        newDevices[scanKey] = newDevices[scanKey].map(device => 
-                            device.ip === updatedDevice.ip ? { ...device, ...updatedDevice } : device
-                        );
-                    }
-                });
-                return newDevices;
-            });
-            
-            // Refresh the network topology when a device is saved
-            if (topologyMapRef.current && typeof topologyMapRef.current.refresh === 'function') {
-                topologyMapRef.current.refresh();
-            }
+            }, 100); // Small delay to ensure localStorage has updated
         }
     };
     

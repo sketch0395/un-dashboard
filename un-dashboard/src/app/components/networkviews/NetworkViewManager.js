@@ -2,7 +2,7 @@ import React, { useEffect, useState, forwardRef, useImperativeHandle, useRef } f
 import * as d3 from "d3";
 import CircularNetworkView from './CircularNetworkView';
 import HierarchicalNetworkView from './HierarchicalNetworkView';
-import { processDeviceData, groupDevicesBySubnet, isSSHAvailable } from './NetworkViewUtils';
+import { processDeviceData, groupDevicesBySubnet, isSSHAvailable, validateNetworkRelationships } from './NetworkViewUtils';
 import { FaCircle, FaSitemap } from 'react-icons/fa';
 import { FaTimes, FaFilter, FaChevronDown, FaCheck } from 'react-icons/fa';
 import { FaLayerGroup as FaLayerIcon } from "react-icons/fa6";
@@ -89,6 +89,22 @@ const NetworkViewManager = forwardRef(({
             resizeObserver.disconnect();
         };
     }, [containerRef]);
+      // Validate network relationships when devices or customNames change
+    useEffect(() => {
+        // Only run validation when we have devices and customNames
+        if (!devices || !customNames) return;
+        
+        console.log("NetworkViewManager: Running relationship validation check");
+        
+        // Check for invalid relationships
+        const validatedCustomNames = validateNetworkRelationships(devices, customNames);
+        
+        // If there were issues, update localStorage
+        if (validatedCustomNames) {
+            console.log("Updating customNames with validated relationships");
+            localStorage.setItem("customDeviceProperties", JSON.stringify(validatedCustomNames));
+        }
+    }, [devices, customNames, refreshTrigger]);
 
     // Close context menu when clicking outside
     useEffect(() => {

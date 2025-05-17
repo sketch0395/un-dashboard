@@ -20,22 +20,41 @@ export const updateDeviceProperties = (device) => {
     try {
         // Get existing custom properties
         const storedProps = localStorage.getItem("customDeviceProperties") || "{}";
-        const customProps = JSON.parse(storedProps);
-
+        const customProps = JSON.parse(storedProps);        
+        
+        // Handle parent relationships based on network role
+        let parentGateway = null;
+        let parentSwitch = null;
+        
+        // Only switches can have parent gateways
+        if (device.networkRole === 'switch' && device.parentGateway) {
+            parentGateway = device.parentGateway === '' ? null : device.parentGateway;
+            console.log(`Setting switch ${device.ip} parent gateway to: ${parentGateway}`);
+        }
+        
+        // Only regular devices can have parent switches
+        if (!device.networkRole || (device.networkRole !== 'gateway' && device.networkRole !== 'switch')) {
+            parentSwitch = device.parentSwitch === '' ? null : device.parentSwitch;
+            console.log(`Setting device ${device.ip} parent switch to: ${parentSwitch}`);
+        }
+        
         // Update the properties for this device
         customProps[device.ip] = {
             ...customProps[device.ip],
             name: device.name,
             category: device.category,
             networkRole: device.networkRole,
-            parentGateway: device.parentGateway || null,
-            parentSwitch: device.parentSwitch || null,
+            parentGateway: parentGateway,
+            parentSwitch: parentSwitch,
             notes: device.notes || [],
             icon: device.icon,
             color: device.color,
             isMainGateway: device.isMainGateway || false,
             history: device.history || []
         };
+        
+        // Debug output for troubleshooting
+        console.log("Saved device properties:", device.ip, customProps[device.ip]);
 
         // Save back to localStorage
         localStorage.setItem("customDeviceProperties", JSON.stringify(customProps));
@@ -221,16 +240,32 @@ export const getDevicesByRole = (role) => {
  */
 export const determineDeviceRoles = (device) => {
     try {
+        if (!device) return { isGateway: false, isSwitch: false };
+        
         // Handle both regular device objects and those nested under .data
         const deviceData = device.data || device;
         
         // Get properties either from parameter or localStorage
         const customProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
         
-        return {
-            isGateway: deviceData?.type === "gateway" || (deviceData.ip && customProps?.[deviceData.ip]?.networkRole === 'gateway'),
-            isSwitch: deviceData?.type === "switch" || (deviceData.ip && customProps?.[deviceData.ip]?.networkRole === 'switch')
-        };
+        // Check if it's a gateway
+        const isGateway = 
+            deviceData?.type === "gateway" || 
+            (deviceData?.networkRole === 'gateway') ||
+            (deviceData.ip && customProps?.[deviceData.ip]?.networkRole === 'gateway');
+            
+        // Check if it's a switch
+        const isSwitch = 
+            deviceData?.type === "switch" || 
+            (deviceData?.networkRole === 'switch') ||
+            (deviceData.ip && customProps?.[deviceData.ip]?.networkRole === 'switch');
+            
+        // Debug output for troubleshooting
+        if (isGateway || isSwitch) {
+            console.log(`Device role determined - IP: ${deviceData.ip}, Gateway: ${isGateway}, Switch: ${isSwitch}`);
+        }
+        
+        return { isGateway, isSwitch };
     } catch (error) {
         console.error("Error determining device roles:", error);
         return { isGateway: false, isSwitch: false };

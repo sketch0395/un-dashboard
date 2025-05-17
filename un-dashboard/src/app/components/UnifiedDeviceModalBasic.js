@@ -45,7 +45,8 @@ const UnifiedDeviceModal = ({
             setDeviceHistory(deviceData.history || []);
         }
     }, [enhancedDevice?.ip]);
-      // Handle main device save
+    
+    // Handle main device save
     const handleSave = () => {
         if (enhancedDevice) {
             console.log("Saving device with the following relationships:", {
@@ -62,32 +63,19 @@ const UnifiedDeviceModal = ({
                     name: enhancedDevice.name,
                     category: enhancedDevice.category,
                     networkRole: enhancedDevice.networkRole,
-                    parentGateway: enhancedDevice.networkRole === 'switch' ? enhancedDevice.parentGateway : null,
-                    parentSwitch: enhancedDevice.networkRole !== 'gateway' && enhancedDevice.networkRole !== 'switch' ? enhancedDevice.parentSwitch : null,
+                    parentGateway: enhancedDevice.networkRole === 'switch' ? enhancedDevice.parentGateway : undefined,
+                    parentSwitch: enhancedDevice.networkRole !== 'gateway' && enhancedDevice.networkRole !== 'switch' ? enhancedDevice.parentSwitch : undefined,
                     notes: enhancedDevice.notes
                 }
             });
 
-            // Clear parent relationships based on network role
-            let parentGateway = null;
-            let parentSwitch = null;
-            
-            // If it's a switch, it can have a parent gateway
-            if (enhancedDevice.networkRole === 'switch') {
-                parentGateway = enhancedDevice.parentGateway || null;
-            } 
-            // Regular devices can have parent switches
-            else if (!enhancedDevice.networkRole || enhancedDevice.networkRole !== 'gateway') {
-                parentSwitch = enhancedDevice.parentSwitch || null;
-            }
-            
             // Add history to the device and ensure parent relationships are included
             const deviceToSave = {
                 ...enhancedDevice,
                 history: newHistory,
-                // Explicitly set the parent relationships
-                parentGateway: parentGateway,
-                parentSwitch: parentSwitch
+                // Explicitly include these to ensure they're saved
+                parentGateway: enhancedDevice.networkRole === 'switch' ? enhancedDevice.parentGateway : null,
+                parentSwitch: enhancedDevice.networkRole !== 'gateway' && enhancedDevice.networkRole !== 'switch' ? enhancedDevice.parentSwitch : null
             };
 
             // Update device properties in localStorage
@@ -249,45 +237,27 @@ const UnifiedDeviceModal = ({
                             Regular Device
                         </button>
                     </div>
-                </div>                {/* Parent Connection */}
+                </div>
+
+                {/* Parent Connection */}
                 {(enhancedDevice?.networkRole === null || enhancedDevice?.networkRole === undefined || enhancedDevice?.networkRole === 'switch') && (
                     <div className="mb-4">
                         <label className="block text-sm text-gray-300 mb-1">
                             {enhancedDevice?.networkRole === 'switch' ? 'Connected to Gateway' : 'Connected to Switch'}
                         </label>
-                        
-                        {/* Show important debug info about current connections */}
-                        <div className="text-xs text-gray-400 mb-2">
-                            {enhancedDevice?.networkRole === 'switch' ? 
-                                (enhancedDevice?.parentGateway ? 
-                                    `Currently connected to gateway: ${enhancedDevice.parentGateway}` : 
-                                    'Not connected to any gateway') 
-                                : 
-                                (enhancedDevice?.parentSwitch ? 
-                                    `Currently connected to switch: ${enhancedDevice.parentSwitch}` : 
-                                    'Not connected to any switch')
-                            }
-                        </div>
-                        
                         <select
-                            value={enhancedDevice?.networkRole === 'switch' ? 
-                                  (enhancedDevice?.parentGateway || "") : 
-                                  (enhancedDevice?.parentSwitch || "")}
+                            value={enhancedDevice?.networkRole === 'switch' ? (enhancedDevice?.parentGateway || "") : (enhancedDevice?.parentSwitch || "")}
                             onChange={(e) => {
-                                const selectedValue = e.target.value || null;
-                                
                                 if (enhancedDevice?.networkRole === 'switch') {
-                                    console.log(`Setting switch ${enhancedDevice.ip} parent gateway to: ${selectedValue}`);
                                     setModalDevice((prev) => ({
                                         ...prev, 
-                                        parentGateway: selectedValue,
+                                        parentGateway: e.target.value,
                                         parentSwitch: null
                                     }));
                                 } else {
-                                    console.log(`Setting device ${enhancedDevice.ip} parent switch to: ${selectedValue}`);
                                     setModalDevice((prev) => ({
                                         ...prev, 
-                                        parentSwitch: selectedValue,
+                                        parentSwitch: e.target.value,
                                         parentGateway: null
                                     }));
                                 }
@@ -300,10 +270,8 @@ const UnifiedDeviceModal = ({
                             {typeof window !== 'undefined' && 
                              Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
                                 .filter(([ip, props]) => 
-                                    // Switches can only connect to gateways
                                     enhancedDevice?.networkRole === 'switch'
                                         ? props.networkRole === 'gateway' && ip !== enhancedDevice?.ip
-                                        // Regular devices can only connect to switches
                                         : props.networkRole === 'switch' && ip !== enhancedDevice?.ip
                                 )
                                 .map(([ip, props]) => (
