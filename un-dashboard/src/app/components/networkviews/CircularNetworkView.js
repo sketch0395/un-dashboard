@@ -292,6 +292,17 @@ const CircularNetworkView = ({
     
     // Render device nodes - shared between all visualization types
     const renderDeviceNodes = (zoomLayer, nodes) => {
+        // Create a map of node IPs to nodes for easy lookup
+        const nodeMap = new Map();
+        nodes.forEach(node => {
+            if (node.ip) {
+                nodeMap.set(node.ip, node);
+            }
+        });
+        
+        // Draw connections first so they're behind the nodes
+        renderConnections(zoomLayer, nodes, nodeMap);
+        
         const nodeGroups = zoomLayer.append("g")
             .attr("class", "nodes")
             .selectAll("g")
@@ -438,14 +449,153 @@ const CircularNetworkView = ({
                 .on("mouseover", (event) => {
                     const deviceInfo = getDeviceInfo(d, customNames);
                     showTooltip(event, deviceInfo);
-                })
-                .on("mouseout", () => {
+                })                .on("mouseout", () => {
                     hideTooltip();
                 })
-                .on("click", (event) => {
+                .on("click", function(event) {
                     if (onDeviceClick) {
-                        onDeviceClick(d, event);
+                        // Pass the native event to track regular clicks
+                        onDeviceClick(d, event.sourceEvent || event);
                     }
+                })                .on("contextmenu", function(event) {
+                    // Prevent default context menu
+                    event.preventDefault();
+                    if (onDeviceClick) {
+                        // Create a new object with the necessary event properties
+                        // We can't modify the original event's button property as it's read-only
+                        const eventCopy = {
+                            clientX: (event.sourceEvent || event).clientX,
+                            clientY: (event.sourceEvent || event).clientY,
+                            button: 2, // Right-click button code
+                            preventDefault: () => {},
+                            stopPropagation: () => {}
+                        };
+                        onDeviceClick(d, eventCopy);
+                    }
+                });
+        });
+    };
+    
+    // New function to render the connections between nodes
+    const renderConnections = (zoomLayer, nodes, nodeMap) => {
+        // Create a container for all connections
+        const linksGroup = zoomLayer.append("g")
+            .attr("class", "connections");
+            
+        // Collect all connections to draw
+        const connections = [];
+        
+        if (customNames) {
+            // Process gateway-to-switch connections
+            Object.entries(customNames).forEach(([ip, props]) => {
+                if (props.networkRole === 'switch') {
+                    // Get connections from connectedGateways array
+                    const connectedGateways = Array.isArray(props.connectedGateways) ? 
+                        props.connectedGateways : 
+                        props.parentGateway ? [props.parentGateway] : [];
+                        
+                    // Add to connections if both nodes exist
+                    connectedGateways.forEach(gatewayIP => {
+                        const sourceNode = nodeMap.get(gatewayIP);
+                        const targetNode = nodeMap.get(ip);
+                        
+                        if (sourceNode && targetNode) {
+                            connections.push({
+                                source: sourceNode,
+                                target: targetNode,
+                                connectionType: 'gateway-to-switch'
+                            });
+                        }
+                    });
+                    
+                    // Process switch-to-switch connections
+                    const connectedSwitches = Array.isArray(props.connectedSwitches) ?
+                        props.connectedSwitches : [];
+                        
+                    connectedSwitches.forEach(switchIP => {
+                        // Only create one connection between each pair (avoid duplicates)
+                        if (ip < switchIP) {
+                            const sourceNode = nodeMap.get(ip);
+                            const targetNode = nodeMap.get(switchIP);
+                            
+                            if (sourceNode && targetNode) {
+                                connections.push({
+                                    source: sourceNode,
+                                    target: targetNode,
+                                    connectionType: 'switch-to-switch'
+                                });
+                            }
+                        }
+                    });
+                }
+                
+                if (props.networkRole === 'gateway') {
+                    // Process gateway-to-gateway connections
+                    const connectedGateways = Array.isArray(props.connectedGateways) ?
+                        props.connectedGateways : [];
+                        
+                    connectedGateways.forEach(gatewayIP => {
+                        // Only create one connection between each pair (avoid duplicates)
+                        if (ip < gatewayIP) {
+                            const sourceNode = nodeMap.get(ip);
+                            const targetNode = nodeMap.get(gatewayIP);
+                            
+                            if (sourceNode && targetNode) {
+                                connections.push({
+                                    source: sourceNode,
+                                    target: targetNode,
+                                    connectionType: 'gateway-to-gateway'
+                                });
+                            }
+                        }
+                    });
+                }
+            });
+        }
+        
+        // Draw the connections with appropriate styling
+        connections.forEach(connection => {
+            // Calculate line properties based on connection type
+            let strokeColor, strokeWidth, strokeDasharray;
+            
+            switch (connection.connectionType) {
+                case 'gateway-to-gateway':
+                    strokeColor = '#10b981'; // Green for gateway connections
+                    strokeWidth = 2;
+                    strokeDasharray = '8,3'; // Longer dashes for gateway-to-gateway
+                    break;
+                case 'switch-to-switch':
+                    strokeColor = '#6366f1'; // Purple for switch connections
+                    strokeWidth = 2;
+                    strokeDasharray = '3,2'; // Short dashes for switch-to-switch
+                    break;
+                case 'gateway-to-switch':
+                default:
+                    strokeColor = '#10b981'; // Green for gateway-switch connections
+                    strokeWidth = 2;
+                    strokeDasharray = '5,3'; // Medium dashes for gateway-to-switch
+                    break;
+            }
+            
+            // Draw the connection line
+            linksGroup.append('line')
+                .attr('x1', connection.source.x)
+                .attr('y1', connection.source.y)
+                .attr('x2', connection.target.x)
+                .attr('y2', connection.target.y)
+                .attr('stroke', strokeColor)
+                .attr('stroke-width', strokeWidth)
+                .attr('stroke-opacity', 0.5)
+                .attr('stroke-dasharray', strokeDasharray)
+                .on('mouseover', function() {
+                    d3.select(this)
+                        .attr('stroke-opacity', 0.8)
+                        .attr('stroke-width', strokeWidth + 1);
+                })
+                .on('mouseout', function() {
+                    d3.select(this)
+                        .attr('stroke-opacity', 0.5)
+                        .attr('stroke-width', strokeWidth);
                 });
         });
     };

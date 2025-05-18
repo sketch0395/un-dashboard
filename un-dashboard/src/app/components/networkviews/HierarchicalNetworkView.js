@@ -175,17 +175,16 @@ const HierarchicalNetworkView = ({
         const mainGateways = gatewayDevices.filter(gateway => 
             customNames?.[gateway.ip]?.isMainGateway
         );
+          // Create hierarchical data structure for D3 tree layout
+        // Create maps to store references to nodes for quick access
+        const nodeMap = new Map();
         
-        // Create hierarchical data structure for D3 tree layout
         const createHierarchy = () => {
             const root = {
                 name: "",
                 type: "virtual-root",
                 children: []
             };
-        
-            // Create maps to store references to nodes for quick access
-            const nodeMap = new Map();
 
             // Helper to add a device to the hierarchy
             const addDeviceToHierarchy = (device, parentNode) => {
@@ -264,42 +263,66 @@ const HierarchicalNetworkView = ({
                     children: []
                 };
                 
-                // Get the parent gateway IP from customNames - ensure we get the actual value
-                // Read directly from customNames to avoid any modification that might have happened
+                // Check for connected gateways from the new array format
+                const connectedGateways = customNames?.[switchDevice.ip]?.connectedGateways || [];
+                
+                // Also check legacy parentGateway for backward compatibility
                 const parentGatewayIP = customNames?.[switchDevice.ip]?.parentGateway;
                 
-                // Log the relationship for debugging with more detailed info
-                console.log(`PARENT CHECK: Switch ${switchDevice.ip} parent gateway value:`, 
-                          parentGatewayIP === null ? "null" : 
-                          parentGatewayIP === undefined ? "undefined" : 
-                          `"${parentGatewayIP}"`);
+                // Log the relationships for debugging
+                console.log(`CONNECTIONS CHECK: Switch ${switchDevice.ip} gateway connections:`, 
+                           Array.isArray(connectedGateways) && connectedGateways.length > 0 
+                               ? connectedGateways 
+                               : `Legacy parent: ${parentGatewayIP || "none"}`);
                 
-                // Use parentGatewayIP directly without additional checks that might convert it to null
-                // Only nullify if it's explicitly empty string
-                const validParentIP = parentGatewayIP === "" ? null : parentGatewayIP;
+                // Determine the primary parent node for hierarchy visualization
+                // We'll pick the first connected gateway, fallback to parentGateway, or null
+                const primaryGatewayIP = 
+                    (Array.isArray(connectedGateways) && connectedGateways.length > 0)
+                        ? connectedGateways[0]
+                        : (parentGatewayIP === "" ? null : parentGatewayIP);
                 
-                // Find the corresponding gateway node
-                const parentGatewayNode = validParentIP ? nodeMap.get(validParentIP) : null;
+                // Find the primary gateway node
+                const primaryGatewayNode = primaryGatewayIP ? nodeMap.get(primaryGatewayIP) : null;
                 
-                // Debug output to track parent relationships
-                console.log(`Switch ${switchDevice.ip} parent gateway: ${parentGatewayIP}`, 
-                          parentGatewayNode ? "Found parent node" : "No parent node found");
+                // Store all gateway connections for later visualizing connection lines
+                switchNode.connectedGateways = [];
+                
+                // Process all gateway connections for this switch
+                const allGatewayConnections = Array.isArray(connectedGateways) && connectedGateways.length > 0
+                    ? connectedGateways
+                    : parentGatewayIP ? [parentGatewayIP] : [];
+                
+                allGatewayConnections.forEach(gatewayIP => {
+                    if (gatewayIP) {
+                        const gatewayNode = nodeMap.get(gatewayIP);
+                        if (gatewayNode) {
+                            // Add gateway node to switch's connected gateways
+                            switchNode.connectedGateways.push({
+                                ip: gatewayIP,
+                                node: gatewayNode
+                            });
+                        }
+                    }
+                });
                 
                 // Add a visual indicator for switches connected to gateways
-                if (parentGatewayIP) {
+                if (switchNode.connectedGateways.length > 0) {
                     switchNode.connectedToGateway = true;
                 }
                 
-                // Only add the switch to its parent gateway if the relationship exists
-                if (parentGatewayIP && parentGatewayNode) {
-                    parentGatewayNode.children.push(switchNode);
-                    switchNode.parent = parentGatewayNode; // Track parent reference
+                // Only add the switch to its primary parent gateway if the relationship exists
+                // For visualization hierarchy, we place it under the first gateway
+                if (primaryGatewayIP && primaryGatewayNode) {
+                    primaryGatewayNode.children.push(switchNode);
+                    switchNode.parent = primaryGatewayNode; // Track parent reference
+                    switchNode.primaryGateway = primaryGatewayIP;
                 } else {
                     root.children.push(switchNode);
                     
                     // Try to find an appropriate gateway to connect to if no parent specified
-                    if (!parentGatewayIP && gatewayDevices.length > 0) {
-                        console.log(`Switch ${switchDevice.ip} has no parent gateway but gateways exist; could connect to one`);
+                    if ((!primaryGatewayIP || !allGatewayConnections.length) && gatewayDevices.length > 0) {
+                        console.log(`Switch ${switchDevice.ip} has no gateway connections but gateways exist; could connect to one`);
                     }
                 }
                 
@@ -561,8 +584,7 @@ const HierarchicalNetworkView = ({
         
         // Initialize linkGroup for the links
         const linkGroup = networkGroup.append("g");
-        
-        // Create tree links with proper styling and ensure they're behind nodes
+          // Create tree links with proper styling and ensure they're behind nodes
         const links = linkGroup.append("g")
             .attr("class", "links")
             .attr("fill", "none")
@@ -588,6 +610,124 @@ const HierarchicalNetworkView = ({
                             .attr("stroke-width", style.strokeWidth);
                     });
             });
+            
+        // Create additional links for switches connected to multiple gateways
+        const additionalLinksData = [];
+        
+        treeData.descendants().forEach(node => {
+            // Check if this node is a switch with multiple gateway connections
+            if (node.data.type === "switch" && 
+                node.data.connectedGateways && 
+                node.data.connectedGateways.length > 0) {
+                
+                // For each connected gateway that is not the primary parent in the tree
+                node.data.connectedGateways.forEach(gatewayConnection => {
+                    // Skip the primary parent connection which is already rendered by the tree layout
+                    if (node.data.primaryGateway !== gatewayConnection.ip) {
+                        additionalLinksData.push({
+                            source: gatewayConnection.node,
+                            target: node,
+                            isAdditionalConnection: true,
+                            connectionType: "gateway-to-switch"
+                        });
+                    }
+                });
+            }
+            
+            // Check if this node is a switch with switch-to-switch connections
+            if (node.data.type === "switch" && 
+                customNames?.[node.data.ip]?.connectedSwitches && 
+                customNames[node.data.ip].connectedSwitches.length > 0) {
+                
+                // For each connected switch
+                customNames[node.data.ip].connectedSwitches.forEach(connectedSwitchIP => {
+                    // Find the connected switch node
+                    const connectedSwitchNode = nodeMap.get(connectedSwitchIP);
+                    
+                    if (connectedSwitchNode) {
+                        // Create connection (only create one direction to avoid duplicates)
+                        if (node.data.ip < connectedSwitchIP) {
+                            additionalLinksData.push({
+                                source: node,
+                                target: connectedSwitchNode,
+                                isAdditionalConnection: true,
+                                connectionType: "switch-to-switch"
+                            });
+                        }
+                    }
+                });
+            }
+            
+            // Check if this node is a gateway with gateway-to-gateway connections
+            if (node.data.type === "gateway" && 
+                customNames?.[node.data.ip]?.connectedGateways && 
+                customNames[node.data.ip].connectedGateways.length > 0) {
+                
+                // For each connected gateway
+                customNames[node.data.ip].connectedGateways.forEach(connectedGatewayIP => {
+                    // Find the connected gateway node
+                    const connectedGatewayNode = nodeMap.get(connectedGatewayIP);
+                    
+                    if (connectedGatewayNode) {
+                        // Create connection (only create one direction to avoid duplicates)
+                        if (node.data.ip < connectedGatewayIP) {
+                            additionalLinksData.push({
+                                source: node,
+                                target: connectedGatewayNode,
+                                isAdditionalConnection: true,
+                                connectionType: "gateway-to-gateway"
+                            });
+                        }
+                    }
+                });
+            }
+        });
+        
+        // Add these additional connections with appropriate styling
+        if (additionalLinksData.length > 0) {
+            const additionalLinks = linkGroup.append("g")
+                .attr("class", "additional-links")
+                .attr("fill", "none")
+                .selectAll("path")
+                .data(additionalLinksData)
+                .join("path")
+                .attr("d", linkGenerator)
+                .attr("stroke", d => {
+                    // Color based on connection type
+                    switch(d.connectionType) {
+                        case "gateway-to-gateway":
+                            return "#10b981"; // Green for gateway connections
+                        case "switch-to-switch":
+                            return "#6366f1"; // Purple for switch connections
+                        case "gateway-to-switch":
+                        default:
+                            return "#10b981"; // Default green for gateway-switch connections
+                    }
+                })
+                .attr("stroke-width", 2)
+                .attr("stroke-opacity", 0.5)
+                .attr("stroke-dasharray", d => {
+                    // Different dash patterns by connection type
+                    switch(d.connectionType) {
+                        case "gateway-to-gateway":
+                            return "8,3"; // Longer dashes for gateway-to-gateway
+                        case "switch-to-switch":
+                            return "3,2"; // Short dashes for switch-to-switch
+                        default:
+                            return "5,3"; // Medium dashes for gateway-to-switch
+                    }
+                })
+                .on("mouseover", function() {
+                    d3.select(this)
+                        .attr("stroke-opacity", 0.8)
+                        .attr("stroke-width", 3);
+                })
+                .on("mouseout", function() {
+                    d3.select(this)
+                        .attr("stroke-opacity", 0.5)
+                        .attr("stroke-width", 2);
+                });
+        }
             
         // Create node groups in the same container as the links
         const nodeGroup = networkGroup.append("g");
@@ -736,9 +876,7 @@ const HierarchicalNetworkView = ({
                 }
             } catch (error) {
                 console.error("Error rendering device icon:", error);
-            }
-
-            // Add mouse events
+            }            // Add mouse events
             node
                 .on("mouseover", (event) => {
                     if (showTooltip && d.data.data) {
@@ -751,9 +889,25 @@ const HierarchicalNetworkView = ({
                         hideTooltip();
                     }
                 })
-                .on("click", (event) => {
+                .on("click", function(event) {
                     if (onDeviceClick && d.data.data) {
-                        onDeviceClick(d.data.data, event);
+                        // Pass the native event to track right-click
+                        onDeviceClick(d.data.data, event.sourceEvent || event);
+                    }
+                })                .on("contextmenu", function(event) {
+                    // Prevent default context menu
+                    event.preventDefault();
+                    if (onDeviceClick && d.data.data) {
+                        // Create a new object with the necessary event properties
+                        // We can't modify the original event's button property as it's read-only
+                        const eventCopy = {
+                            clientX: (event.sourceEvent || event).clientX,
+                            clientY: (event.sourceEvent || event).clientY,
+                            button: 2, // Right-click button code
+                            preventDefault: () => {},
+                            stopPropagation: () => {}
+                        };
+                        onDeviceClick(d.data.data, eventCopy);
                     }
                 });
         });
@@ -769,87 +923,9 @@ const HierarchicalNetworkView = ({
         // Calculate translation to center the tree
         const xTranslate = (width / 2) - ((bounds.maxX + bounds.minX) / 2 * scale);
         const yTranslate = margin + 40; // Add some top margin for the title
+          networkGroup.attr("transform", `translate(${xTranslate}, ${yTranslate}) scale(${scale})`);
         
-        networkGroup.attr("transform", `translate(${xTranslate}, ${yTranslate}) scale(${scale})`);
-
-        // Add a legend for the relationships (device types and connections)
-        const legendData = {
-            items: [
-                { color: "#10b981", strokeColor: "#f59e0b", strokeWidth: 3, label: "Main Gateway" },
-                { color: "#10b981", label: "Regular Gateway" },
-                { color: "#6366f1", label: "Switch" },
-                { color: "#3b82f6", label: "Device" },
-                { strokeColor: "#10b981", strokeWidth: 2, fillColor: "#6366f1", label: "Connected to Gateway" }
-            ]
-        };
-        
-        const legend = zoomLayer.append("g")
-            .attr("transform", `translate(${width - 220}, 30)`);
-            
-        legend.append("text")
-            .attr("x", 0)
-            .attr("y", 0)
-            .attr("text-anchor", "start")
-            .attr("fill", "#FFFFFF")
-            .attr("font-size", "14px")
-            .attr("font-weight", "bold")
-            .text("Network Legend");
-            
-        legendData.items.forEach((item, i) => {
-            const legendRow = legend.append("g")
-                .attr("transform", `translate(0, ${i * 25 + 20})`);
-                
-            if (item.strokeColor && item.fillColor) {
-                // For items with special stroke and fill (like connected switches)
-                legendRow.append("rect")
-                    .attr("width", 20)
-                    .attr("height", 15)
-                    .attr("rx", 4)
-                    .attr("ry", 4)
-                    .attr("fill", item.fillColor)
-                    .attr("stroke", item.strokeColor)
-                    .attr("stroke-width", item.strokeWidth);
-            } else if (item.strokeColor) {
-                // For items with stroke but using default shape (like main gateway)
-                legendRow.append("circle")
-                    .attr("r", 8)
-                    .attr("fill", item.color)
-                    .attr("stroke", item.strokeColor)
-                    .attr("stroke-width", item.strokeWidth);
-                
-                // Add star symbol for main gateway
-                if (item.label === "Main Gateway") {
-                    legendRow.append("text")
-                        .attr("x", 0)
-                        .attr("y", -12)
-                        .attr("text-anchor", "middle")
-                        .attr("font-size", "10px")
-                        .attr("fill", "#f59e0b")
-                        .text("★");
-                }
-            } else if (item.shape === "rect") {
-                legendRow.append("rect")
-                    .attr("width", 20)
-                    .attr("height", 15)
-                    .attr("rx", 4)
-                    .attr("ry", 4)
-                    .attr("fill", item.color);
-            } else {
-                // Default circle
-                legendRow.append("circle")
-                    .attr("r", 8)
-                    .attr("fill", item.color);
-            }
-                
-            legendRow.append("text")
-                .attr("x", 30)
-                .attr("y", 8)
-                .attr("text-anchor", "start")
-                .attr("dominant-baseline", "middle")
-                .attr("fill", "#FFFFFF")
-                .attr("font-size", "12px")
-                .text(item.label);
-        });
+        // Legend has been moved to a separate component (NetworkLegend.js)
     };
     
     // Helper function to get device information for tooltips

@@ -35,6 +35,69 @@ export const validateNetworkRelationships = (devices, customNames) => {
             } else {
                 console.log(`Switch ${ip} has no parent gateway assigned`);
             }
+            
+            // Validate connectedGateways array
+            if (props.connectedGateways && Array.isArray(props.connectedGateways)) {
+                const validConnectedGateways = props.connectedGateways.filter(gatewayIP => {
+                    const gatewayProps = validatedNames[gatewayIP];
+                    return gatewayProps && gatewayProps.networkRole === 'gateway';
+                });
+                
+                // If any invalid gateways were removed, update the array
+                if (validConnectedGateways.length !== props.connectedGateways.length) {
+                    console.warn(`Removed ${props.connectedGateways.length - validConnectedGateways.length} invalid gateway connections for switch ${ip}`);
+                    validatedNames[ip] = { ...props, connectedGateways: validConnectedGateways };
+                    changes = true;
+                }
+            }
+            
+            // Validate connectedSwitches array 
+            if (props.connectedSwitches && Array.isArray(props.connectedSwitches)) {
+                const validConnectedSwitches = props.connectedSwitches.filter(switchIP => {
+                    const switchProps = validatedNames[switchIP];
+                    return switchProps && switchProps.networkRole === 'switch';
+                });
+                
+                // If any invalid switches were removed, update the array
+                if (validConnectedSwitches.length !== props.connectedSwitches.length) {
+                    console.warn(`Removed ${props.connectedSwitches.length - validConnectedSwitches.length} invalid switch connections for switch ${ip}`);
+                    validatedNames[ip] = { ...props, connectedSwitches: validConnectedSwitches };
+                    changes = true;
+                }
+            }
+        }
+        
+        // If this is a gateway, validate its connections
+        if (props.networkRole === 'gateway') {
+            // Validate connectedGateways array
+            if (props.connectedGateways && Array.isArray(props.connectedGateways)) {
+                const validConnectedGateways = props.connectedGateways.filter(gatewayIP => {
+                    const gatewayProps = validatedNames[gatewayIP];
+                    return gatewayProps && gatewayProps.networkRole === 'gateway';
+                });
+                
+                // If any invalid gateways were removed, update the array
+                if (validConnectedGateways.length !== props.connectedGateways.length) {
+                    console.warn(`Removed ${props.connectedGateways.length - validConnectedGateways.length} invalid gateway connections for gateway ${ip}`);
+                    validatedNames[ip] = { ...props, connectedGateways: validConnectedGateways };
+                    changes = true;
+                }
+            }
+            
+            // Validate connectedSwitches array 
+            if (props.connectedSwitches && Array.isArray(props.connectedSwitches)) {
+                const validConnectedSwitches = props.connectedSwitches.filter(switchIP => {
+                    const switchProps = validatedNames[switchIP];
+                    return switchProps && switchProps.networkRole === 'switch';
+                });
+                
+                // If any invalid switches were removed, update the array
+                if (validConnectedSwitches.length !== props.connectedSwitches.length) {
+                    console.warn(`Removed ${props.connectedSwitches.length - validConnectedSwitches.length} invalid switch connections for gateway ${ip}`);
+                    validatedNames[ip] = { ...props, connectedSwitches: validConnectedSwitches };
+                    changes = true;
+                }
+            }
         }
         
         // If this is a regular device, ensure it has a valid parent switch

@@ -12,11 +12,28 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: ['http://localhost:3000', 'http://10.5.1.83:3000'],
+        origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://10.5.1.83:3000'],
         methods: ['GET', 'POST'],
         allowedHeaders: ['Content-Type'],
         credentials: true,
     },
+    pingTimeout: 60000, // 60 seconds until a ping times out
+    pingInterval: 25000, // Send a ping every 25 seconds
+    transports: ['websocket', 'polling'], // Try websocket first, fallback to polling
+    allowEIO3: true, // Allow Engine.IO protocol version 3
+});
+
+// Socket.IO server-side error handling
+io.engine.on('connection_error', (err) => {
+    console.error('Socket.IO connection error:', err);
+});
+
+io.on('connect_error', (err) => {
+    console.error('Socket.IO connect_error:', err);
+});
+
+io.on('error', (err) => {
+    console.error('Socket.IO error:', err);
 });
 
 // Configure Express to parse JSON

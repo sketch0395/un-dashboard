@@ -2,6 +2,7 @@ import React, { useEffect, useState, forwardRef, useImperativeHandle, useRef } f
 import * as d3 from "d3";
 import CircularNetworkView from './CircularNetworkView';
 import HierarchicalNetworkView from './HierarchicalNetworkView';
+import NetworkLegend from './NetworkLegend';
 import { processDeviceData, groupDevicesBySubnet, isSSHAvailable, validateNetworkRelationships } from './NetworkViewUtils';
 import { FaCircle, FaSitemap } from 'react-icons/fa';
 import { FaTimes, FaFilter, FaChevronDown, FaCheck } from 'react-icons/fa';
@@ -104,9 +105,7 @@ const NetworkViewManager = forwardRef(({
             console.log("Updating customNames with validated relationships");
             localStorage.setItem("customDeviceProperties", JSON.stringify(validatedCustomNames));
         }
-    }, [devices, customNames, refreshTrigger]);
-
-    // Close context menu when clicking outside
+    }, [devices, customNames, refreshTrigger]);    // Close context menu when clicking outside and prevent default context menu
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (contextMenu.visible && !event.target.closest('.context-menu')) {
@@ -119,8 +118,24 @@ const NetworkViewManager = forwardRef(({
             }
         };
         
+        // Prevent default context menu in the visualization area
+        const handleContextMenu = (event) => {
+            // Allow default context menu on inputs, textareas, etc.
+            const isFormElement = ['INPUT', 'TEXTAREA', 'SELECT', 'BUTTON'].includes(event.target.tagName);
+            const isInContextMenu = event.target.closest('.context-menu');
+            
+            if (!isFormElement && !isInContextMenu && containerRef.current?.contains(event.target)) {
+                event.preventDefault();
+            }
+        };
+        
         document.addEventListener('click', handleClickOutside);
-        return () => document.removeEventListener('click', handleClickOutside);
+        document.addEventListener('contextmenu', handleContextMenu);
+        
+        return () => {
+            document.removeEventListener('click', handleClickOutside);
+            document.removeEventListener('contextmenu', handleContextMenu);
+        };
     }, [contextMenu, dropdownOpen]);
     
     // Extract available categories or vendors when grouping changes
@@ -231,16 +246,27 @@ const NetworkViewManager = forwardRef(({
                 {content}
             </div>
         );
-    };
-
-    // Handle device click
+    };    // Handle device click
     const handleDeviceClick = (device, event) => {
-        setContextMenu({
-            visible: true,
-            device,
-            x: event.clientX,
-            y: event.clientY
-        });
+        // Check if this is a right-click (context menu)
+        if (event && (event.button === 2 || event.ctrlKey)) {
+            // Show context menu on right-click or ctrl+click
+            // Ensure we have clientX and clientY values
+            const clientX = event.clientX || 0;
+            const clientY = event.clientY || 0;
+            
+            setContextMenu({
+                visible: true,
+                device,
+                x: clientX,
+                y: clientY
+            });
+        } else {
+            // Direct open modal on regular click
+            if (setModalDevice) {
+                setModalDevice(device);
+            }
+        }
     };
 
     // Prepare filtered devices
@@ -414,11 +440,13 @@ const NetworkViewManager = forwardRef(({
                     </button>
                 </div>
             )}
-            
-            {/* Main visualization container */}
+              {/* Main visualization container */}
             <div className="w-full h-full">
                 {renderVisualization()}
             </div>
+            
+            {/* Network Legend - Collapsible component at the bottom left */}
+            <NetworkLegend isVisible={true} />
             
             {/* Tooltip */}
             <Tooltip {...tooltip} />

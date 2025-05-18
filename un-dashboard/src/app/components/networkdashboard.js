@@ -138,11 +138,10 @@ export default function NetworkDashboard() {
                 ...updatedDevice
             }
         };
-        
-        console.log(`Updated device ${updatedDevice.ip} relationships:`, {
+          console.log(`Updated device ${updatedDevice.ip} relationships:`, {
             networkRole: updatedDevice.networkRole,
-            parentGateway,
-            parentSwitch
+            parentGateway: updatedDevice.parentGateway,
+            parentSwitch: updatedDevice.parentSwitch
         });
         
         setCustomNames(updatedCustomNames);

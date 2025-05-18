@@ -51,7 +51,9 @@ const UnifiedDeviceModal = ({
                 ip: enhancedDevice.ip,
                 networkRole: enhancedDevice.networkRole,
                 parentGateway: enhancedDevice.parentGateway,
-                parentSwitch: enhancedDevice.parentSwitch
+                parentSwitch: enhancedDevice.parentSwitch,
+                connectedGateways: enhancedDevice.connectedGateways,
+                connectedSwitches: enhancedDevice.connectedSwitches
             });
             
             // Add to history if there were changes
@@ -62,15 +64,25 @@ const UnifiedDeviceModal = ({
                     name: enhancedDevice.name,
                     category: enhancedDevice.category,
                     networkRole: enhancedDevice.networkRole,
-                    parentGateway: enhancedDevice.networkRole === 'switch' ? enhancedDevice.parentGateway : null,
-                    parentSwitch: enhancedDevice.networkRole !== 'gateway' && enhancedDevice.networkRole !== 'switch' ? enhancedDevice.parentSwitch : null,
+                    // Track connections based on device role
+                    parentGateway: (enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') ? 
+                        enhancedDevice.parentGateway : null,
+                    connectedGateways: (enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') ? 
+                        enhancedDevice.connectedGateways : null,
+                    parentSwitch: enhancedDevice.networkRole !== 'gateway' && enhancedDevice.networkRole !== 'switch' ? 
+                        enhancedDevice.parentSwitch : null,
+                    connectedSwitches: (enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') ? 
+                        enhancedDevice.connectedSwitches : null,
                     notes: enhancedDevice.notes
                 }
             });
             
-            // DEBUG: Check if parentGateway is properly set for switches
-            if (enhancedDevice.networkRole === 'switch') {
-                console.log(`DEBUG - Switch parentGateway before save: "${enhancedDevice.parentGateway}"`);
+            // DEBUG: Check connections
+            if (enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') {
+                console.log(`DEBUG - ${enhancedDevice.networkRole} parentGateway before save: "${enhancedDevice.parentGateway}"`);
+                console.log(`DEBUG - ${enhancedDevice.networkRole} connected gateways before save:`, enhancedDevice.connectedGateways);
+                console.log(`DEBUG - ${enhancedDevice.networkRole} parentSwitch before save: "${enhancedDevice.parentSwitch}"`);
+                console.log(`DEBUG - ${enhancedDevice.networkRole} connected switches before save:`, enhancedDevice.connectedSwitches);
             }
 
             // DO NOT modify or nullify the parent relationships that are already set in the enhancedDevice
@@ -194,8 +206,7 @@ const UnifiedDeviceModal = ({
                 {/* Network Role Section */}
                 <div className="mb-4">
                     <label className="block text-sm text-gray-300 mb-1">Network Role</label>
-                    <div className="flex gap-2">
-                        <button
+                    <div className="flex gap-2">                        <button
                             className={`px-3 py-2 rounded text-xs flex-1 ${enhancedDevice?.networkRole === 'gateway' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}                            
                             onClick={() => {
                                 if (enhancedDevice?.networkRole !== 'gateway') {
@@ -203,7 +214,9 @@ const UnifiedDeviceModal = ({
                                         ...prev, 
                                         networkRole: 'gateway',
                                         parentGateway: null,
-                                        parentSwitch: null 
+                                        parentSwitch: null,
+                                        connectedGateways: [],
+                                        connectedSwitches: []
                                     }));
                                 } else {
                                     setModalDevice((prev) => ({ ...prev, networkRole: null }));
@@ -211,103 +224,257 @@ const UnifiedDeviceModal = ({
                             }}
                         >
                             Gateway
-                        </button>
-                        <button
+                        </button>                        <button
                             className={`px-3 py-2 rounded text-xs flex-1 ${enhancedDevice?.networkRole === 'switch' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}                            
                             onClick={() => {
                                 if (enhancedDevice?.networkRole !== 'switch') {
                                     setModalDevice((prev) => ({ 
                                         ...prev, 
                                         networkRole: 'switch',
-                                        parentSwitch: null
+                                        parentSwitch: null,
+                                        connectedGateways: [],
+                                        connectedSwitches: []
                                     }));
                                 } else {
                                     setModalDevice((prev) => ({ ...prev, networkRole: null }));
                                 }
                             }}
                         >
-                            Main Switch
-                        </button>
-                        <button
+                            Switch
+                        </button>                        <button
                             className={`px-3 py-2 rounded text-xs flex-1 ${enhancedDevice?.networkRole === null || enhancedDevice?.networkRole === undefined ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}                            
                             onClick={() => {
                                 setModalDevice((prev) => ({ 
                                     ...prev, 
                                     networkRole: null,
                                     parentGateway: null, 
-                                    isMainGateway: false 
+                                    isMainGateway: false,
+                                    connectedGateways: null,
+                                    connectedSwitches: null
                                 }));
                             }}
                         >
                             Regular Device
                         </button>
                     </div>
-                </div>                {/* Parent Connection */}
-                {(enhancedDevice?.networkRole === null || enhancedDevice?.networkRole === undefined || enhancedDevice?.networkRole === 'switch') && (
+                </div>                {/* Connection Sections */}
+                {/* 1. Gateway Connections - only shown for switches and other gateways */}
+                {(enhancedDevice?.networkRole === 'switch' || enhancedDevice?.networkRole === 'gateway') && (
                     <div className="mb-4">
                         <label className="block text-sm text-gray-300 mb-1">
-                            {enhancedDevice?.networkRole === 'switch' ? 'Connected to Gateway' : 'Connected to Switch'}
+                            Connected to Gateway(s)
                         </label>
                         
-                        {/* Show important debug info about current connections */}
-                        <div className="text-xs text-gray-400 mb-2">
-                            {enhancedDevice?.networkRole === 'switch' ? 
-                                (enhancedDevice?.parentGateway ? 
-                                    `Currently connected to gateway: ${enhancedDevice.parentGateway}` : 
-                                    'Not connected to any gateway') 
-                                : 
-                                (enhancedDevice?.parentSwitch ? 
-                                    `Currently connected to switch: ${enhancedDevice.parentSwitch}` : 
-                                    'Not connected to any switch')
-                            }
+                        <div>
+                            {/* Show important debug info about current connections */}
+                            <div className="text-xs text-gray-400 mb-2">
+                                {Array.isArray(enhancedDevice?.connectedGateways) && enhancedDevice.connectedGateways.length > 0 ? 
+                                    `Connected to ${enhancedDevice.connectedGateways.length} gateway(s)` : 
+                                    enhancedDevice?.parentGateway ? 
+                                        `Currently connected to gateway: ${enhancedDevice.parentGateway}` :
+                                        'Not connected to any gateway'
+                                }
+                            </div>
+                            
+                            {/* List of gateways with checkboxes */}
+                            <div className="max-h-32 overflow-y-auto bg-gray-700 rounded p-2 mb-2">
+                                {typeof window !== 'undefined' && 
+                                    Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
+                                        .filter(([ip, props]) => props.networkRole === 'gateway' && ip !== enhancedDevice?.ip)
+                                        .map(([ip, props]) => {
+                                            // Check if gateway is in the connectedGateways array or is the parentGateway (for backward compatibility)
+                                            const isConnected = 
+                                                (Array.isArray(enhancedDevice?.connectedGateways) && 
+                                                 enhancedDevice.connectedGateways.includes(ip)) ||
+                                                enhancedDevice?.parentGateway === ip;
+                                            
+                                            return (
+                                                <div key={ip} className="flex items-center py-1 border-b border-gray-600 last:border-b-0">
+                                                    <input
+                                                        type="checkbox"
+                                                        id={`gateway-${ip}`}
+                                                        checked={isConnected}
+                                                        onChange={(e) => {
+                                                            // Initialize connectedGateways if needed
+                                                            const currentConnections = 
+                                                                Array.isArray(enhancedDevice?.connectedGateways) ? 
+                                                                [...enhancedDevice.connectedGateways] : 
+                                                                enhancedDevice?.parentGateway ? [enhancedDevice.parentGateway] : [];
+                                                            
+                                                            let newConnections;
+                                                            if (e.target.checked) {
+                                                                // Add to connections if not already present
+                                                                if (!currentConnections.includes(ip)) {
+                                                                    newConnections = [...currentConnections, ip];
+                                                                } else {
+                                                                    newConnections = currentConnections;
+                                                                }
+                                                            } else {
+                                                                // Remove from connections
+                                                                newConnections = currentConnections.filter(conn => conn !== ip);
+                                                            }
+                                                            
+                                                            console.log(`Updating ${enhancedDevice.networkRole} ${enhancedDevice.ip} gateway connections:`, newConnections);
+                                                            
+                                                            // Keep the first gateway as parentGateway for backward compatibility
+                                                            const newParentGateway = newConnections.length > 0 ? newConnections[0] : null;
+                                                            
+                                                            setModalDevice((prev) => ({
+                                                                ...prev, 
+                                                                connectedGateways: newConnections,
+                                                                parentGateway: newParentGateway
+                                                            }));
+                                                        }}
+                                                        className="mr-2 h-4 w-4"
+                                                    />
+                                                    <label htmlFor={`gateway-${ip}`} className="flex-1 text-sm">
+                                                        {props.name || ip} (Gateway)
+                                                    </label>
+                                                </div>
+                                            );
+                                        })
+                                }
+                            </div>
+                            
+                            {typeof window !== 'undefined' && 
+                                Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
+                                    .filter(([ip, props]) => props.networkRole === 'gateway' && ip !== enhancedDevice?.ip).length === 0 && (
+                                <div className="text-center text-gray-500 py-2">
+                                    No gateways available. Create a gateway first.
+                                </div>
+                            )}
                         </div>
-                          <select
-                            value={enhancedDevice?.networkRole === 'switch' ? 
-                                  (enhancedDevice?.parentGateway || "") : 
-                                  (enhancedDevice?.parentSwitch || "")}
-                            onChange={(e) => {
-                                // Keep the raw selected value - don't convert empty string to null yet
-                                const selectedValue = e.target.value;
-                                
-                                if (enhancedDevice?.networkRole === 'switch') {
-                                    console.log(`Setting switch ${enhancedDevice.ip} parent gateway to: "${selectedValue}"`);
-                                    setModalDevice((prev) => ({
-                                        ...prev, 
-                                        parentGateway: selectedValue === "" ? null : selectedValue,
-                                        parentSwitch: null
-                                    }));
-                                } else {
+                    </div>
+                )}
+
+                {/* 2. Switch Connections - shown for regular devices, switches, and gateways */}
+                <div className="mb-4">
+                    <label className="block text-sm text-gray-300 mb-1">
+                        {enhancedDevice?.networkRole === 'switch' || enhancedDevice?.networkRole === 'gateway'
+                            ? 'Connected to Switch(es)' 
+                            : 'Connected to Switch'}
+                    </label>
+                    
+                    {(enhancedDevice?.networkRole === 'switch' || enhancedDevice?.networkRole === 'gateway') ? (
+                        /* For switches and gateways - allow multiple switch connections */
+                        <div>
+                            {/* Show current connections info */}
+                            <div className="text-xs text-gray-400 mb-2">
+                                {Array.isArray(enhancedDevice?.connectedSwitches) && enhancedDevice.connectedSwitches.length > 0 ? 
+                                    `Connected to ${enhancedDevice.connectedSwitches.length} switch(es)` : 
+                                    enhancedDevice?.parentSwitch ? 
+                                        `Currently connected to switch: ${enhancedDevice.parentSwitch}` :
+                                        'Not connected to any switch'
+                                }
+                            </div>
+                            
+                            {/* List of switches with checkboxes */}
+                            <div className="max-h-32 overflow-y-auto bg-gray-700 rounded p-2 mb-2">
+                                {typeof window !== 'undefined' && 
+                                    Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
+                                        .filter(([ip, props]) => props.networkRole === 'switch' && ip !== enhancedDevice?.ip)
+                                        .map(([ip, props]) => {
+                                            // Check if switch is in the connectedSwitches array or is the parentSwitch
+                                            const isConnected = 
+                                                (Array.isArray(enhancedDevice?.connectedSwitches) && 
+                                                 enhancedDevice.connectedSwitches.includes(ip)) ||
+                                                enhancedDevice?.parentSwitch === ip;
+                                            
+                                            return (
+                                                <div key={ip} className="flex items-center py-1 border-b border-gray-600 last:border-b-0">
+                                                    <input
+                                                        type="checkbox"
+                                                        id={`switch-${ip}`}
+                                                        checked={isConnected}
+                                                        onChange={(e) => {
+                                                            // Initialize connectedSwitches if needed
+                                                            const currentConnections = 
+                                                                Array.isArray(enhancedDevice?.connectedSwitches) ? 
+                                                                [...enhancedDevice.connectedSwitches] : 
+                                                                enhancedDevice?.parentSwitch ? [enhancedDevice.parentSwitch] : [];
+                                                            
+                                                            let newConnections;
+                                                            if (e.target.checked) {
+                                                                // Add to connections if not already present
+                                                                if (!currentConnections.includes(ip)) {
+                                                                    newConnections = [...currentConnections, ip];
+                                                                } else {
+                                                                    newConnections = currentConnections;
+                                                                }
+                                                            } else {
+                                                                // Remove from connections
+                                                                newConnections = currentConnections.filter(conn => conn !== ip);
+                                                            }
+                                                            
+                                                            console.log(`Updating ${enhancedDevice.networkRole} ${enhancedDevice.ip} switch connections:`, newConnections);
+                                                            
+                                                            // Keep the first switch as parentSwitch for backward compatibility
+                                                            const newParentSwitch = newConnections.length > 0 ? newConnections[0] : null;
+                                                            
+                                                            setModalDevice((prev) => ({
+                                                                ...prev, 
+                                                                connectedSwitches: newConnections,
+                                                                parentSwitch: newParentSwitch
+                                                            }));
+                                                        }}
+                                                        className="mr-2 h-4 w-4"
+                                                    />
+                                                    <label htmlFor={`switch-${ip}`} className="flex-1 text-sm">
+                                                        {props.name || ip} (Switch)
+                                                    </label>
+                                                </div>
+                                            );
+                                        })
+                                }
+                            </div>
+                            
+                            {typeof window !== 'undefined' && 
+                                Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
+                                    .filter(([ip, props]) => props.networkRole === 'switch' && ip !== enhancedDevice?.ip).length === 0 && (
+                                <div className="text-center text-gray-500 py-2">
+                                    No switches available. Create a switch first.
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        /* For regular devices - single switch connection */
+                        <div>
+                            {/* Show important debug info about current connections */}
+                            <div className="text-xs text-gray-400 mb-2">
+                                {enhancedDevice?.parentSwitch ? 
+                                    `Currently connected to switch: ${enhancedDevice.parentSwitch}` : 
+                                    'Not connected to any switch'
+                                }
+                            </div>
+                            <select
+                                value={enhancedDevice?.parentSwitch || ""}
+                                onChange={(e) => {
+                                    const selectedValue = e.target.value;
                                     console.log(`Setting device ${enhancedDevice.ip} parent switch to: "${selectedValue}"`);
                                     setModalDevice((prev) => ({
                                         ...prev, 
                                         parentSwitch: selectedValue === "" ? null : selectedValue,
                                         parentGateway: null
                                     }));
+                                }}
+                                className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                            >
+                                <option value="">Not connected to a switch</option>
+                                {typeof window !== 'undefined' && 
+                                 Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
+                                    .filter(([ip, props]) => 
+                                        props.networkRole === 'switch' && ip !== enhancedDevice?.ip
+                                    )
+                                    .map(([ip, props]) => (
+                                        <option key={ip} value={ip}>
+                                            {props.name || ip} (Switch)
+                                        </option>
+                                    ))
                                 }
-                            }}
-                            className="w-full bg-gray-700 text-white px-3 py-2 rounded"
-                        >
-                            <option value="">
-                                {enhancedDevice?.networkRole === 'switch' ? 'Not connected to a gateway' : 'Not connected to a switch'}
-                            </option>
-                            {typeof window !== 'undefined' && 
-                             Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
-                                .filter(([ip, props]) => 
-                                    // Switches can only connect to gateways
-                                    enhancedDevice?.networkRole === 'switch'
-                                        ? props.networkRole === 'gateway' && ip !== enhancedDevice?.ip
-                                        // Regular devices can only connect to switches
-                                        : props.networkRole === 'switch' && ip !== enhancedDevice?.ip
-                                )
-                                .map(([ip, props]) => (
-                                    <option key={ip} value={ip}>
-                                        {props.name || ip} ({props.networkRole === 'gateway' ? 'Gateway' : 'Switch'})
-                                    </option>
-                                ))
-                            }
-                        </select>
-                    </div>
-                )}
+                            </select>
+                        </div>
+                    )}
+                </div>
 
                 {/* Notes Section */}
                 <div className="mb-4">
@@ -373,7 +540,12 @@ const UnifiedDeviceModal = ({
                     >
                         Cancel
                     </button>                    <button
-                        onClick={enhancedHandleSave} /* Use the enhanced save function */
+                        onClick={() => {
+                            handleSave();
+                            setTimeout(() => {
+                                debugParentRelationships();
+                            }, 500);
+                        }}
                         className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
                     >
                         Save
@@ -384,45 +556,131 @@ const UnifiedDeviceModal = ({
     );
 };
 
-// Function to manually check parent relationships for switches
+// Function to manually check parent relationships and connections
 const debugParentRelationships = () => {
     try {
         const devices = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
         
-        console.log("========== PARENT RELATIONSHIP DEBUG ==========");
+        console.log("========== NETWORK RELATIONSHIP DEBUG ==========");
         
         // Check all switches
         const switches = Object.entries(devices).filter(([_, props]) => props.networkRole === 'switch');
         console.log(`Found ${switches.length} switches`);
         
         switches.forEach(([ip, props]) => {
-            console.log(`Switch: ${ip}, Parent Gateway: ${props.parentGateway || 'None'}`);
+            console.log(`\nSwitch: ${ip}, Name: ${props.name || ip}`);
+            
+            // Check for both legacy parentGateway and new connectedGateways array
+            const parentGateway = props.parentGateway || 'None';
+            const connectedGateways = Array.isArray(props.connectedGateways) ? props.connectedGateways : [];
+            
+            console.log(`  Parent Gateway: ${parentGateway}`);
+            
+            // Display the connectedGateways array if it exists
+            if (connectedGateways.length > 0) {
+                console.log(`  Connected to ${connectedGateways.length} gateway(s):`, connectedGateways);
+            }
+            
+            // Validate that parentGateway matches first entry in connectedGateways
+            if (parentGateway !== 'None' && connectedGateways.length > 0) {
+                if (parentGateway !== connectedGateways[0]) {
+                    console.warn(`  ⚠️ Warning: parentGateway (${parentGateway}) doesn't match first connectedGateway (${connectedGateways[0]})`);
+                }
+            }
+            
+            // Check for switch-to-switch connections
+            const parentSwitch = props.parentSwitch || 'None';
+            const connectedSwitches = Array.isArray(props.connectedSwitches) ? props.connectedSwitches : [];
+            
+            console.log(`  Parent Switch: ${parentSwitch}`);
+            
+            if (connectedSwitches.length > 0) {
+                console.log(`  Connected to ${connectedSwitches.length} switch(es):`, connectedSwitches);
+            }
+            
+            // Validate that parentSwitch matches first entry in connectedSwitches
+            if (parentSwitch !== 'None' && connectedSwitches.length > 0) {
+                if (parentSwitch !== connectedSwitches[0]) {
+                    console.warn(`  ⚠️ Warning: parentSwitch (${parentSwitch}) doesn't match first connectedSwitch (${connectedSwitches[0]})`);
+                }
+            }
+            
+            // Find switches that connect to this switch
+            const switchesConnectingToThis = Object.entries(devices)
+                .filter(([_, p]) => 
+                    p.networkRole === 'switch' && 
+                    (p.parentSwitch === ip || 
+                     (Array.isArray(p.connectedSwitches) && p.connectedSwitches.includes(ip)))
+                )
+                .map(([connIp]) => connIp);
+                
+            if (switchesConnectingToThis.length > 0) {
+                console.log(`  Switches connected to this switch: ${switchesConnectingToThis.length}`, switchesConnectingToThis);
+            }
         });
         
         // Check all gateways
         const gateways = Object.entries(devices).filter(([_, props]) => props.networkRole === 'gateway');
-        console.log(`Found ${gateways.length} gateways`);
+        console.log(`\nFound ${gateways.length} gateways`);
         
         gateways.forEach(([ip, props]) => {
-            console.log(`Gateway: ${ip}, Name: ${props.name || ip}`);
+            console.log(`\nGateway: ${ip}, Name: ${props.name || ip}`);
             
-            // Find all devices that reference this gateway
-            const connectedSwitches = Object.entries(devices).filter(([_, p]) => p.parentGateway === ip);
-            console.log(`  Connected switches: ${connectedSwitches.length}`);
+            // Find all devices that reference this gateway (using both old and new methods)
+            const legacyConnections = Object.entries(devices).filter(([_, p]) => p.parentGateway === ip);
+            const newConnections = Object.entries(devices).filter(([_, p]) => 
+                Array.isArray(p.connectedGateways) && p.connectedGateways.includes(ip)
+            );
+            
+            // Combine both sets, removing duplicates
+            const allConnectedSwitchIPs = new Set([
+                ...legacyConnections.map(([connIp]) => connIp),
+                ...newConnections.map(([connIp]) => connIp)
+            ]);
+            
+            console.log(`  Connected switches: ${allConnectedSwitchIPs.size}`);
+            if (allConnectedSwitchIPs.size > 0) {
+                console.log(`  Connected switch IPs:`, Array.from(allConnectedSwitchIPs));
+            }
+            
+            // Check for gateway-to-gateway connections
+            const parentGateway = props.parentGateway || 'None';
+            const connectedGateways = Array.isArray(props.connectedGateways) ? props.connectedGateways : [];
+            
+            console.log(`  Parent Gateway: ${parentGateway}`);
+            
+            if (connectedGateways.length > 0) {
+                console.log(`  Connected to ${connectedGateways.length} gateway(s):`, connectedGateways);
+            }
+            
+            // Check for gateway-to-switch connections
+            const parentSwitch = props.parentSwitch || 'None';
+            const connectedSwitches = Array.isArray(props.connectedSwitches) ? props.connectedSwitches : [];
+            
+            console.log(`  Parent Switch: ${parentSwitch}`);
+            
+            if (connectedSwitches.length > 0) {
+                console.log(`  Connected to ${connectedSwitches.length} switch(es):`, connectedSwitches);
+            }
+            
+            // Find gateways that connect to this gateway
+            const gatewaysConnectingToThis = Object.entries(devices)
+                .filter(([_, p]) => 
+                    p.networkRole === 'gateway' && 
+                    (p.parentGateway === ip || 
+                     (Array.isArray(p.connectedGateways) && p.connectedGateways.includes(ip)))
+                )
+                .map(([connIp]) => connIp);
+                
+            if (gatewaysConnectingToThis.length > 0) {
+                console.log(`  Gateways connected to this gateway: ${gatewaysConnectingToThis.length}`, gatewaysConnectingToThis);
+            }
         });
         
-        console.log("==============================================");
+        console.log("\n==============================================");
     } catch (error) {
         console.error("Debug error:", error);
     }
-};
-
-// Call the debug function when the save button is clicked
-const enhancedHandleSave = () => {
-    handleSave();
-    setTimeout(() => {
-        debugParentRelationships();
-    }, 500);
 };
 
 export default UnifiedDeviceModal;

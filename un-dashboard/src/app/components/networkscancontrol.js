@@ -43,11 +43,81 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
             console.log("Updating custom names:", data.customNames);
             setCustomNames(data.customNames);
         }
-    };
-
-    useEffect(() => {
-        const socket = io("http://10.5.1.83:4000");
+    };    useEffect(() => {
+        // Try to use a relative URL that adapts to where the app is hosted
+        let serverUrl;
+        
+        // Get the current protocol, hostname, and port from the browser
+        const protocol = window.location.protocol;
+        const hostname = window.location.hostname;
+        
+        // If we're running in development on localhost, use the fixed address
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            // Try to connect to the specified address or fallback to local server
+            serverUrl = "http://10.5.1.83:4000";
+        } else {
+            // For production, use the same domain but different port (or Path if using a reverse proxy)
+            serverUrl = `${protocol}//${hostname}:4000`;
+        }
+          console.log(`Attempting Socket.IO connection to: ${serverUrl}`);
+        
+        // Set up the Socket.IO connection with better error handling
+        const socket = io(serverUrl, {
+            reconnectionAttempts: 5,
+            timeout: 10000,
+            reconnectionDelay: 1000,
+            transports: ['websocket', 'polling'], // Try WebSocket first, then fallback to polling
+            upgrade: true, // Allow transport upgrade
+            forceNew: true, // Create a new connection every time
+        });
+        
         socketRef.current = socket;
+        
+        // Connection event handlers
+        socket.on('connect', () => {
+            console.log('Socket.IO connected successfully');
+            setError(null); // Clear any previous errors
+        });
+          socket.on('connect_error', (err) => {
+            console.error('Socket.IO connection error:', err);
+            
+            // Provide more specific error messages based on the error
+            let errorMessage = `Connection error: ${err.message}.`;
+            
+            if (err.message.includes('xhr poll error')) {
+                errorMessage = `Server connection failed. Please ensure the network scanning server is running at ${serverUrl}.`;
+            } else if (err.message.includes('timeout')) {
+                errorMessage = `Connection timeout. The server at ${serverUrl} is not responding.`;
+            } else if (err.message.includes('ECONNREFUSED')) {
+                errorMessage = `Connection refused. The server at ${serverUrl} is not accepting connections.`;
+            }
+            
+            setError(errorMessage);
+        });
+          socket.on('disconnect', (reason) => {
+            console.warn('Socket.IO disconnected:', reason);
+            
+            // Create a more user-friendly message
+            let disconnectMessage = '';
+            
+            if (reason === 'io server disconnect') {
+                disconnectMessage = 'The server has disconnected. Attempting to reconnect...';
+                // Server disconnected us, try to reconnect
+                socket.connect();
+            } else if (reason === 'transport close') {
+                disconnectMessage = 'Connection to server lost. Waiting for automatic reconnection...';
+            } else if (reason === 'ping timeout') {
+                disconnectMessage = 'Server did not respond. Trying to reconnect...';
+                socket.connect();
+            } else {
+                disconnectMessage = `Disconnected from server (${reason}). Reconnecting...`;
+            }
+            
+            // Only show message if this isn't part of a normal page navigation
+            if (document.visibilityState !== 'hidden') {
+                setError(disconnectMessage);
+            }
+        });
 
         socket.on("networkScanStatus", (data) => {
             setStatus(data.status);
@@ -119,15 +189,24 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
                     console.error("Error saving to scan history:", error);
                 }
             }
-        });
-
-        socket.on("connect_error", (err) => {
+        });        socket.on("connect_error", (err) => {
             console.error("Socket connection error:", err);
             setErrorMessage("Failed to connect to the server.");
             setError("Failed to connect to the server.");
         });
 
-        return () => socket.disconnect();
+        return () => {
+            console.log('Cleaning up Socket.IO connection');
+            if (socket) {
+                socket.off('connect');
+                socket.off('connect_error'); 
+                socket.off('disconnect');
+                socket.off('networkScanStatus');
+                socket.off('networkData');
+                socket.off('saveToScanHistory');
+                socket.disconnect();
+            }
+        };
     }, [setDevices, ipRange, scanType, onScanComplete]);
 
     const startNetworkScan = useCallback(() => {

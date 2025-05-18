@@ -9,8 +9,10 @@
  * @param {string} [device.name] - The device's custom name
  * @param {string} [device.category] - The device's category
  * @param {string} [device.networkRole] - The device's network role (gateway, switch, null)
- * @param {string} [device.parentGateway] - The parent gateway's IP (for switches)
- * @param {string} [device.parentSwitch] - The parent switch's IP (for regular devices)
+ * @param {string} [device.parentGateway] - The parent gateway's IP (for switches and gateways)
+ * @param {string} [device.parentSwitch] - The parent switch's IP (for regular devices, switches, and gateways)
+ * @param {Array} [device.connectedGateways] - Array of gateway IPs this device is connected to (for switches and gateways)
+ * @param {Array} [device.connectedSwitches] - Array of switch IPs this device is connected to (for switches and gateways)
  * @param {Array} [device.notes] - Array of note objects
  * @returns {Object} The updated custom properties
  */
@@ -22,22 +24,51 @@ export const updateDeviceProperties = (device) => {
         const storedProps = localStorage.getItem("customDeviceProperties") || "{}";
         const customProps = JSON.parse(storedProps);            // IMPORTANT: Don't override or set parent relationships to null here
         // Use the values directly from the device object
-        
-        console.log(`Raw device values being saved for "${device.ip}":`);
+          console.log(`Raw device values being saved for "${device.ip}":`);
         console.log(`- networkRole: ${device.networkRole}`);
         console.log(`- parentGateway: "${device.parentGateway}"`);
         console.log(`- parentSwitch: "${device.parentSwitch}"`);
+        console.log(`- connectedGateways:`, device.connectedGateways);
 
-        // For switches, ensure parentGateway is preserved as-is
+        // For switches, ensure gateway connections are preserved as-is
         if (device.networkRole === 'switch') {
-            console.log(`Preserving parent gateway "${device.parentGateway}" for switch ${device.ip}`);
+            console.log(`Preserving gateway connections for switch ${device.ip}`);
+            if (device.connectedGateways && Array.isArray(device.connectedGateways)) {
+                console.log(`Switch is connected to ${device.connectedGateways.length} gateways:`, device.connectedGateways);
+            } else if (device.parentGateway) {
+                console.log(`Switch has legacy parentGateway connection: "${device.parentGateway}"`);
+            }
         }
         
         // For regular devices, ensure parentSwitch is preserved as-is
         if (!device.networkRole || device.networkRole !== 'gateway') {
             console.log(`Preserving parent switch "${device.parentSwitch}" for device ${device.ip}`);
         }
+          // Handle connection arrays - ensure they're properly initialized
+        // 1. For gateway connections (switches and gateways can connect to gateways)
+        let connectedGateways = [];
+        if (device.networkRole === 'switch' || device.networkRole === 'gateway') {
+            if (Array.isArray(device.connectedGateways)) {
+                // Use provided array
+                connectedGateways = device.connectedGateways;
+            } else if (device.parentGateway) {
+                // Create array from legacy parentGateway for backward compatibility
+                connectedGateways = [device.parentGateway];
+            }
+        }
         
+        // 2. For switch connections (switches and gateways can connect to switches)
+        let connectedSwitches = [];
+        if (device.networkRole === 'switch' || device.networkRole === 'gateway') {
+            if (Array.isArray(device.connectedSwitches)) {
+                // Use provided array
+                connectedSwitches = device.connectedSwitches;
+            } else if (device.parentSwitch) {
+                // Create array from legacy parentSwitch for backward compatibility
+                connectedSwitches = [device.parentSwitch];
+            }
+        }
+
         // Update the properties for this device - use the parent relationships directly from device
         customProps[device.ip] = {
             ...customProps[device.ip],
@@ -45,9 +76,16 @@ export const updateDeviceProperties = (device) => {
             category: device.category,
             networkRole: device.networkRole,
             // Ensure we're setting the correct parent relationships based on role
-            parentGateway: device.networkRole === 'switch' ? device.parentGateway : null,
-            parentSwitch: (!device.networkRole || device.networkRole !== 'gateway' && device.networkRole !== 'switch') ? 
+            parentGateway: (device.networkRole === 'switch' || device.networkRole === 'gateway') ? 
+                           device.parentGateway : null,
+            parentSwitch: device.networkRole === null ? device.parentSwitch : 
+                          (device.networkRole === 'switch' || device.networkRole === 'gateway') ? 
                           device.parentSwitch : null,
+            // Add connection arrays for switches and gateways
+            connectedGateways: (device.networkRole === 'switch' || device.networkRole === 'gateway') ? 
+                               connectedGateways : null,
+            connectedSwitches: (device.networkRole === 'switch' || device.networkRole === 'gateway') ? 
+                               connectedSwitches : null,
             notes: device.notes || [],
             icon: device.icon,
             color: device.color,
@@ -55,13 +93,38 @@ export const updateDeviceProperties = (device) => {
             history: device.history || []
         };
         
-        // Additional debug validation check
-        if (device.networkRole === 'switch' && device.parentGateway) {
-            // Verify the parent was actually saved
-            if (customProps[device.ip].parentGateway !== device.parentGateway) {
-                console.error(`ERROR: Failed to save parent gateway "${device.parentGateway}" for switch ${device.ip}`);
+        // Additional debug validation checks
+        if (device.networkRole === 'switch' || device.networkRole === 'gateway') {
+            // Verify the gateway connections were saved correctly
+            if (device.parentGateway && customProps[device.ip].parentGateway !== device.parentGateway) {
+                console.error(`ERROR: Failed to save parent gateway "${device.parentGateway}" for ${device.networkRole} ${device.ip}`);
                 // Force it to be correct
                 customProps[device.ip].parentGateway = device.parentGateway;
+            }
+            
+            // Verify connected gateways were saved
+            if (Array.isArray(device.connectedGateways) && 
+                (!customProps[device.ip].connectedGateways || 
+                 customProps[device.ip].connectedGateways.length !== device.connectedGateways.length)) {
+                console.error(`ERROR: Failed to save connected gateways for ${device.networkRole} ${device.ip}`);
+                // Force it to be correct
+                customProps[device.ip].connectedGateways = [...device.connectedGateways];
+            }
+            
+            // Verify the switch connections were saved correctly
+            if (device.parentSwitch && customProps[device.ip].parentSwitch !== device.parentSwitch) {
+                console.error(`ERROR: Failed to save parent switch "${device.parentSwitch}" for ${device.networkRole} ${device.ip}`);
+                // Force it to be correct
+                customProps[device.ip].parentSwitch = device.parentSwitch;
+            }
+            
+            // Verify connected switches were saved
+            if (Array.isArray(device.connectedSwitches) && 
+                (!customProps[device.ip].connectedSwitches || 
+                 customProps[device.ip].connectedSwitches.length !== device.connectedSwitches.length)) {
+                console.error(`ERROR: Failed to save connected switches for ${device.networkRole} ${device.ip}`);
+                // Force it to be correct
+                customProps[device.ip].connectedSwitches = [...device.connectedSwitches];
             }
         }
         
