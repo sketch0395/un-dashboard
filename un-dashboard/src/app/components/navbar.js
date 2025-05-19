@@ -86,13 +86,18 @@ const Navbar = memo(() => {
                         <p>Total Memory: {hostInfo.totalMemory}</p>
                     </>
                 )}
-            </div>
-            <div className="flex space-x-4">
+            </div>            <div className="flex space-x-4">
                 <button
                     className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
                     onClick={() => router.push("/")}
                 >
                     Home
+                </button>
+                <button
+                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+                    onClick={() => router.push("/docker")}
+                >
+                    Docker
                 </button>
                 <button
                     className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
