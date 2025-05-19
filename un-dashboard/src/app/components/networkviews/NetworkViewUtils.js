@@ -71,9 +71,23 @@ export const validateNetworkRelationships = (devices, customNames) => {
         if (props.networkRole === 'gateway') {
             // Validate connectedGateways array
             if (props.connectedGateways && Array.isArray(props.connectedGateways)) {
+                // Filter to keep only valid gateway connections
+                // For regular gateways, allow connection to main gateways
+                // For main gateways, allow connection to other main gateways
                 const validConnectedGateways = props.connectedGateways.filter(gatewayIP => {
                     const gatewayProps = validatedNames[gatewayIP];
-                    return gatewayProps && gatewayProps.networkRole === 'gateway';
+                    
+                    if (!gatewayProps || gatewayProps.networkRole !== 'gateway') {
+                        return false;
+                    }
+                    
+                    // If this is a main gateway, it can connect to other main gateways
+                    if (props.isMainGateway) {
+                        return gatewayProps.isMainGateway;
+                    }
+                    
+                    // If this is a regular gateway, it can connect to main gateways
+                    return gatewayProps.isMainGateway;
                 });
                 
                 // If any invalid gateways were removed, update the array
@@ -111,16 +125,31 @@ export const validateNetworkRelationships = (devices, customNames) => {
                 changes = true;
             }
         }
-        
-        // Ensure device doesn't have conflicting relationships
-        if (props.networkRole === 'gateway' && (props.parentGateway || props.parentSwitch)) {
-            console.warn(`Gateway ${ip} has invalid parent relationships; removing them`);
+          // Only regular gateways should have their parent relationships removed
+        // Main gateways can have sub-gateways connected to them
+        if (props.networkRole === 'gateway' && !props.isMainGateway && (props.parentGateway || props.parentSwitch)) {
+            console.warn(`Regular gateway ${ip} has invalid parent relationships; removing them`);
             validatedNames[ip] = { 
                 ...props, 
                 parentGateway: null,
                 parentSwitch: null
             };
             changes = true;
+        }
+        
+        // For gateway with parent gateway - ensure the parent is a main gateway
+        if (props.networkRole === 'gateway' && props.parentGateway) {
+            const parentProps = validatedNames[props.parentGateway];
+            if (!parentProps || parentProps.networkRole !== 'gateway' || !parentProps.isMainGateway) {
+                console.warn(`Gateway ${ip} is connected to a non-main gateway or invalid device; removing connection`);
+                validatedNames[ip] = {
+                    ...props,
+                    parentGateway: null
+                };
+                changes = true;
+            } else {
+                console.log(`Valid relationship: Sub-gateway ${ip} → Main Gateway ${props.parentGateway}`);
+            }
         }
     });      // Look for switches with missing parent gateways and try to auto-fix if possible
     if (Object.keys(devices || {}).length > 0) {
@@ -297,7 +326,11 @@ export const groupDevicesBySubnet = (devices, customNames) => {
 export const getLinkStyle = (connection) => {
     // For hierarchical view links
     if (connection.source && connection.target) {
-        const isMainGateway = connection.target.data?.isMainGateway;
+        const isMainGateway = connection.source.data?.isMainGateway || connection.target.data?.isMainGateway;
+        const isMainToSubGateway = 
+            connection.source.data?.type === "gateway" && 
+            connection.target.data?.type === "gateway" &&
+            connection.source.data?.isMainGateway;
         const isGatewayToSwitch = 
             connection.source.data?.type === "gateway" && 
             connection.target.data?.type === "switch";
@@ -305,7 +338,15 @@ export const getLinkStyle = (connection) => {
             connection.source.data?.type === "switch" && 
             connection.target.data?.type === "device";
         
-        if (isMainGateway) {
+        if (isMainToSubGateway) {
+            return {
+                stroke: '#f59e0b',  // Gold color for main gateway to sub-gateway connections
+                strokeWidth: 2.5,
+                strokeOpacity: 0.8,
+                strokeDasharray: '7,3',
+                transition: 'all 0.3s ease-in-out'
+            };
+        } else if (isMainGateway) {
             return {
                 stroke: '#f59e0b',  // Gold color for main gateway connections
                 strokeWidth: 2,

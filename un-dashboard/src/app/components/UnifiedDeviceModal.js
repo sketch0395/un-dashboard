@@ -1,4 +1,4 @@
-                                                                                                                                                                                                                                                                                                                                        'use client';
+'use client';
 
 import React, { useState, useEffect } from "react";
 import Modal from "./Modal";
@@ -14,7 +14,19 @@ const UnifiedDeviceModal = ({
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [newNote, setNewNote] = useState('');
-    const [deviceHistory, setDeviceHistory] = useState([]);
+    const [deviceHistory, setDeviceHistory] = useState([]);    // State to track which history items are expanded (first item expanded by default)
+    const [expandedHistoryItems, setExpandedHistoryItems] = useState([0]);
+    
+    // Toggle history item expansion
+    const toggleHistoryItemExpansion = (index) => {
+        setExpandedHistoryItems(prev => {
+            if (prev.includes(index)) {
+                return prev.filter(i => i !== index);
+            } else {
+                return [...prev, index];
+            }
+        });
+    };
 
     // Enhanced device with all necessary information
     const enhancedDevice = modalDevice ? {
@@ -55,27 +67,61 @@ const UnifiedDeviceModal = ({
                 connectedGateways: enhancedDevice.connectedGateways,
                 connectedSwitches: enhancedDevice.connectedSwitches
             });
-            
-            // Add to history if there were changes
+              // Add to history if there were changes
             const newHistory = [...deviceHistory];
-            newHistory.unshift({
-                timestamp: new Date().toISOString(),
-                changes: {
-                    name: enhancedDevice.name,
-                    category: enhancedDevice.category,
-                    networkRole: enhancedDevice.networkRole,
-                    // Track connections based on device role
-                    parentGateway: (enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') ? 
-                        enhancedDevice.parentGateway : null,
-                    connectedGateways: (enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') ? 
-                        enhancedDevice.connectedGateways : null,
-                    parentSwitch: enhancedDevice.networkRole !== 'gateway' && enhancedDevice.networkRole !== 'switch' ? 
-                        enhancedDevice.parentSwitch : null,
-                    connectedSwitches: (enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') ? 
-                        enhancedDevice.connectedSwitches : null,
-                    notes: enhancedDevice.notes
+            
+            // Get the previous history entry to compare changes
+            const previousEntry = deviceHistory.length > 0 ? deviceHistory[0] : null;
+            const previousChanges = previousEntry ? previousEntry.changes : {};
+            
+            // Track only the properties that have actually changed
+            const changes = {};
+            
+            // Compare basic properties
+            if (enhancedDevice.name !== previousChanges.name) changes.name = enhancedDevice.name;
+            if (enhancedDevice.category !== previousChanges.category) changes.category = enhancedDevice.category;
+            if (enhancedDevice.networkRole !== previousChanges.networkRole) changes.networkRole = enhancedDevice.networkRole;
+            
+            // Compare connection properties based on device role
+            if (enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') {
+                if (enhancedDevice.parentGateway !== previousChanges.parentGateway) {
+                    changes.parentGateway = enhancedDevice.parentGateway;
                 }
-            });
+                
+                // Compare arrays properly
+                const prevGateways = previousChanges.connectedGateways || [];
+                const currGateways = enhancedDevice.connectedGateways || [];
+                if (JSON.stringify(prevGateways) !== JSON.stringify(currGateways)) {
+                    changes.connectedGateways = currGateways;
+                }
+                
+                const prevSwitches = previousChanges.connectedSwitches || [];
+                const currSwitches = enhancedDevice.connectedSwitches || [];
+                if (JSON.stringify(prevSwitches) !== JSON.stringify(currSwitches)) {
+                    changes.connectedSwitches = currSwitches;
+                }
+            }
+            
+            if (enhancedDevice.networkRole !== 'gateway' && enhancedDevice.networkRole !== 'switch') {
+                if (enhancedDevice.parentSwitch !== previousChanges.parentSwitch) {
+                    changes.parentSwitch = enhancedDevice.parentSwitch;
+                }
+            }
+            
+            // Compare notes
+            const prevNotes = previousChanges.notes || [];
+            const currNotes = enhancedDevice.notes || [];
+            if (JSON.stringify(prevNotes) !== JSON.stringify(currNotes)) {
+                changes.notes = currNotes;
+            }
+            
+            // Only add a history entry if something actually changed
+            if (Object.keys(changes).length > 0) {
+                newHistory.unshift({
+                    timestamp: new Date().toISOString(),
+                    changes: changes
+                });
+            }
             
             // DEBUG: Check connections
             if (enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') {
@@ -122,15 +168,52 @@ const UnifiedDeviceModal = ({
     const handleDeleteNote = (noteId) => {
         const updatedNotes = enhancedDevice.notes.filter(note => note.id !== noteId);
         setModalDevice(prev => ({ ...prev, notes: updatedNotes }));
-    };
-
-    // Format date
+    };    // Format date
     const formatDate = (isoString) => {
         try {
             const date = new Date(isoString);
-            return date.toLocaleString();
+            
+            // Get date components
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            
+            // Get time components
+            const hours = String(date.getHours()).padStart(2, '0');
+            const minutes = String(date.getMinutes()).padStart(2, '0');
+            const seconds = String(date.getSeconds()).padStart(2, '0');
+            
+            // Format: YYYY-MM-DD HH:MM:SS
+            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
         } catch (error) {
             return 'Invalid date';
+        }
+    };
+    
+    // Generate a summary of changes
+    const generateChangeSummary = (changes) => {
+        if (!changes || Object.keys(changes).length === 0) {
+            return "No changes";
+        }
+        
+        const changedItems = [];
+        
+        if (changes.name !== undefined) changedItems.push("name");
+        if (changes.category !== undefined) changedItems.push("category");
+        if (changes.networkRole !== undefined) changedItems.push("network role");
+        if (changes.parentGateway !== undefined) changedItems.push("parent gateway");
+        if (changes.parentSwitch !== undefined) changedItems.push("parent switch");
+        if (changes.connectedGateways !== undefined) changedItems.push("gateway connections");
+        if (changes.connectedSwitches !== undefined) changedItems.push("switch connections");
+        if (changes.notes !== undefined) changedItems.push("notes");
+        
+        if (changedItems.length === 0) {
+            return "Unknown changes";
+        } else if (changedItems.length === 1) {
+            return `Updated ${changedItems[0]}`;
+        } else {
+            const lastItem = changedItems.pop();
+            return `Updated ${changedItems.join(', ')} and ${lastItem}`;
         }
     };
 
@@ -201,9 +284,7 @@ const UnifiedDeviceModal = ({
                             <option key={category} value={category}>{category}</option>
                         ))}
                     </select>
-                </div>
-
-                {/* Network Role Section */}
+                </div>                {/* Network Role Section */}
                 <div className="mb-4">
                     <label className="block text-sm text-gray-300 mb-1">Network Role</label>
                     <div className="flex gap-2">                        <button
@@ -256,8 +337,35 @@ const UnifiedDeviceModal = ({
                         >
                             Regular Device
                         </button>
+                    </div>                </div>
+                
+                {/* Main Gateway Checkbox - only shown when device role is gateway */}
+                {enhancedDevice?.networkRole === 'gateway' && (
+                    <div className="mb-4">
+                        <div className="flex items-center">
+                            <input
+                                type="checkbox"
+                                id="isMainGateway"
+                                checked={enhancedDevice.isMainGateway || false}
+                                onChange={(e) => {
+                                    setModalDevice((prev) => ({
+                                        ...prev,
+                                        isMainGateway: e.target.checked
+                                    }));
+                                }}
+                                className="mr-2 h-4 w-4"
+                            />
+                            <label htmlFor="isMainGateway" className="text-sm text-gray-300">
+                                Set as Main Gateway
+                            </label>
+                        </div>
+                        <p className="text-xs text-gray-400 ml-6 mt-1">
+                            Main gateways serve as the root nodes for network hierarchy and can connect to sub-gateways
+                        </p>
                     </div>
-                </div>                {/* Connection Sections */}
+                )}
+
+                {/* Connection Sections */}
                 {/* 1. Gateway Connections - only shown for switches and other gateways */}
                 {(enhancedDevice?.networkRole === 'switch' || enhancedDevice?.networkRole === 'gateway') && (
                     <div className="mb-4">
@@ -533,7 +641,103 @@ const UnifiedDeviceModal = ({
                     </div>
                 </div>
 
-                {/* Action Buttons */}                <div className="flex justify-end gap-2 sticky bottom-0 bg-gray-800 py-3">
+                {/* Device History Section */}
+                <div className="mb-4">
+                    <div className="bg-gray-800 p-3 rounded">
+                        <h4 className="font-medium mb-2">Device History</h4>
+                        
+                        {/* History List */}
+                        {(!deviceHistory || deviceHistory.length === 0) ? (
+                            <div className="text-center text-gray-500 py-3">
+                                No history records yet. Changes to device properties will be recorded here.
+                            </div>
+                        ) : (
+                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">                                {deviceHistory.map((record, index) => (                                    
+                                    <div key={index} className="bg-gray-700 p-2 rounded">
+                                        <div 
+                                            className="flex justify-between mb-2 cursor-pointer hover:bg-gray-600 p-1 rounded"
+                                            onClick={() => toggleHistoryItemExpansion(index)}
+                                        >
+                                            <div className="text-xs text-gray-400">
+                                                {formatDate(record.timestamp)}
+                                            </div>
+                                            <div className="flex items-center">
+                                                <div className="text-xs text-green-400 font-medium mr-2">
+                                                    {generateChangeSummary(record.changes)}
+                                                </div>
+                                                <div className="text-xs text-gray-400">
+                                                    {expandedHistoryItems.includes(index) ? '▼' : '►'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        {expandedHistoryItems.includes(index) && (
+                                            <div className="text-sm border-t border-gray-600 pt-2 mt-1">
+                                                {/* Track the changes that were made */}
+                                                {Object.keys(record.changes).length === 0 ? (
+                                                    <div className="text-gray-400">No changes detected</div>
+                                                ) : (
+                                                <>
+                                                    {record.changes.name !== undefined && (
+                                                        <div><span className="text-blue-300">Name:</span> {record.changes.name}</div>
+                                                    )}
+                                                    {record.changes.category !== undefined && (
+                                                        <div><span className="text-blue-300">Category:</span> {record.changes.category}</div>
+                                                    )}
+                                                    {record.changes.networkRole !== undefined && (
+                                                        <div>
+                                                            <span className="text-blue-300">Network Role:</span> 
+                                                            {record.changes.networkRole || 'Regular Device'}
+                                                        </div>
+                                                    )}
+                                                    {record.changes.parentGateway !== undefined && (
+                                                        <div>
+                                                            <span className="text-blue-300">Parent Gateway:</span> 
+                                                            {record.changes.parentGateway || <span className="text-gray-400">None</span>}
+                                                        </div>
+                                                    )}
+                                                    {record.changes.parentSwitch !== undefined && (
+                                                        <div>
+                                                            <span className="text-blue-300">Parent Switch:</span> 
+                                                            {record.changes.parentSwitch || <span className="text-gray-400">None</span>}
+                                                        </div>
+                                                    )}
+                                                    {record.changes.connectedGateways !== undefined && (
+                                                        <div>
+                                                            <span className="text-blue-300">Connected Gateways:</span> 
+                                                            {record.changes.connectedGateways && record.changes.connectedGateways.length > 0 
+                                                                ? record.changes.connectedGateways.join(', ') 
+                                                                : <span className="text-gray-400">None</span>}
+                                                        </div>
+                                                    )}
+                                                    {record.changes.connectedSwitches !== undefined && (
+                                                        <div>
+                                                            <span className="text-blue-300">Connected Switches:</span> 
+                                                            {record.changes.connectedSwitches && record.changes.connectedSwitches.length > 0 
+                                                                ? record.changes.connectedSwitches.join(', ') 
+                                                                : <span className="text-gray-400">None</span>}
+                                                        </div>
+                                                    )}
+                                                    {record.changes.notes !== undefined && (
+                                                        <div>
+                                                            <span className="text-blue-300">Notes:</span> 
+                                                            {record.changes.notes && record.changes.notes.length > 0
+                                                                ? <span className="text-gray-400">Updated ({record.changes.notes.length} notes)</span>
+                                                                : <span className="text-gray-400">Removed</span>}
+                                                        </div>                                            )}
+                                                </>
+                                            )}
+                                        </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex justify-end gap-2 sticky bottom-0 bg-gray-800 py-3">
                     <button
                         onClick={() => setModalDevice(null)}
                         className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"

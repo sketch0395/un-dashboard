@@ -220,21 +220,49 @@ export const getDeviceHierarchy = (deviceIp, customNames = null) => {
                     role: 'device'
                 });
             }
-        });
-
-        // If this is a main gateway, find other main gateways
-        if (device.networkRole === 'gateway' && device.isMainGateway) {
-            Object.entries(customProps).forEach(([ip, props]) => {
-                if (ip === deviceIp) return; // Skip self
-
-                if (props.networkRole === 'gateway' && props.isMainGateway) {
-                    hierarchy.adjacentGateways.push({
-                        ip,
-                        name: props.name || ip,
-                        role: 'gateway'
+        });        // Gateway-specific hierarchy handling
+        if (device.networkRole === 'gateway') {
+            // If this is a main gateway, find other main gateways and sub-gateways
+            if (device.isMainGateway) {
+                Object.entries(customProps).forEach(([ip, props]) => {
+                    if (ip === deviceIp) return; // Skip self
+                    
+                    // Find other main gateways
+                    if (props.networkRole === 'gateway' && props.isMainGateway) {
+                        hierarchy.adjacentGateways.push({
+                            ip,
+                            name: props.name || ip,
+                            role: 'gateway',
+                            isMain: true
+                        });
+                    }
+                    
+                    // Find sub-gateways connected to this main gateway
+                    if (props.networkRole === 'gateway' && 
+                        !props.isMainGateway && 
+                        (props.parentGateway === deviceIp || 
+                         (Array.isArray(props.connectedGateways) && props.connectedGateways.includes(deviceIp)))) {
+                        
+                        hierarchy.children.push({
+                            ip,
+                            name: props.name || ip,
+                            role: 'sub-gateway'
+                        });
+                    }
+                });
+            } 
+            // If this is a sub-gateway, find its main gateway parent
+            else if (device.parentGateway) {
+                const parentGateway = customProps[device.parentGateway];
+                if (parentGateway && parentGateway.isMainGateway) {
+                    hierarchy.parents.push({
+                        ip: device.parentGateway,
+                        name: parentGateway.name || device.parentGateway,
+                        role: 'main-gateway',
+                        isMain: true
                     });
                 }
-            });
+            }
         }
 
         return hierarchy;

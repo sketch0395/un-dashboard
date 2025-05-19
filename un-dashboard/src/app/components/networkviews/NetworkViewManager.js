@@ -13,6 +13,7 @@ const NetworkViewManager = forwardRef(({
     devices, 
     vendorColors, 
     customNames, 
+    setCustomNames, // Add setCustomNames prop
     openSSHModal, 
     setModalDevice 
 }, ref) => {
@@ -270,14 +271,13 @@ const NetworkViewManager = forwardRef(({
     };
 
     // Prepare filtered devices
-    const filteredDevices = getFilteredDevices();
-
-    // Render appropriate view component based on visualization type
+    const filteredDevices = getFilteredDevices();    // Render appropriate view component based on visualization type
     const renderVisualization = () => {
         const viewProps = {
             devices: filteredDevices,
             vendorColors,
             customNames,
+            setCustomNames, // Add setCustomNames to the props
             dimensions,
             groupBy,
             selectedGroup,

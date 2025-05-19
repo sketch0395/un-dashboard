@@ -344,12 +344,12 @@ export default function NetworkDashboard() {
                     ref={contentRef}
                     className="flex-1 bg-gray-800 rounded-lg overflow-hidden"
                 >
-                    <div className="w-full h-full overflow-hidden">
-                        <TopologyMap
+                    <div className="w-full h-full overflow-hidden">                        <TopologyMap
                             ref={topologyMapRef}
                             devices={devices}
                             vendorColors={vendorColors}
                             customNames={customNames}
+                            setCustomNames={setCustomNames}
                             openSSHModal={handleOpenSSH}
                             contentDimensions={contentDimensions}
                             setModalDevice={setModalDevice}
