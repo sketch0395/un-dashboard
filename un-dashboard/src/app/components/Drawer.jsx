@@ -7,9 +7,9 @@ import { FaDocker, FaNetworkWired, FaChartBar, FaBars, FaTimes, FaHome, FaChevro
 
 const Drawer = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);  // Set to true for minimized by default
   const pathname = usePathname();
-  const router = useRouter();  // Function to ensure consistent sizing across the application
+  const router = useRouter();// Function to ensure consistent sizing across the application
   const ensureConsistentSizing = () => {
     // Measure navbar height to ensure drawer positioning is consistent
     const navbar = document.querySelector('nav.navbar');

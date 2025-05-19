@@ -74,9 +74,8 @@ const PerformanceControls = () => {
       setIsTestingConnection(false);
     });
   };
-  
-  return (
-    <PageControls title="Performance Controls">      <div className="space-y-4">
+    return (
+    <PageControls title="Performance Controls" initialExpanded={false}>      <div className="space-y-4">
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-400 mb-2">
             Performance Server Connection

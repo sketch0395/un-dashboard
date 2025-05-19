@@ -1,45 +1,211 @@
 "use client";
 
-import { useState } from 'react';
-import { FaPlay, FaStop, FaSync, FaFilter, FaDocker } from 'react-icons/fa';
+import { useState, useEffect, useRef } from 'react';
+import { FaPlay, FaStop, FaSync, FaFilter, FaDocker, FaPlus } from 'react-icons/fa';
 import PageControls from './PageControls';
+import AddDockerContainer from './addDockerContainer';
 
-const DockerControls = () => {
-  const [filterValue, setFilterValue] = useState('');
-  const [showStoppedContainers, setShowStoppedContainers] = useState(true);
+const DockerControls = ({ 
+  filterValue, 
+  setFilterValue, 
+  showStoppedContainers, 
+  setShowStoppedContainers 
+}) => {
   const [connectionStatus, setConnectionStatus] = useState(null);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
-  
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isStartingAll, setIsStartingAll] = useState(false);
+  const [isStoppingAll, setIsStoppingAll] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const refreshTimerRef = useRef(null);
+  // Set up automatic refresh every 30 seconds to keep stats updated
+  useEffect(() => {
+    // Function to handle refresh that can be safely used in useEffect
+    const performRefresh = () => {
+      console.log('Auto-refreshing Docker containers and stats...');
+      handleRefresh();
+    };
+    
+    // Initial refresh
+    performRefresh();
+    
+    // Set up interval for auto-refresh (30 seconds = 30000 ms)
+    // This more frequent polling ensures container stats stay current
+    refreshTimerRef.current = setInterval(performRefresh, 30000);
+    
+    // Clean up the interval when the component unmounts
+    return () => {
+      if (refreshTimerRef.current) {
+        clearInterval(refreshTimerRef.current);
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const handleRefresh = () => {
-    console.log('Refreshing Docker containers...');
-    // TODO: Implement refresh functionality
+    console.log('Refreshing Docker containers and stats...');
+    setIsRefreshing(true);
+    
+    // Import Socket.IO dynamically to avoid SSR issues
+    import('socket.io-client').then(({ io }) => {
+      const serverUrl = getServerUrl();
+      
+      const socket = io(serverUrl, {
+        transports: ['websocket', 'polling'],
+        timeout: 8000, // Increased timeout for stats collection
+        forceNew: true
+      });
+      
+      // This will trigger the fetchContainers function on the server which already includes stats collection
+      socket.emit('refreshContainers');
+      
+      // Handle acknowledgment
+      socket.on('operation', (data) => {
+        if (data.type === 'refresh' && data.status === 'complete') {
+          setIsRefreshing(false);
+          console.log('Container refresh complete with stats');
+        } else if (data.type === 'refresh' && data.status === 'error') {
+          setIsRefreshing(false);
+          console.error('Refresh error:', data.message);
+        }
+      });
+      
+      // Safety timeout to ensure loading state is reset
+      setTimeout(() => {
+        setIsRefreshing(false);
+        socket.disconnect();
+      }, 10000); // Increased timeout since stats may take longer to collect
+    }).catch(err => {
+      console.error("Error importing socket.io-client:", err);
+      setIsRefreshing(false);
+    });
   };
-  
-  const handleStartAll = () => {
+    const handleStartAll = () => {
     console.log('Starting all containers...');
-    // TODO: Implement start all containers functionality
-  };
-  
-  const handleStopAll = () => {
+    setIsStartingAll(true);
+    
+    // Import Socket.IO dynamically to avoid SSR issues
+    import('socket.io-client').then(({ io }) => {
+      const serverUrl = getServerUrl();
+      
+      const socket = io(serverUrl, {
+        transports: ['websocket', 'polling'],
+        timeout: 5000,
+        forceNew: true
+      });
+      
+      socket.emit('startAllContainers');
+      
+      // Handle acknowledgment
+      socket.on('operation', (data) => {
+        if (data.type === 'batchOperation' && data.action === 'start' && data.status === 'complete') {
+          setIsStartingAll(false);
+        } else if (data.type === 'batchOperation' && data.action === 'start' && data.status === 'error') {
+          setIsStartingAll(false);
+          console.error('Start all error:', data.message);
+        }
+      });
+      
+      // Safety timeout to ensure loading state is reset
+      setTimeout(() => {
+        setIsStartingAll(false);
+        socket.disconnect();
+      }, 10000);
+    }).catch(err => {
+      console.error("Error importing socket.io-client:", err);
+      setIsStartingAll(false);
+    });
+  };    const handleStopAll = () => {
     console.log('Stopping all containers...');
-    // TODO: Implement stop all containers functionality
+    setIsStoppingAll(true);
+    
+    // Import Socket.IO dynamically to avoid SSR issues
+    import('socket.io-client').then(({ io }) => {
+      const serverUrl = getServerUrl();
+      
+      console.log(`Connecting to Docker server at: ${serverUrl}`);
+      
+      // Create a socket with longer timeout for the stop operation
+      const socket = io(serverUrl, {
+        transports: ['websocket', 'polling'],
+        timeout: 10000,  // Increased timeout
+        forceNew: true,
+        reconnectionAttempts: 3
+      });
+      
+      socket.on('connect', () => {
+        console.log('Connected to Docker server, emitting stopAllContainers event');
+        socket.emit('stopAllContainers');
+      });
+      
+      socket.on('connect_error', (error) => {
+        console.error('Docker server connection error:', error);
+        setIsStoppingAll(false);
+      });
+      
+      // Handle acknowledgment
+      socket.on('operation', (data) => {
+        console.log('Received operation update:', data);
+        if (data.type === 'batchOperation' && data.action === 'stop') {
+          if (data.status === 'complete') {
+            console.log('Stop all operation completed');
+            setIsStoppingAll(false);
+            socket.disconnect();
+          } else if (data.status === 'error') {
+            console.error('Stop all error:', data.message);
+            setIsStoppingAll(false);
+            socket.disconnect();
+          }
+        }
+      });
+        // Set a longer operation timeout since stopping containers can take time
+      const operationTimeout = 30000; // 30 seconds
+      
+      // Listen for container updates after the stop operation
+      socket.on('containers', () => {
+        console.log('Received updated container list');
+        // If we get a containers update after requesting a stop, we can consider
+        // the operation completed successfully even if we missed the 'complete' message
+        setIsStoppingAll(false);
+        socket.disconnect();
+      });
+      
+      // Safety timeout to ensure loading state is reset
+      setTimeout(() => {
+        console.log('Safety timeout reached, resetting stop all state');
+        setIsStoppingAll(false);
+        socket.disconnect();
+      }, operationTimeout);
+    }).catch(err => {
+      console.error("Error importing socket.io-client:", err);
+      setIsStoppingAll(false);
+    });
   };
-  
+  // Helper function to get the Docker server URL
+  const getServerUrl = () => {
+    // Default server URL
+    let serverUrl = "http://10.5.1.83:4002";
+    
+    // Check if window is defined (client-side only)
+    if (typeof window !== 'undefined') {
+      const protocol = window.location.protocol;
+      const hostname = window.location.hostname;
+      
+      // If not on localhost, use the same hostname but different port
+      if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+        serverUrl = `${protocol}//${hostname}:4002`;
+      }
+    }
+    
+    return serverUrl;
+  };
+
   const handleTestConnection = () => {
     // Import Socket.IO client dynamically to avoid SSR issues
     import('socket.io-client').then(({ io }) => {
       setIsTestingConnection(true);
       setConnectionStatus('connecting');
       
-      // Determine the server URL based on environment
-      const protocol = window.location.protocol;
-      const hostname = window.location.hostname;
-      let serverUrl = "http://10.5.1.83:4002";
-      
-      // If not on localhost, use the same hostname but different port
-      if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-        serverUrl = `${protocol}//${hostname}:4002`;
-      }
+      const serverUrl = getServerUrl();
       
       console.log(`Testing Docker server connection to: ${serverUrl}`);
       
@@ -76,11 +242,108 @@ const DockerControls = () => {
       setConnectionStatus('error');
       setIsTestingConnection(false);
     });
-  };
-  
-  return (
-    <PageControls title="Docker Controls">
-      <div className="space-y-4">        <div className="mb-4">
+  };  // Create a component for the action buttons so they can be used in both places
+  const ActionButtons = ({ showLabels = false }) => (
+    <div className="flex gap-2">      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleRefresh();
+        }}
+        title="Refresh containers"
+        disabled={isRefreshing}
+        className={`flex items-center gap-2 px-3 py-1 ${
+          isRefreshing 
+          ? 'bg-gray-600 cursor-not-allowed' 
+          : 'bg-gray-700 hover:bg-gray-600'
+        } rounded-md text-sm`}
+      >
+        {isRefreshing ? (
+          <>
+            <FaSync className="animate-spin h-3 w-3 mr-1" />
+            {showLabels && <span>Refreshing...</span>}
+          </>
+        ) : (
+          <>
+            <FaSync />
+            {showLabels && <span>Refresh</span>}
+          </>
+        )}
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleStartAll();
+        }}
+        title="Start all containers"
+        disabled={isStartingAll}
+        className={`flex items-center gap-2 px-3 py-1 ${
+          isStartingAll 
+          ? 'bg-green-600 cursor-not-allowed' 
+          : 'bg-green-700 hover:bg-green-600'
+        } rounded-md text-sm`}
+      >
+        {isStartingAll ? (
+          <>
+            <svg className="animate-spin h-3 w-3 mr-1" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            {showLabels && <span>Starting...</span>}
+          </>
+        ) : (
+          <>
+            <FaPlay />
+            {showLabels && <span>Start All</span>}
+          </>
+        )}
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          handleStopAll();
+        }}
+        title="Stop all containers"
+        disabled={isStoppingAll}
+        className={`flex items-center gap-2 px-3 py-1 ${
+          isStoppingAll 
+          ? 'bg-red-600 cursor-not-allowed' 
+          : 'bg-red-700 hover:bg-red-600'
+        } rounded-md text-sm`}
+      >
+        {isStoppingAll ? (
+          <>
+            <svg className="animate-spin h-3 w-3 mr-1" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            {showLabels && <span>Stopping...</span>}
+          </>
+        ) : (
+          <>
+            <FaStop />
+            {showLabels && <span>Stop All</span>}
+          </>
+        )}
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setShowCreateModal(true);
+        }}
+        title="Create new container"
+        className="flex items-center gap-2 px-3 py-1 bg-blue-700 hover:bg-blue-600 rounded-md text-sm"
+      >
+        <FaPlus />
+        {showLabels && <span>Create</span>}
+      </button>
+    </div>
+  );  return (
+    <PageControls 
+      title="Docker Controls" 
+      initialExpanded={false}
+      headerButtons={<ActionButtons showLabels={false} />}
+    >
+      <div className="space-y-4"><div className="mb-4">
           <label className="block text-sm font-medium text-gray-400 mb-2">
             Docker Server Connection
           </label>
@@ -140,45 +403,40 @@ const DockerControls = () => {
                 placeholder="Filter by name or status..."
                 className="w-full pl-10 pr-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-2">
+            </div>          </div>          <div className="flex flex-col items-center gap-2">
             <label className="inline-flex items-center cursor-pointer">
               <input 
                 type="checkbox" 
                 checked={showStoppedContainers}
                 onChange={() => setShowStoppedContainers(!showStoppedContainers)}
-                className="sr-only peer"
+                className="sr-only"
               />
-              <div className="relative w-11 h-6 bg-gray-600 rounded-full peer peer-checked:bg-blue-600 peer-focus:ring-2 peer-focus:ring-blue-500 transition-colors">
-                <div className="absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-all peer-checked:translate-x-5"></div>
+              <div 
+                className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                  showStoppedContainers ? 'bg-blue-600' : 'bg-gray-600'
+                }`}
+              >
+                <div 
+                  className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform duration-200 ease-in-out ${
+                    showStoppedContainers ? 'left-6' : 'left-1'
+                  }`}
+                ></div>
               </div>
-              <span className="ml-2 text-sm">Show Stopped</span>
             </label>
-          </div>
+            <span className="text-sm font-medium text-center">
+              {showStoppedContainers ? "Showing Stopped" : "Hide Stopped"}
+            </span>
+          </div>        </div>          {/* Action buttons with text labels for expanded view */}
+        <div className="flex flex-wrap gap-2">
+          <ActionButtons showLabels={true} />
         </div>
         
-        <div className="flex flex-wrap gap-2">
-          <button 
-            onClick={handleRefresh}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-md"
-          >
-            <FaSync /> Refresh
-          </button>
-          <button 
-            onClick={handleStartAll}
-            className="flex items-center gap-2 px-4 py-2 bg-green-700 hover:bg-green-600 rounded-md"
-          >
-            <FaPlay /> Start All
-          </button>
-          <button 
-            onClick={handleStopAll}
-            className="flex items-center gap-2 px-4 py-2 bg-red-700 hover:bg-red-600 rounded-md"
-          >
-            <FaStop /> Stop All
-          </button>
-        </div>
+        {/* Add Docker Container Modal */}
+        <AddDockerContainer 
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          socketUrl={getServerUrl()}
+        />
       </div>
     </PageControls>
   );

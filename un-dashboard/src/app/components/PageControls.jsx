@@ -6,8 +6,9 @@ import { FaCog, FaTimes, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 const PageControls = ({ 
   title = "Controls",
   children, 
-  initialExpanded = true,
-  className = ""
+  initialExpanded = false,  // Set to false for minimized by default
+  className = "",
+  headerButtons = null
 }) => {
   const [isExpanded, setIsExpanded] = useState(initialExpanded);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
@@ -26,15 +27,19 @@ const PageControls = ({
           }
         </div>
 
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsConfigOpen(!isConfigOpen);
-          }}
-          className="p-2 bg-gray-700 rounded-full hover:bg-gray-600 focus:outline-none"
-        >
-          <FaCog />
-        </button>
+        <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
+          {!isExpanded && headerButtons}
+          
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsConfigOpen(!isConfigOpen);
+            }}
+            className="p-2 bg-gray-700 rounded-full hover:bg-gray-600 focus:outline-none"
+          >
+            <FaCog />
+          </button>
+        </div>
       </div>
 
       {isExpanded && (

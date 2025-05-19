@@ -3,13 +3,12 @@
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import DockerCard from "./dockercard";
-import AddDockerContainer from "./addDockerContainer";
 
-export default function DockerStatus() {
+export default function DockerStatus({ filterValue, showStoppedContainers }) {
     const [containers, setContainers] = useState([]);
-    const [error, setError] = useState(null);    const [operations, setOperations] = useState({});
+    const [error, setError] = useState(null);
+    const [operations, setOperations] = useState({});
     const [isLoading, setIsLoading] = useState(true);
-    const [showCreateModal, setShowCreateModal] = useState(false);
     
     // Determine the server URL based on environment
     const SOCKET_URL = (() => {
@@ -52,9 +51,7 @@ export default function DockerStatus() {
             console.log("WebSocket Data received:", data?.length || 0, "containers");
             setContainers(data);
             setIsLoading(false);
-        });
-
-        socket.on("operation", (data) => {
+        });        socket.on("operation", (data) => {
             console.log("Operation update:", data);
             setOperations(prev => ({
                 ...prev,
@@ -75,36 +72,41 @@ export default function DockerStatus() {
                     )
                 );
             }
-        });
-
-        socket.on("connect_error", () => {
+              // Handle batch operations (start all, stop all)
+            if (data.type === 'batchOperation') {
+                console.log('Received batch operation event:', data);
+                
+                // Show the batch operation status in the operations state
+                setOperations(prev => ({
+                    ...prev,
+                    batchOperation: {
+                        status: data.status,
+                        message: data.message,
+                        action: data.action
+                    }
+                }));
+                
+                // Clear batch operation notifications after a delay when completed
+                if (data.status === 'complete' || data.status === 'error') {
+                    console.log(`Batch operation ${data.action} ${data.status}:`, data.message);
+                    setTimeout(() => {
+                        setOperations(prev => {
+                            const newOps = {...prev};
+                            delete newOps.batchOperation;
+                            return newOps;
+                        });
+                    }, 5000);
+                }
+            }
+        });        socket.on("connect_error", () => {
             console.warn("WebSocket failed, using polling");
-            fetchContainers();
-
-            const interval = setInterval(fetchContainers, 10000);
-            return () => clearInterval(interval);
+            setError("Connection to Docker server failed. Check if the server is running.");
         });
 
         return () => {
             socket.disconnect();
         };
     }, []);
-
-    const fetchContainers = () => {
-        setIsLoading(true);
-        fetch(`${SOCKET_URL}/api/containers`)
-            .then((res) => res.json())
-            .then((data) => {
-                console.log("API response:", data);
-                setContainers(Array.isArray(data) ? data : []);
-                setIsLoading(false);
-            })
-            .catch((err) => {
-                console.error("Fetch error:", err);
-                setError("Failed to fetch containers");
-                setIsLoading(false);
-            });
-    };
 
     const handleAction = (id, action) => {
         console.log("Container ID:", id, "Action:", action);
@@ -139,8 +141,7 @@ export default function DockerStatus() {
     };
 
     return (
-        <div className="p-6 bg-gray-900 text-white rounded-lg shadow-lg">
-            <div className="flex items-center justify-between mb-4">
+        <div className="p-6 bg-gray-900 text-white rounded-lg shadow-lg">            <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold">Docker Containers</h2>
                 <div className="flex items-center space-x-2">
                     {isLoading && (
@@ -158,35 +159,8 @@ export default function DockerStatus() {
                     {operations.refresh?.status === 'start' && (
                         <div className="text-sm text-blue-400">Refreshing data...</div>
                     )}
-                    <button 
-                        className="bg-blue-600 hover:bg-blue-800 text-white py-1 px-3 rounded"
-                        onClick={fetchContainers}
-                        disabled={isLoading}
-                    >
-                        Refresh
-                    </button>
                 </div>
             </div>
-
-            {/* Add Container Button */}
-            <div className="mb-6">
-                <button 
-                    className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded flex items-center"
-                    onClick={() => setShowCreateModal(true)}
-                >
-                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                    Create Container
-                </button>
-            </div>
-            
-            {/* Add Docker Container component */}
-            <AddDockerContainer 
-                isOpen={showCreateModal}
-                onClose={() => setShowCreateModal(false)}
-                socketUrl={SOCKET_URL}
-            />
 
             {/* Container listing */}
             {error ? (
@@ -200,23 +174,44 @@ export default function DockerStatus() {
                 </div>
             ) : containers.length === 0 ? (
                 <p className="text-gray-400">No containers found</p>
-            ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {containers.map((container) => (
-                        <DockerCard
-                            key={container.Id}
-                            container={container}
-                            onAction={handleAction}
-                            onOpenContainerPage={openContainerPage}
-                            operations={operations}
-                        />
-                    ))}
+            ) : (                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {containers
+                        .filter(container => {
+                            // Apply the showStoppedContainers filter
+                            if (!showStoppedContainers && !container.Status?.toLowerCase().includes('up')) {
+                                return false;
+                            }
+                            
+                            // Apply the text filter if it exists
+                            if (filterValue && filterValue.trim() !== '') {
+                                const searchText = filterValue.toLowerCase();
+                                const containerName = container.Names?.[0]?.toLowerCase() || '';
+                                const containerID = container.Id?.toLowerCase() || '';
+                                const containerImage = container.Image?.toLowerCase() || '';
+                                const containerStatus = container.Status?.toLowerCase() || '';
+                                
+                                return containerName.includes(searchText) || 
+                                       containerID.includes(searchText) ||
+                                       containerImage.includes(searchText) ||
+                                       containerStatus.includes(searchText);
+                            }
+                            
+                            return true;
+                        })
+                        .map((container) => (
+                            <DockerCard
+                                key={container.Id}
+                                container={container}
+                                onAction={handleAction}
+                                onOpenContainerPage={openContainerPage}
+                                operations={operations}
+                            />
+                        ))}
                 </div>
             )}
-            
-            {/* Operations Status Bar */}
+              {/* Operations Status Bar */}
             {operations.containerAction && (
-                <div className={`fixed bottom-4 right-4 p-3 rounded-lg shadow-lg ${
+                <div className={`fixed bottom-4 right-4 p-3 rounded-lg shadow-lg z-30 ${
                     operations.containerAction.status === 'start' ? 'bg-blue-800' :
                     operations.containerAction.status === 'complete' ? 'bg-green-800' :
                     operations.containerAction.status === 'error' ? 'bg-red-800' : 'bg-gray-800'
@@ -229,6 +224,27 @@ export default function DockerStatus() {
                             {operations.containerAction.status === 'start' && `${operations.containerAction.action} in progress...`}
                             {operations.containerAction.status === 'complete' && `${operations.containerAction.action} completed`}
                             {operations.containerAction.status === 'error' && `${operations.containerAction.action} failed: ${operations.containerAction.message}`}
+                        </span>
+                    </div>
+                </div>
+            )}
+            
+            {/* Batch Operations Status Bar */}
+            {operations.batchOperation && (
+                <div className={`fixed bottom-16 right-4 p-3 rounded-lg shadow-lg z-20 ${
+                    operations.batchOperation.status === 'start' ? 'bg-purple-800' :
+                    operations.batchOperation.status === 'complete' ? 'bg-green-800' :
+                    operations.batchOperation.status === 'error' ? 'bg-red-800' : 'bg-gray-800'
+                }`}>
+                    <div className="flex items-center space-x-2">
+                        {operations.batchOperation.status === 'start' && (
+                            <div className="animate-spin h-4 w-4 border-t-2 border-b-2 border-white rounded-full"></div>
+                        )}
+                        <span>
+                            {operations.batchOperation.action === 'start' && operations.batchOperation.status === 'start' && "Starting all containers..."}
+                            {operations.batchOperation.action === 'stop' && operations.batchOperation.status === 'start' && "Stopping all containers..."}
+                            {operations.batchOperation.status === 'complete' && operations.batchOperation.message}
+                            {operations.batchOperation.status === 'error' && `Batch operation error: ${operations.batchOperation.message}`}
                         </span>
                     </div>
                 </div>
