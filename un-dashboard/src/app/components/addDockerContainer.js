@@ -41,9 +41,7 @@ export default function AddDockerContainer({ isOpen, onClose, socketUrl }) {
             ...prev,
             [name]: value
         }));
-    };
-
-    const handleCreateContainer = (e) => {
+    };    const handleCreateContainer = (e) => {
         e.preventDefault();
         
         console.log("Creating new container:", containerConfig);
@@ -55,8 +53,24 @@ export default function AddDockerContainer({ isOpen, onClose, socketUrl }) {
             message: "Creating container..."
         });
         
-        // Connect to socket
-        const socket = io(socketUrl);
+        // Connect to socket with improved configuration
+        const socket = io(socketUrl, {
+            transports: ['websocket', 'polling'], // Try WebSocket first, then fallback to polling
+            reconnectionAttempts: 3,              // Try to reconnect 3 times
+            reconnectionDelay: 1000,              // Start with a 1s delay between reconnection attempts
+            timeout: 10000,                       // Connection timeout
+            forceNew: true                        // Create a new connection
+        });
+        
+        // Handle connection errors
+        socket.on("connect_error", (err) => {
+            console.error("Socket connection error in container creation:", err);
+            setStatus({
+                loading: false,
+                type: "error",
+                message: "Failed to connect to Docker server. Please try again later."
+            });
+        });
         
         // Listen for operation updates
         socket.on("operation", (data) => {

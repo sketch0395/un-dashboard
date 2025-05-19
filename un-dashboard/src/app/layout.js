@@ -2,6 +2,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Navbar from "./components/navbar";
 import { ScanHistoryProvider } from "./components/networkscanhistory";
+import PageLayout from "./components/PageLayout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,7 +27,9 @@ export default function RootLayout({ children }) {
       >
         <Navbar />
         <ScanHistoryProvider>
-          {children}
+          <PageLayout>
+            {children}
+          </PageLayout>
         </ScanHistoryProvider>
       </body>
     </html>

@@ -197,7 +197,7 @@ export default function PerformancePage() {
     };
 
     return (
-        <>
+        <main className="p-6">
             <h1 className="text-3xl font-bold mb-6">Performance Monitoring</h1>
             
             <PerformanceControls />
@@ -311,6 +311,6 @@ export default function PerformancePage() {
                     </div>
                 )}
             </div>
-        </>
+        </main>
     );
 }

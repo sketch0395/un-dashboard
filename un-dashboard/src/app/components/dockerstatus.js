@@ -7,19 +7,49 @@ import AddDockerContainer from "./addDockerContainer";
 
 export default function DockerStatus() {
     const [containers, setContainers] = useState([]);
-    const [error, setError] = useState(null);
-    const [operations, setOperations] = useState({});
+    const [error, setError] = useState(null);    const [operations, setOperations] = useState({});
     const [isLoading, setIsLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
     
-    // Socket URL stored as a constant for reuse
-    const SOCKET_URL = "http://10.5.1.83:4002";
+    // Determine the server URL based on environment
+    const SOCKET_URL = (() => {
+        if (typeof window === 'undefined') return "http://10.5.1.83:4002";
+        
+        const protocol = window.location.protocol;
+        const hostname = window.location.hostname;
+        
+        // If not on localhost, use the same hostname but different port
+        if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+            return `${protocol}//${hostname}:4002`;
+        }
+        
+        return "http://10.5.1.83:4002";
+    })();
 
     useEffect(() => {
-        const socket = io(SOCKET_URL);
+        console.log(`Connecting to Docker server at: ${SOCKET_URL}`);
+        const socket = io(SOCKET_URL, {
+            transports: ['websocket', 'polling'], // Try WebSocket first, fall back to polling
+            reconnectionAttempts: 5,              // Try to reconnect 5 times
+            reconnectionDelay: 1000,              // Start with a 1s delay between reconnection attempts
+            reconnectionDelayMax: 5000,           // Maximum delay between reconnections
+            timeout: 20000,                       // Connection timeout
+            autoConnect: true                     // Auto-connect
+        });
+        
+        // Connection event handlers
+        socket.on("connect", () => {
+            console.log("Socket connected successfully to Docker server");
+            setError(null);
+        });
+        
+        socket.on("connect_error", (err) => {
+            console.error("Socket connection error:", err);
+            setError("Connection to Docker server failed. Check if the server is running.");
+        });
 
         socket.on("containers", (data) => {
-            console.log("WebSocket Data:", data);
+            console.log("WebSocket Data received:", data?.length || 0, "containers");
             setContainers(data);
             setIsLoading(false);
         });

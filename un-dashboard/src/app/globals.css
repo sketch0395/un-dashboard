@@ -3,6 +3,9 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --navbar-height: 4rem;
+  --drawer-width-expanded: 14rem; /* Reduced from 16rem */
+  --drawer-width-collapsed: 4rem; /* 16px */
 }
 
 @theme inline {
@@ -58,4 +61,11 @@ body {
 /* Smooth transitions for UI elements */
 .panel-transition {
   transition: all 0.3s ease-in-out;
+}
+
+/* Ensure the drawer has a consistent size */
+.drawer-fixed-size {
+  height: calc(100vh - var(--navbar-height));
+  position: sticky;
+  top: var(--navbar-height);
 }

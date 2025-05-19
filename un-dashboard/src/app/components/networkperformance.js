@@ -172,15 +172,42 @@ const NetworkPerformance = forwardRef(({
         } catch (error) {
             console.error("Failed to load custom device names:", error);
         }
-    }, []);
-
-    // Connect to socket server on component mount
+    }, []);    // Connect to socket server on component mount
     useEffect(() => {
-        const socket = io("http://10.5.1.83:4000");
+        // Determine the server URL based on environment
+        let serverUrl = "http://10.5.1.83:4000";
+        const protocol = window.location.protocol;
+        const hostname = window.location.hostname;
+        
+        // If not on localhost, use the same hostname but different port
+        if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+            serverUrl = `${protocol}//${hostname}:4000`;
+        }
+        
+        console.log(`Connecting to network performance server at: ${serverUrl}`);
+        
+        // Configure Socket.IO with better connection parameters
+        const socket = io(serverUrl, {
+            transports: ['websocket', 'polling'], // Try WebSocket first, then fallback to polling
+            reconnectionAttempts: 5,              // Try to reconnect 5 times
+            reconnectionDelay: 1000,              // Start with a 1s delay between reconnection attempts
+            reconnectionDelayMax: 5000,           // Maximum delay between reconnections
+            timeout: 20000,                       // Connection timeout
+            autoConnect: true,                    // Auto-connect
+            forceNew: true                        // Create a new connection each time
+        });
+        
         socketRef.current = socket;
 
         socket.on("connect", () => {
             console.log("Socket connected for network performance monitoring");
+            setError(null); // Clear any previous connection errors
+        });
+        
+        socket.on("connect_error", (err) => {
+            console.error("Network performance socket connection error:", err);
+            setError("Failed to connect to network scanning server. Please ensure it's running.");
+            setIsLoading(false);
         });
 
         socket.on("networkPerformanceStatus", (data) => {

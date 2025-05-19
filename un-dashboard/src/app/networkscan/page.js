@@ -1,11 +1,12 @@
 import NetworkDashboard from "../components/networkdashboard";
+import NetworkScanControls from "../components/NetworkScanControls";
 
-
-export default function Home() {
+export default function NetworkScan() {
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-950">
-            {/* <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-r from-blue-900 to-purple-900 opacity-50"></div> */}
-            <NetworkDashboard/>
-        </div>
+        <>
+            <h1 className="text-3xl font-bold mb-6">Network Scan</h1>
+            <NetworkScanControls />
+            <NetworkDashboard />
+        </>
     );
 }

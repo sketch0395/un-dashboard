@@ -169,10 +169,36 @@ export default function SSHTerminal({ ip, username, password, visible, onClose }
                 } catch (e) {
                     console.error("Error focusing terminal:", e);
                 }
+                  // Connect to SSH proxy on backend
+                // Determine the server URL based on environment
+                let serverUrl = "http://10.5.1.83:4000";
+                const protocol = window.location.protocol;
+                const hostname = window.location.hostname;
                 
-                // Connect to SSH proxy on backend
-                socket = io("http://10.5.1.83:4000");
+                // If not on localhost, use the same hostname but different port
+                if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+                    serverUrl = `${protocol}//${hostname}:4000`;
+                }
+                
+                console.log(`Connecting to SSH terminal server at: ${serverUrl}`);
+                
+                socket = io(serverUrl, {
+                    transports: ['websocket', 'polling'], // Try WebSocket first, then fallback to polling
+                    reconnectionAttempts: 3,              // Try to reconnect 3 times
+                    reconnectionDelay: 1000,              // Start with a 1s delay between reconnection attempts
+                    reconnectionDelayMax: 3000,           // Maximum delay between reconnections
+                    timeout: 10000,                       // Connection timeout
+                    forceNew: true                        // Create a new connection
+                });
+                
                 socketRef.current = socket;
+                
+                // Handle connection errors
+                socket.on('connect_error', (err) => {
+                    console.error("SSH terminal socket connection error:", err);
+                    term.write("\r\n\x1b[31mConnection Error: Failed to connect to SSH server.\x1b[0m\r\n");
+                    term.write("Please check your network connection and try again.\r\n");
+                });
                 
                 socket.emit('sshConnect', { ip, username, password });
                 

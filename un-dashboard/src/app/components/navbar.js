@@ -57,10 +57,8 @@ const Navbar = memo(() => {
 
     if (hostInfo.hostname === "Loading...") {
         return <div>Loading host information...</div>;
-    }
-
-    return (
-        <nav className="bg-gray-800 text-white p-4 flex justify-between items-center sticky top-0 z-50">
+    }    return (
+        <nav className="navbar bg-gray-800 text-white p-4 flex justify-between items-center fixed top-0 left-0 right-0 z-50">
             <div className="flex items-center">
                 <span className="text-xl font-bold">UN-Dashboard</span>
             </div>
@@ -87,7 +85,7 @@ const Navbar = memo(() => {
                     </>
                 )}
             </div>            <div className="flex space-x-4">
-                <button
+                {/* <button
                     className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
                     onClick={() => router.push("/")}
                 >
@@ -110,7 +108,7 @@ const Navbar = memo(() => {
                     onClick={() => router.push("/performance")}
                 >
                     Performance
-                </button>
+                </button> */}
             </div>
         </nav>
     );
