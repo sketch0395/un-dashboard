@@ -8,7 +8,7 @@ import PerformanceControls from "../components/PerformanceControls";
 
 // Use dynamic import with no SSR to avoid the "Component is not a function" error
 const NetworkPerformance = dynamic(
-  () => import("../components/networkperformance"),
+  () => import("../networkscan/networkviews/networkperformance"),
   { ssr: false }
 );
 

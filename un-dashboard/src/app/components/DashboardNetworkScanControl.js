@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { io } from "socket.io-client";
 import { FaNetworkWired, FaDocker, FaTerminal, FaInfoCircle, FaPlay, FaPause, FaSpinner, FaCog, FaExclamationTriangle, FaCode, FaChevronDown, FaChevronUp, FaDatabase } from "react-icons/fa";
-import NetworkScanHistory, { useScanHistory } from "./networkscanhistory";
-import NetworkScanExportImport from "./NetworkScanExportImport";
+import NetworkScanHistory, { useScanHistory } from "../networkscan/networkviews/networkscanhistory";
+import NetworkScanExportImport from "../networkscan/networkviews/NetworkScanExportImport";
 
 // This component is used inside the Network Dashboard for advanced network scanning functionality
 

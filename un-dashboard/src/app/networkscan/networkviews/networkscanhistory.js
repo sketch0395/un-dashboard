@@ -7,9 +7,9 @@ import { v4 as uuidv4 } from "uuid";
 import { createContext, useContext } from "react";
 import { FixedSizeList as List } from "react-window";
 
-const UnifiedDeviceModal = lazy(() => import("./UnifiedDeviceModal"));
-const SSHTerminal = lazy(() => import("./sshterminal"));
-const MemoizedDeviceList = lazy(() => import("./MemoizedDeviceList"));
+const UnifiedDeviceModal = lazy(() => import("../../components/UnifiedDeviceModal"));
+const SSHTerminal = lazy(() => import("../../components/sshterminal"));
+const MemoizedDeviceList = lazy(() => import("../../components/MemoizedDeviceList"));
 
 const ScanHistoryContext = createContext();
 

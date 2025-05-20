@@ -1,5 +1,5 @@
-import NetworkDashboard from "../components/networkdashboard";
-import NetworkScanControls from "../components/NetworkScanControls";
+import NetworkDashboard from "./networkviews/networkdashboard";
+import NetworkScanControls from "./networkviews/NetworkScanControls";
 
 export default function NetworkScan() {
     return (

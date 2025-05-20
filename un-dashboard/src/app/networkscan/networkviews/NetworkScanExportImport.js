@@ -7,7 +7,7 @@ import {
     prepareForJsonExport, 
     parseCSVImport, 
     parseJSONImport 
-} from '../utils/exportImportUtils';
+} from '../../utils/exportImportUtils';
 import { useScanHistory } from './networkscanhistory';
 
 const NetworkScanExportImport = ({ 

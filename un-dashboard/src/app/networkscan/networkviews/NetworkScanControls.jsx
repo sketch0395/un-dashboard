@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { FaSearch, FaNetworkWired, FaSave, FaUpload } from 'react-icons/fa';
-import PageControls from './PageControls';
+import PageControls from '../../components/PageControls';
 
 // This component is used on the main Network Scan page (/networkscan)
 const NetworkScanControls = () => {

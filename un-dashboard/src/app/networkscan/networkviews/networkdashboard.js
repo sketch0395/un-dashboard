@@ -1,15 +1,15 @@
 "use client";
 
 import { useState, lazy, Suspense, useEffect, useRef } from "react";
-import NetworkScanControl from "./DashboardNetworkScanControl";
-import TopologyMap from "./networktopology";
-import UnifiedDeviceModal from "./UnifiedDeviceModal";
+import NetworkScanControl from "../../components/DashboardNetworkScanControl";
+import TopologyMap from "../../components/networktopology";
+import UnifiedDeviceModal from "../../components/UnifiedDeviceModal";
 import { FaChevronLeft, FaChevronRight, FaCog, FaBug } from "react-icons/fa";
 import { format } from "date-fns";
-import { debugNetworkRelationships, fixSwitchParentGateway } from "../utils/networkRelationshipDebug";
+import { debugNetworkRelationships, fixSwitchParentGateway } from "../../utils/networkRelationshipDebug";
 
 // Lazy load the SSH terminal component
-const SSHTerminal = lazy(() => import("./sshterminal"));
+const SSHTerminal = lazy(() => import("../../components/sshterminal"));
 
 export default function NetworkDashboard() {
     const contentRef = useRef(null);

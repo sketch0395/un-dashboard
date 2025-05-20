@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { FaPlay, FaStop, FaSync, FaFilter, FaDocker, FaPlus } from 'react-icons/fa';
-import PageControls from './PageControls';
+import PageControls from '../../components/PageControls';
 import AddDockerContainer from './addDockerContainer';
 
 const DockerControls = ({ 

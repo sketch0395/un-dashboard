@@ -4,8 +4,8 @@ import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from "re
 import { io } from "socket.io-client";
 import { Line } from "react-chartjs-2";
 import { FaWifi, FaServer, FaChartLine, FaExclamationTriangle, FaCheck, FaTimes, FaInfoCircle, FaNetworkWired, FaDocker, FaDesktop, FaClock, FaEdit, FaTerminal } from "react-icons/fa";
-import UnifiedDeviceModal from "./UnifiedDeviceModal";
-import SSHTerminal from "./sshterminal";
+import UnifiedDeviceModal from "../../components/UnifiedDeviceModal";
+import SSHTerminal from "../../components/sshterminal";
 import {
     Chart as ChartJS,
     CategoryScale,
