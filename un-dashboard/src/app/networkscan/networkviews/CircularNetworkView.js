@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { createRoot } from 'react-dom/client';
-import { iconMap } from '../icons/iconMapping';
+import { iconMap } from '../../components/icons/iconMapping';
 import { 
     processDeviceData, 
     calculateNodeSize, 

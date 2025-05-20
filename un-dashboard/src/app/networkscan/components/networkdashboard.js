@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, lazy, Suspense, useEffect, useRef } from "react";
-import NetworkScanControl from "../../components/DashboardNetworkScanControl";
-import TopologyMap from "../../components/networktopology";
+import NetworkScanControl from "./DashboardNetworkScanControl";
+import TopologyMap from "./networktopology";
 import UnifiedDeviceModal from "../../components/UnifiedDeviceModal";
 import { FaChevronLeft, FaChevronRight, FaCog, FaBug } from "react-icons/fa";
 import { format } from "date-fns";

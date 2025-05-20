@@ -1,5 +1,5 @@
 import React, { forwardRef } from "react";
-import { NetworkViewManager } from './networkviews'; // Import our new componentized views
+import { NetworkViewManager } from '../networkviews'; // Import our new componentized views
 
 // determineDeviceRoles has been moved to deviceManagementUtils.js
 

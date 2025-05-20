@@ -4,11 +4,11 @@ import { useState, useEffect, useRef } from "react";
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { FaChevronDown, FaPlay, FaStop, FaSync, FaDocker, FaFilter } from "react-icons/fa";
-import PerformanceControls from "../components/PerformanceControls";
+import PerformanceControls from "./components/PerformanceControls";
 
 // Use dynamic import with no SSR to avoid the "Component is not a function" error
 const NetworkPerformance = dynamic(
-  () => import("../networkscan/networkviews/networkperformance"),
+  () => import("../networkscan/components/networkperformance"),
   { ssr: false }
 );
 

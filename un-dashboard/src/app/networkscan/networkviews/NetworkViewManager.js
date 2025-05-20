@@ -2,7 +2,7 @@ import React, { useEffect, useState, forwardRef, useImperativeHandle, useRef } f
 import * as d3 from "d3";
 import CircularNetworkView from './CircularNetworkView';
 import HierarchicalNetworkView from './HierarchicalNetworkView';
-import NetworkLegend from './NetworkLegend';
+import NetworkLegend from '../components/NetworkLegend';
 import { processDeviceData, groupDevicesBySubnet, isSSHAvailable, validateNetworkRelationships } from './NetworkViewUtils';
 import { FaCircle, FaSitemap } from 'react-icons/fa';
 import { FaTimes, FaFilter, FaChevronDown, FaCheck } from 'react-icons/fa';

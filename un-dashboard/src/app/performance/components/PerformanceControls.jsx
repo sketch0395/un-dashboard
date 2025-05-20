@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { FaPlay, FaStop, FaSync, FaChartBar, FaTachometerAlt } from 'react-icons/fa';
-import PageControls from './PageControls';
+import PageControls from '../../components/PageControls';
 
 const PerformanceControls = () => {
   const [isMonitoring, setIsMonitoring] = useState(false);
