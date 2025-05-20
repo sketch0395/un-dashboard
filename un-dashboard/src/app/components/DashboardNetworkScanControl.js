@@ -6,7 +6,9 @@ import { FaNetworkWired, FaDocker, FaTerminal, FaInfoCircle, FaPlay, FaPause, Fa
 import NetworkScanHistory, { useScanHistory } from "./networkscanhistory";
 import NetworkScanExportImport from "./NetworkScanExportImport";
 
-export default function NetworkScanControl({ devices, setDevices, customNames, setCustomNames, onScanComplete, currentState = {} }) {
+// This component is used inside the Network Dashboard for advanced network scanning functionality
+
+export default function DashboardNetworkScanControl({ devices, setDevices, customNames, setCustomNames, onScanComplete, currentState = {} }) {
     const socketRef = useRef(null);
     const { saveScanHistory } = useScanHistory();
 
@@ -43,7 +45,9 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
             console.log("Updating custom names:", data.customNames);
             setCustomNames(data.customNames);
         }
-    };    useEffect(() => {
+    };
+    
+    useEffect(() => {
         // Try to use a relative URL that adapts to where the app is hosted
         let serverUrl;
         
@@ -60,13 +64,12 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
             serverUrl = `${protocol}//${hostname}:4000`;
         }
           console.log(`Attempting Socket.IO connection to: ${serverUrl}`);
-        
-        // Set up the Socket.IO connection with better error handling
+          // Set up the Socket.IO connection with better error handling
         const socket = io(serverUrl, {
             reconnectionAttempts: 5,
             timeout: 10000,
             reconnectionDelay: 1000,
-            transports: ['websocket', 'polling'], // Try WebSocket first, then fallback to polling
+            transports: ['polling', 'websocket'], // Start with polling, then try to upgrade to websocket if possible
             upgrade: true, // Allow transport upgrade
             forceNew: true, // Create a new connection every time
         });
@@ -77,8 +80,24 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
         socket.on('connect', () => {
             console.log('Socket.IO connected successfully');
             setError(null); // Clear any previous errors
+            
+            // Log the transport being used
+            console.log(`Connected using transport: ${socket.io.engine.transport.name}`);
         });
-          socket.on('connect_error', (err) => {
+        
+        // Add specific handler for websocket errors
+        socket.io.on('error', (err) => {
+            console.warn('Socket.IO engine error:', err);
+            // This is expected if websocket fails - no need to show error to user
+            // The socket will automatically try to use polling instead
+        });
+        
+        // Track transport upgrades for debugging
+        socket.io.on('upgrade', (transport) => {
+            console.log(`Transport upgraded to: ${transport.name}`);
+        });
+          
+        socket.on('connect_error', (err) => {
             console.error('Socket.IO connection error:', err);
             
             // Provide more specific error messages based on the error
@@ -90,6 +109,10 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
                 errorMessage = `Connection timeout. The server at ${serverUrl} is not responding.`;
             } else if (err.message.includes('ECONNREFUSED')) {
                 errorMessage = `Connection refused. The server at ${serverUrl} is not accepting connections.`;
+            } else if (err.message.includes('websocket error')) {
+                // Just log but don't show error to user since it will fall back to polling
+                console.warn('WebSocket connection failed, falling back to polling');
+                return; // Don't set error for websocket failures
             }
             
             setError(errorMessage);
@@ -178,7 +201,9 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
                     onScanComplete(flattenedDevices);
                 }
             }
-        });        // Listen for saveToScanHistory events from the server
+        });
+        
+        // Listen for saveToScanHistory events from the server
         socket.on("saveToScanHistory", (data) => {
             if (data && data.devices) {
                 try {
@@ -189,11 +214,7 @@ export default function NetworkScanControl({ devices, setDevices, customNames, s
                     console.error("Error saving to scan history:", error);
                 }
             }
-        });        socket.on("connect_error", (err) => {
-            console.error("Socket connection error:", err);
-            setErrorMessage("Failed to connect to the server.");
-            setError("Failed to connect to the server.");
-        });
+        });        // Remove duplicate connect_error handler that was causing issues
 
         return () => {
             console.log('Cleaning up Socket.IO connection');

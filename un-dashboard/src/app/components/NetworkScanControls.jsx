@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { FaSearch, FaNetworkWired, FaSave, FaUpload } from 'react-icons/fa';
 import PageControls from './PageControls';
 
+// This component is used on the main Network Scan page (/networkscan)
 const NetworkScanControls = () => {
   const [ipRange, setIpRange] = useState('192.168.1.0/24');
   const [scanType, setScanType] = useState('standard');
@@ -43,10 +44,9 @@ const NetworkScanControls = () => {
       }
       
       console.log(`Testing connection to: ${serverUrl}`);
-      
-      // Connect with timeout
+        // Connect with timeout - use polling first to avoid websocket errors
       const socket = io(serverUrl, {
-        transports: ['websocket', 'polling'],
+        transports: ['polling', 'websocket'], // Start with polling, then upgrade if possible
         timeout: 5000,
         forceNew: true
       });
@@ -64,9 +64,22 @@ const NetworkScanControls = () => {
         socket.disconnect();
         setIsTestingConnection(false);
       });
+        // Add specific handling for websocket errors
+      socket.io.on('error', (err) => {
+        console.warn('Socket.IO engine error:', err);
+        // Just log, don't treat as fatal - Socket.IO will fallback to polling
+      });
       
       socket.on('connect_error', (err) => {
         clearTimeout(timeoutId);
+        
+        // Special handling for websocket errors - we can safely ignore these
+        // as Socket.IO will automatically fallback to polling
+        if (err.message?.includes('websocket error')) {
+          console.warn("WebSocket error, will fallback to polling");
+          return; // Don't set error status for websocket errors
+        }
+        
         console.error("Socket connection error:", err);
         setConnectionStatus('error');
         socket.disconnect();

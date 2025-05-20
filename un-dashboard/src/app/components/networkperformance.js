@@ -185,10 +185,9 @@ const NetworkPerformance = forwardRef(({
         }
         
         console.log(`Connecting to network performance server at: ${serverUrl}`);
-        
-        // Configure Socket.IO with better connection parameters
+          // Configure Socket.IO with better connection parameters
         const socket = io(serverUrl, {
-            transports: ['websocket', 'polling'], // Try WebSocket first, then fallback to polling
+            transports: ['polling', 'websocket'], // Start with reliable polling, then upgrade to WebSocket if possible
             reconnectionAttempts: 5,              // Try to reconnect 5 times
             reconnectionDelay: 1000,              // Start with a 1s delay between reconnection attempts
             reconnectionDelayMax: 5000,           // Maximum delay between reconnections
@@ -199,13 +198,33 @@ const NetworkPerformance = forwardRef(({
         
         socketRef.current = socket;
 
+        // Add specific handler for websocket errors
+        socket.io.on('error', (err) => {
+            console.warn('Socket.IO engine error:', err);
+            // This is expected if websocket fails - no need to show error to user
+            // The socket will automatically try to use polling instead
+        });
+        
+        // Track transport upgrades for debugging
+        socket.io.on('upgrade', (transport) => {
+            console.log(`Transport upgraded to: ${transport.name}`);
+        });
+
         socket.on("connect", () => {
             console.log("Socket connected for network performance monitoring");
             setError(null); // Clear any previous connection errors
+            console.log(`Connected using transport: ${socket.io.engine.transport.name}`);
         });
         
         socket.on("connect_error", (err) => {
             console.error("Network performance socket connection error:", err);
+            
+            // Don't show error for websocket failures since we'll fall back to polling
+            if (err.message && err.message.includes('websocket error')) {
+                console.warn('WebSocket connection failed, falling back to polling');
+                return;
+            }
+            
             setError("Failed to connect to network scanning server. Please ensure it's running.");
             setIsLoading(false);
         });

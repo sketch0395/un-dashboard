@@ -181,9 +181,8 @@ export default function SSHTerminal({ ip, username, password, visible, onClose }
                 }
                 
                 console.log(`Connecting to SSH terminal server at: ${serverUrl}`);
-                
-                socket = io(serverUrl, {
-                    transports: ['websocket', 'polling'], // Try WebSocket first, then fallback to polling
+                  socket = io(serverUrl, {
+                    transports: ['polling', 'websocket'], // Start with reliable polling, then upgrade to WebSocket if possible
                     reconnectionAttempts: 3,              // Try to reconnect 3 times
                     reconnectionDelay: 1000,              // Start with a 1s delay between reconnection attempts
                     reconnectionDelayMax: 3000,           // Maximum delay between reconnections
@@ -193,9 +192,26 @@ export default function SSHTerminal({ ip, username, password, visible, onClose }
                 
                 socketRef.current = socket;
                 
+                // Add specific handler for websocket errors
+                socket.io.on('error', (err) => {
+                    console.warn('SSH terminal engine.io error:', err);
+                    // Don't show terminal error for transport issues
+                });
+                
+                socket.on('connect', () => {
+                    console.log(`SSH terminal connected using ${socket.io.engine.transport.name}`);
+                });
+                
                 // Handle connection errors
                 socket.on('connect_error', (err) => {
                     console.error("SSH terminal socket connection error:", err);
+                    
+                    // Don't show error for websocket failures since we'll fall back to polling
+                    if (err.message && err.message.includes('websocket error')) {
+                        console.warn('WebSocket connection failed, falling back to polling');
+                        return;
+                    }
+                    
                     term.write("\r\n\x1b[31mConnection Error: Failed to connect to SSH server.\x1b[0m\r\n");
                     term.write("Please check your network connection and try again.\r\n");
                 });

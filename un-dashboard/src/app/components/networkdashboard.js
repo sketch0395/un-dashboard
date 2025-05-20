@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, lazy, Suspense, useEffect, useRef } from "react";
-import NetworkScanControl from "./networkscancontrol";
+import NetworkScanControl from "./DashboardNetworkScanControl";
 import TopologyMap from "./networktopology";
 import UnifiedDeviceModal from "./UnifiedDeviceModal";
 import { FaChevronLeft, FaChevronRight, FaCog, FaBug } from "react-icons/fa";
@@ -289,8 +289,7 @@ export default function NetworkDashboard() {
                         {controlsMinimized ? <FaChevronRight /> : <FaChevronLeft />}
                     </button>
                 </div>
-                
-                <div className={`overflow-y-auto max-h-[calc(100vh-120px)] flex-grow ${controlsMinimized ? 'hidden' : ''}`}>
+                  <div className={`overflow-y-auto max-h-[calc(100vh-120px)] flex-grow ${controlsMinimized ? 'hidden' : ''}`}>
                     <NetworkScanControl
                         devices={devices}
                         setDevices={setDevices}

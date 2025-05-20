@@ -14,20 +14,9 @@ const io = socketIo(server, {
         allowedHeaders: ['Content-Type'],
         credentials: true,
     },
-    // Add explicit WebSocket configuration
-    transports: ['websocket', 'polling'],
-    pingTimeout: 60000,  // 60 seconds until a ping times out
-    pingInterval: 25000, // Send a ping every 25 seconds
-    allowEIO3: true,     // Allow Engine.IO protocol version 3
-    maxHttpBufferSize: 1e8, // Increase buffer size for large payloads (100MB)
 });
 
 app.use(cors());
-
-// Add engine.io error logging
-io.engine.on('connection_error', (err) => {
-    console.error('[ERROR] Socket.IO engine connection error:', err);
-});
 
 // --- DOCKER MANAGEMENT API ---
 const docker = new Docker({ host: '10.5.1.212', port: 2375 }); // Connect to the remote Docker daemon
@@ -92,15 +81,6 @@ io.on('connection', (socket) => {
     // Broadcast updated connection count
     io.emit('connectionCount', activeConnections.size);
     
-    // Log transport being used (websocket or polling)
-    const transport = socket.conn.transport.name;
-    console.log(`Client ${socket.id} connected using ${transport}`);
-    
-    // Track transport upgrades
-    socket.conn.on('upgrade', (newTransport) => {
-        console.log(`Client ${socket.id} upgraded transport from ${transport} to ${newTransport.name}`);
-    });
-    
     let fetchContainersInterval;
     
     // Cache for container data to improve performance
@@ -111,9 +91,6 @@ io.on('connection', (socket) => {
     };
 
     const fetchContainers = async (options = { forceRefresh: false, skipStats: false }) => {
-        const startTime = Date.now();
-        console.log(`[Performance] Starting container fetch. Options:`, options);
-        
         const now = Date.now();
         const useCache = !options.forceRefresh && 
                          containerCache.list.length > 0 && 
@@ -128,23 +105,18 @@ io.on('connection', (socket) => {
             
             // First emit cached containers if available for immediate display
             if (useCache && containerCache.list.length > 0) {
-                console.log('[Performance] Using cached container list for initial display');
+                console.log('Using cached container list for initial display');
                 socket.emit('containers', containerCache.list);
             }
             
             // Add timeout to prevent hanging connections
             const containerPromise = docker.listContainers({ all: true });
-            const listStartTime = Date.now();
-            
             const containers = await Promise.race([
                 containerPromise,
                 new Promise((_, reject) => 
                     setTimeout(() => reject(new Error('Docker operation timed out')), 10000)
                 )
             ]);
-            
-            const listTime = Date.now() - listStartTime;
-            console.log(`[Performance] Container list fetch completed in ${listTime}ms. Found ${containers.length} containers.`);
             
             // Send basic container list first without stats for faster initial rendering
             if (!useCache || options.skipStats) {
@@ -162,14 +134,12 @@ io.on('connection', (socket) => {
                 containerCache.timestamp = now;
                 
                 // Send basic container data immediately
-                console.log(`[Performance] Sending basic container list after ${Date.now() - startTime}ms`);
                 socket.emit('containers', basicContainers);
                 
                 // Skip stats collection if requested
                 if (options.skipStats) {
                     activeOperations--;
                     socket.emit('operation', { type: 'refresh', status: 'complete', skipStats: true });
-                    console.log(`[Performance] Skip stats mode - operation completed in ${Date.now() - startTime}ms`);
                     return;
                 }
             }
@@ -186,16 +156,8 @@ io.on('connection', (socket) => {
                 batches.push(runningContainers.slice(i, i + BATCH_SIZE));
             }
             
-            console.log(`[Performance] Processing stats in ${batches.length} batches of ${BATCH_SIZE} containers`);
-            const statsStartTime = Date.now();
-            let batchCount = 0;
-            
             // Process each batch sequentially
             for (const batch of batches) {
-                const batchStartTime = Date.now();
-                batchCount++;
-                console.log(`[Performance] Processing batch ${batchCount}/${batches.length} with ${batch.length} containers`);
-                
                 // Process containers in each batch in parallel
                 const batchPromises = batch.map(async container => {
                     try {
@@ -235,7 +197,8 @@ io.on('connection', (socket) => {
                         // Convert bytes to MB for readability
                         const memoryUsageMB = memoryUsage ? (memoryUsage / 1024 / 1024).toFixed(2) : 0;
                         const memoryLimitMB = memoryLimit ? (memoryLimit / 1024 / 1024).toFixed(2) : 0;
-                          const containerStatsData = {
+                        
+                        const containerStats = {
                             cpuPercent: cpuPercent.toFixed(2),
                             memoryPercent: memoryPercent.toFixed(2),
                             memoryUsage: memoryUsageMB,
@@ -243,8 +206,8 @@ io.on('connection', (socket) => {
                         };
                         
                         // Store in maps
-                        statsMap[container.Id] = containerStatsData;
-                        containerStats[container.Id] = containerStatsData;
+                        statsMap[container.Id] = containerStats;
+                        containerStats[container.Id] = containerStats;
                         
                         return {
                             containerId: container.Id,
@@ -261,7 +224,6 @@ io.on('connection', (socket) => {
                 
                 // Wait for current batch to complete before processing next batch
                 const batchResults = await Promise.allSettled(batchPromises);
-                console.log(`[Performance] Batch ${batchCount} completed in ${Date.now() - batchStartTime}ms`);
                 
                 // Immediately update any containers with stats as they become available
                 // This provides progressive updates to the UI
@@ -277,17 +239,10 @@ io.on('connection', (socket) => {
                     });
                 
                 if (updatedContainers.length > 0) {
-                    console.log(`[Performance] Emitting incremental stats update for ${updatedContainers.length} containers`);
                     // Emit incremental updates for the containers in this batch
                     socket.emit('containerStatsUpdate', updatedContainers);
                 }
-                
-                const batchTime = Date.now() - batchStartTime;
-                console.log(`[Performance] Batch ${batchCount}/${batches.length} processed in ${batchTime}ms`);
             }
-            
-            const totalStatsTime = Date.now() - statsStartTime;
-            console.log(`[Performance] All batches processed in ${totalStatsTime}ms`);
             
             // Final update with all containers and their stats
             const formattedContainers = containers.map((container) => {
@@ -304,7 +259,6 @@ io.on('connection', (socket) => {
             containerCache.timestamp = Date.now();
             
             activeOperations--;
-            console.log(`[Performance] Total operation completed in ${Date.now() - startTime}ms`);
             socket.emit('operation', { type: 'refresh', status: 'complete' });
             socket.emit('containers', formattedContainers);
         } catch (error) {

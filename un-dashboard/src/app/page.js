@@ -43,9 +43,8 @@ export default function Home() {
                     <Image src={item.icon} alt={item.title} width={24} height={24} />
                   </div>
                   <h2 className="text-2xl font-bold">{item.title}</h2>
-                </div>
-                <p className="text-white text-opacity-90">{item.description}</p>
-                <div className="mt-4 text-sm flex items-center justify-end mt-auto">
+                </div>                <p className="text-white text-opacity-90">{item.description}</p>
+                <div className="text-sm flex items-center justify-end mt-auto">
                   <span>Open Dashboard</span>
                   <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

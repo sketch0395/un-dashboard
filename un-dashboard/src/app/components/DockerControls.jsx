@@ -17,32 +17,39 @@ const DockerControls = ({
   const [isStartingAll, setIsStartingAll] = useState(false);
   const [isStoppingAll, setIsStoppingAll] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const refreshTimerRef = useRef(null);
-  // Set up automatic refresh every 30 seconds to keep stats updated
+  const refreshTimerRef = useRef(null);  // Set up automatic refresh every 30 seconds to keep stats updated
   useEffect(() => {
     // Function to handle refresh that can be safely used in useEffect
-    const performRefresh = () => {
+    const performFullRefresh = () => {
       console.log('Auto-refreshing Docker containers and stats...');
-      handleRefresh();
+      handleRefresh(false); // Full refresh with stats
     };
     
-    // Initial refresh
-    performRefresh();
+    // Initial quick refresh for faster initial load
+    console.log('Initial quick refresh for faster loading...');
+    handleRefresh(true); // Quick refresh without stats first
+    
+    // Schedule a full refresh with stats shortly after
+    const fullRefreshTimer = setTimeout(() => {
+      performFullRefresh();
+    }, 1000);
     
     // Set up interval for auto-refresh (30 seconds = 30000 ms)
     // This more frequent polling ensures container stats stay current
-    refreshTimerRef.current = setInterval(performRefresh, 30000);
+    refreshTimerRef.current = setInterval(performFullRefresh, 30000);
     
     // Clean up the interval when the component unmounts
     return () => {
       if (refreshTimerRef.current) {
         clearInterval(refreshTimerRef.current);
       }
+      clearTimeout(fullRefreshTimer);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const handleRefresh = () => {
-    console.log('Refreshing Docker containers and stats...');
+    const handleRefresh = (quickRefresh = false) => {
+    const operation = quickRefresh ? 'Quick refreshing' : 'Full refreshing';
+    console.log(`${operation} Docker containers${!quickRefresh ? ' and stats' : ''}...`);
     setIsRefreshing(true);
     
     // Import Socket.IO dynamically to avoid SSR issues
@@ -50,36 +57,46 @@ const DockerControls = ({
       const serverUrl = getServerUrl();
       
       const socket = io(serverUrl, {
-        transports: ['websocket', 'polling'],
-        timeout: 8000, // Increased timeout for stats collection
+        transports: ['polling', 'websocket'], // Start with polling for reliability, upgrade to WebSocket if possible
+        timeout: quickRefresh ? 5000 : 8000, // Use shorter timeout for quick refresh
         forceNew: true
       });
       
-      // This will trigger the fetchContainers function on the server which already includes stats collection
-      socket.emit('refreshContainers');
+      // Fast refresh just gets container list without stats
+      if (quickRefresh) {
+        socket.emit('quickRefreshContainers');
+      } else {
+        socket.emit('refreshContainers');
+      }
       
       // Handle acknowledgment
       socket.on('operation', (data) => {
         if (data.type === 'refresh' && data.status === 'complete') {
           setIsRefreshing(false);
-          console.log('Container refresh complete with stats');
+          console.log(`Container refresh complete${data.skipStats ? ' (without stats)' : ' with stats'}`);
+          
+          // For quick refresh, we still want to show "refreshing" state until stats arrive
+          if (quickRefresh && !data.skipStats) {
+            console.log('Waiting for stats to arrive...');
+          }
         } else if (data.type === 'refresh' && data.status === 'error') {
           setIsRefreshing(false);
           console.error('Refresh error:', data.message);
         }
       });
-      
-      // Safety timeout to ensure loading state is reset
+        // Safety timeout to ensure loading state is reset
+      const timeout = quickRefresh ? 5000 : 10000;
       setTimeout(() => {
         setIsRefreshing(false);
         socket.disconnect();
-      }, 10000); // Increased timeout since stats may take longer to collect
+      }, timeout);
     }).catch(err => {
       console.error("Error importing socket.io-client:", err);
       setIsRefreshing(false);
     });
   };
-    const handleStartAll = () => {
+  
+  const handleStartAll = () => {
     console.log('Starting all containers...');
     setIsStartingAll(true);
     
@@ -242,12 +259,17 @@ const DockerControls = ({
       setConnectionStatus('error');
       setIsTestingConnection(false);
     });
-  };  // Create a component for the action buttons so they can be used in both places
+  };
+  
+  // Create a component for the action buttons so they can be used in both places
   const ActionButtons = ({ showLabels = false }) => (
     <div className="flex gap-2">      <button
         onClick={(e) => {
           e.stopPropagation();
-          handleRefresh();
+          // Use quick refresh for button clicks for faster response
+          handleRefresh(true);
+          // Schedule a full refresh to follow shortly after
+          setTimeout(() => handleRefresh(false), 800);
         }}
         title="Refresh containers"
         disabled={isRefreshing}
@@ -334,10 +356,11 @@ const DockerControls = ({
         className="flex items-center gap-2 px-3 py-1 bg-blue-700 hover:bg-blue-600 rounded-md text-sm"
       >
         <FaPlus />
-        {showLabels && <span>Create</span>}
-      </button>
+        {showLabels && <span>Create</span>}      </button>
     </div>
-  );  return (
+  );
+  
+  return (
     <PageControls 
       title="Docker Controls" 
       initialExpanded={false}

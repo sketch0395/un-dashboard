@@ -12,15 +12,16 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
     cors: {
-        origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://10.5.1.83:3000'],
+        origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://10.5.1.83:3000', /^http:\/\/10\.5\.1\.\d+:3000$/],
         methods: ['GET', 'POST'],
         allowedHeaders: ['Content-Type'],
         credentials: true,
     },
     pingTimeout: 60000, // 60 seconds until a ping times out
     pingInterval: 25000, // Send a ping every 25 seconds
-    transports: ['websocket', 'polling'], // Try websocket first, fallback to polling
+    transports: ['polling', 'websocket'], // Start with more reliable polling, upgrade to websocket if possible
     allowEIO3: true, // Allow Engine.IO protocol version 3
+    maxHttpBufferSize: 1e8, // 100MB max buffer size for large scanning data
 });
 
 // Socket.IO server-side error handling

@@ -16,6 +16,8 @@ const DockerCard = ({ container, onAction, onOpenContainerPage, operations }) =>
     
     // Format container command for display (limit length)
     const displayCommand = Command ? (Command.length > 50 ? Command.substring(0, 50) + '...' : Command) : 'N/A';
+      // Check if stats are loading (null indicates they're being loaded)
+    const statsLoading = Status.includes("Up") && stats === null;
     
     // Get CPU and memory stats, if available
     const cpuPercent = stats?.cpuPercent || '0.00';
@@ -100,32 +102,42 @@ const DockerCard = ({ container, onAction, onOpenContainerPage, operations }) =>
                         <FaTag className="text-blue-400 min-w-[16px]" />
                         <span className="text-gray-300 text-xs font-mono">{Id.substring(0, 12)}</span>
                     </div>
-                    
-                    {Status.includes("Up") && (
+                      {Status.includes("Up") && (
                         <>
                             {/* Detailed resource stats */}
-                            <div className="pt-1 mt-1 border-t border-gray-700 grid grid-cols-2 gap-2">
-                                <div>
-                                    <span className="text-xs text-gray-500">Memory Usage:</span>
-                                    <div className="h-1.5 w-full bg-gray-700 rounded-full mt-1 overflow-hidden">
-                                        <div 
-                                            className="h-full bg-blue-500 rounded-full" 
-                                            style={{ width: `${Math.min(parseFloat(memoryPercent), 100)}%` }}
-                                        ></div>
+                            <div className="pt-1 mt-1 border-t border-gray-700">
+                                {statsLoading ? (
+                                    <div className="flex items-center justify-center py-2">
+                                        <div className="animate-pulse flex items-center">
+                                            <FaMicrochip className="text-blue-400 animate-pulse mr-2" />
+                                            <span className="text-xs text-gray-400">Loading resource stats...</span>
+                                        </div>
                                     </div>
-                                    <span className="text-xs text-gray-400">{memoryUsage} / {memoryLimit} MB</span>
-                                </div>
-                                
-                                <div>
-                                    <span className="text-xs text-gray-500">CPU Usage:</span>
-                                    <div className="h-1.5 w-full bg-gray-700 rounded-full mt-1 overflow-hidden">
-                                        <div 
-                                            className="h-full bg-green-500 rounded-full" 
-                                            style={{ width: `${Math.min(parseFloat(cpuPercent), 100)}%` }}
-                                        ></div>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <span className="text-xs text-gray-500">Memory Usage:</span>
+                                            <div className="h-1.5 w-full bg-gray-700 rounded-full mt-1 overflow-hidden">
+                                                <div 
+                                                    className="h-full bg-blue-500 rounded-full" 
+                                                    style={{ width: `${Math.min(parseFloat(memoryPercent), 100)}%` }}
+                                                ></div>
+                                            </div>
+                                            <span className="text-xs text-gray-400">{memoryUsage} / {memoryLimit} MB</span>
+                                        </div>
+                                        
+                                        <div>
+                                            <span className="text-xs text-gray-500">CPU Usage:</span>
+                                            <div className="h-1.5 w-full bg-gray-700 rounded-full mt-1 overflow-hidden">
+                                                <div 
+                                                    className="h-full bg-green-500 rounded-full" 
+                                                    style={{ width: `${Math.min(parseFloat(cpuPercent), 100)}%` }}
+                                                ></div>
+                                            </div>
+                                            <span className="text-xs text-gray-400">{cpuPercent}%</span>
+                                        </div>
                                     </div>
-                                    <span className="text-xs text-gray-400">{cpuPercent}%</span>
-                                </div>
+                                )}
                             </div>
                         </>
                     )}
