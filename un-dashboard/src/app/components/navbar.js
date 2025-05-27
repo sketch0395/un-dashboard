@@ -60,7 +60,7 @@ const Navbar = memo(() => {
     }    return (
         <nav className="navbar bg-gray-800 text-white p-4 flex justify-between items-center fixed top-0 left-0 right-0 z-50">
             <div className="flex items-center">
-                <span className="text-xl font-bold">UN-Dashboard</span>
+                <span className="text-xl font-bold">Nexus Control</span>
             </div>
             <div className="text-sm text-gray-400">
                 {error ? (

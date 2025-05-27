@@ -118,7 +118,7 @@ export const prepareForJsonExport = (devices, customNames) => {
         scanDate: scanDate,
         ipRange: ipRange,
         deviceCount: flattenedDevices.length,
-        format: "un-dashboard-network-scan"
+        format: "nexus-control-network-scan"
     };
     
     // Enhancement: Check if any devices have parent-child relationships

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { iconMap, getIconForLink } from './icons/iconMapping';
-import { FaChevronLeft, FaChevronRight, FaCircle, FaPlus } from 'react-icons/fa';
+import { FaChevronLeft, FaChevronRight, FaCircle, FaPlus, FaStar, FaLink } from 'react-icons/fa';
 
 // Define default links outside component to keep them consistent
 const DEFAULT_LINKS = [
@@ -13,19 +13,22 @@ const DEFAULT_LINKS = [
 const CustomLinks = () => {
   // Initialize with empty array - we'll load from localStorage first
   const [links, setLinks] = useState([]);
+  const [favorites, setFavorites] = useState([]);
   
   const [newLink, setNewLink] = useState({ name: '', url: '', category: '' });
+  const [newFavorite, setNewFavorite] = useState({ name: '', path: '' });
   const [isAdding, setIsAdding] = useState(false);
+  const [isAddingFavorite, setIsAddingFavorite] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
   const [categoriesPerPage, setCategoriesPerPage] = useState(4);
   const [isCustomCategory, setIsCustomCategory] = useState(false);
   
   // Container ref for measuring available width
   const containerRef = useRef(null);
-  
-  // Load links from localStorage on component mount
+    // Load links from localStorage on component mount
   useEffect(() => {
     const savedLinks = localStorage.getItem('customLinks');
+    const savedFavorites = localStorage.getItem('favorites');
     
     if (savedLinks) {
       const parsedLinks = JSON.parse(savedLinks);
@@ -46,12 +49,20 @@ const CustomLinks = () => {
       // No saved links, use all default links
       setLinks(DEFAULT_LINKS);
     }
+
+    if (savedFavorites) {
+      setFavorites(JSON.parse(savedFavorites));
+    }
   }, []);
-  
-  // Save links to localStorage whenever they change
+    // Save links to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem('customLinks', JSON.stringify(links));
   }, [links]);
+
+  // Save favorites to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('favorites', JSON.stringify(favorites));
+  }, [favorites]);
   
   // Responsive carousel - adjust cards per page based on container width
   useEffect(() => {
@@ -86,9 +97,20 @@ const CustomLinks = () => {
       setIsCustomCategory(false);
     }
   };
-  
-  const handleDeleteLink = (id) => {
+    const handleDeleteLink = (id) => {
     setLinks(links.filter(link => link.id !== id));
+  };
+
+  const handleAddFavorite = () => {
+    if (newFavorite.name && newFavorite.path) {
+      setFavorites([...favorites, { ...newFavorite, id: Date.now() }]);
+      setNewFavorite({ name: '', path: '' });
+      setIsAddingFavorite(false);
+    }
+  };
+
+  const handleDeleteFavorite = (id) => {
+    setFavorites(favorites.filter(favorite => favorite.id !== id));
   };
   
   // Group links by category
@@ -134,159 +156,242 @@ const CustomLinks = () => {
       setNewLink({...newLink, category: value});
     }
   };
-  
-  return (
-    <div className="p-6 bg-gray-900 text-white rounded-lg shadow-lg mt-6 w-full">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold">Custom Links & Favorites</h2>
-        <button 
-          onClick={() => setIsAdding(!isAdding)}
-          className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded"
-        >
-          {isAdding ? 'Cancel' : 'Add New Link'}
-        </button>
-      </div>
-      
-      {isAdding && (
-        <div className="mb-6 bg-gray-800 p-4 rounded-lg shadow-md">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <input
-              type="text"
-              placeholder="Name"
-              value={newLink.name}
-              onChange={(e) => setNewLink({...newLink, name: e.target.value})}
-              className="bg-gray-700 text-white px-3 py-2 rounded"
-            />
-            <input
-              type="text"
-              placeholder="URL"
-              value={newLink.url}
-              onChange={(e) => setNewLink({...newLink, url: e.target.value})}
-              className="bg-gray-700 text-white px-3 py-2 rounded"
-            />
-          </div>
-          
-          <div className="mb-4">
-            <div className="flex gap-4 items-end">
-              <div className="flex-grow">
-                <label className="block text-sm text-gray-400 mb-1">Category</label>
-                <select
-                  value={isCustomCategory ? "custom" : newLink.category}
-                  onChange={handleCategorySelect}
-                  className="w-full bg-gray-700 text-white px-3 py-2 rounded"
-                >
-                  <option value="">Select category...</option>
-                  {uniqueCategories.map(category => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                  <option value="custom">+ Add new category</option>
-                </select>
-              </div>
-              
-              {isCustomCategory && (
-                <div className="flex-grow">
-                  <input
-                    type="text"
-                    placeholder="New category name"
-                    value={newLink.category}
-                    onChange={(e) => setNewLink({...newLink, category: e.target.value})}
-                    className="w-full bg-gray-700 text-white px-3 py-2 rounded"
-                    autoFocus
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-          
+    return (
+    <div className="space-y-6">
+      {/* Custom Links Section */}
+      <div className="p-6 bg-gray-900 text-white rounded-lg shadow-lg w-full">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <FaLink className="text-blue-400" />
+            Custom Links
+          </h2>
           <button 
-            onClick={handleAddLink}
-            className="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded"
+            onClick={() => setIsAdding(!isAdding)}
+            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded"
           >
-            Save Link
+            {isAdding ? 'Cancel' : 'Add New Link'}
           </button>
         </div>
-      )}
-      
-      {categories.length === 0 ? (
-        <p className="text-gray-400">No custom links found</p>
-      ) : (
-        <>
-          {/* Carousel navigation - moved above cards */}
-          {totalPages > 1 && (
-            <div className="mb-4 flex items-center justify-between gap-4">
-              <button 
-                onClick={prevPage} 
-                className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
-                aria-label="Previous page"
-              >
-                <FaChevronLeft />
-              </button>
-              
-              <div className="flex gap-2">
-                {Array.from({ length: totalPages }).map((_, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setCurrentPage(index)}
-                    className={`text-xs ${currentPage === index ? 'text-blue-400' : 'text-gray-500'}`}
-                    aria-label={`Go to page ${index + 1}`}
-                  >
-                    <FaCircle />
-                  </button>
-                ))}
-              </div>
-              
-              <button 
-                onClick={nextPage} 
-                className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
-                aria-label="Next page"
-              >
-                <FaChevronRight />
-              </button>
+        
+        {isAdding && (
+          <div className="mb-6 bg-gray-800 p-4 rounded-lg shadow-md">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <input
+                type="text"
+                placeholder="Name"
+                value={newLink.name}
+                onChange={(e) => setNewLink({...newLink, name: e.target.value})}
+                className="bg-gray-700 text-white px-3 py-2 rounded"
+              />
+              <input
+                type="text"
+                placeholder="URL"
+                value={newLink.url}
+                onChange={(e) => setNewLink({...newLink, url: e.target.value})}
+                className="bg-gray-700 text-white px-3 py-2 rounded"
+              />
             </div>
-          )}
-          
-          <div ref={containerRef} className="flex gap-6 overflow-hidden">
-            {visibleCategories.map(category => (
-              <div key={category} className="bg-gray-800 rounded-lg p-4 min-w-[280px] max-w-[350px] flex-1">
-                <h3 className="text-lg font-semibold text-blue-400 mb-3 pb-2 border-b border-gray-700">{category}</h3>
-                <div className="flex flex-col space-y-4">
-                  {linksByCategory[category].map(link => (
-                    <div key={link.id} className="bg-gray-700 text-white p-4 rounded-lg shadow-md">
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center">
-                          <span className="text-2xl mr-2 text-blue-400">
-                            {React.createElement(getIconForLink(link))}
-                          </span>
-                          <h3 className="text-lg font-bold">{link.name}</h3>
-                        </div>
-                        <button 
-                          onClick={() => handleDeleteLink(link.id)}
-                          className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded text-xs"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                      <p className="text-sm text-gray-400 mt-1 truncate">
-                        {link.url}
-                      </p>
-                      <div className="mt-4">
-                        <a 
-                          href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded inline-block"
-                        >
-                          Open Link
-                        </a>
-                      </div>
-                    </div>
+            
+            <div className="mb-4">
+              <div className="flex gap-4 items-end">
+                <div className="flex-grow">
+                  <label className="block text-sm text-gray-400 mb-1">Category</label>
+                  <select
+                    value={isCustomCategory ? "custom" : newLink.category}
+                    onChange={handleCategorySelect}
+                    className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                  >
+                    <option value="">Select category...</option>
+                    {uniqueCategories.map(category => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                    <option value="custom">+ Add new category</option>
+                  </select>
+                </div>
+                
+                {isCustomCategory && (
+                  <div className="flex-grow">
+                    <input
+                      type="text"
+                      placeholder="New category name"
+                      value={newLink.category}
+                      onChange={(e) => setNewLink({...newLink, category: e.target.value})}
+                      className="w-full bg-gray-700 text-white px-3 py-2 rounded"
+                      autoFocus
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <button 
+              onClick={handleAddLink}
+              className="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded"
+            >
+              Save Link
+            </button>
+          </div>
+        )}
+        
+        {categories.length === 0 ? (
+          <p className="text-gray-400">No custom links found</p>
+        ) : (
+          <>
+            {/* Carousel navigation - moved above cards */}
+            {totalPages > 1 && (
+              <div className="mb-4 flex items-center justify-between gap-4">
+                <button 
+                  onClick={prevPage} 
+                  className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
+                  aria-label="Previous page"
+                >
+                  <FaChevronLeft />
+                </button>
+                
+                <div className="flex gap-2">
+                  {Array.from({ length: totalPages }).map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={() => setCurrentPage(index)}
+                      className={`text-xs ${currentPage === index ? 'text-blue-400' : 'text-gray-500'}`}
+                      aria-label={`Go to page ${index + 1}`}
+                    >
+                      <FaCircle />
+                    </button>
                   ))}
                 </div>
+                
+                <button 
+                  onClick={nextPage} 
+                  className="p-2 bg-gray-800 rounded-full hover:bg-gray-700 transition-colors"
+                  aria-label="Next page"
+                >
+                  <FaChevronRight />
+                </button>
+              </div>
+            )}
+            
+            <div ref={containerRef} className="flex gap-6 overflow-hidden">
+              {visibleCategories.map(category => (
+                <div key={category} className="bg-gray-800 rounded-lg p-4 min-w-[280px] max-w-[350px] flex-1">
+                  <h3 className="text-lg font-semibold text-blue-400 mb-3 pb-2 border-b border-gray-700">{category}</h3>
+                  <div className="flex flex-col space-y-4">
+                    {linksByCategory[category].map(link => (
+                      <div key={link.id} className="bg-gray-700 text-white p-4 rounded-lg shadow-md">
+                        <div className="flex justify-between items-center">
+                          <div className="flex items-center">
+                            <span className="text-2xl mr-2 text-blue-400">
+                              {React.createElement(getIconForLink(link))}
+                            </span>
+                            <h3 className="text-lg font-bold">{link.name}</h3>
+                          </div>
+                          <button 
+                            onClick={() => handleDeleteLink(link.id)}
+                            className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded text-xs"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                        <p className="text-sm text-gray-400 mt-1 truncate">
+                          {link.url}
+                        </p>
+                        <div className="mt-4">
+                          <a 
+                            href={link.url.startsWith('http') ? link.url : `https://${link.url}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded inline-block"
+                          >
+                            Open Link
+                          </a>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Favorites Section */}
+      <div className="p-6 bg-gray-900 text-white rounded-lg shadow-lg w-full">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold flex items-center gap-2">
+            <FaStar className="text-yellow-400" />
+            Favorites
+          </h2>
+          <button 
+            onClick={() => setIsAddingFavorite(!isAddingFavorite)}
+            className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-3 rounded"
+          >
+            {isAddingFavorite ? 'Cancel' : 'Add Favorite'}
+          </button>
+        </div>
+        
+        {isAddingFavorite && (
+          <div className="mb-6 bg-gray-800 p-4 rounded-lg shadow-md">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <input
+                type="text"
+                placeholder="Favorite Name"
+                value={newFavorite.name}
+                onChange={(e) => setNewFavorite({...newFavorite, name: e.target.value})}
+                className="bg-gray-700 text-white px-3 py-2 rounded"
+              />
+              <select
+                value={newFavorite.path}
+                onChange={(e) => setNewFavorite({...newFavorite, path: e.target.value})}
+                className="bg-gray-700 text-white px-3 py-2 rounded"
+              >
+                <option value="">Select a page...</option>
+                <option value="/">Home</option>
+                <option value="/docker">Docker Manager</option>
+                <option value="/networkscan">Network Scan</option>
+                <option value="/performance">Performance</option>
+              </select>
+            </div>
+            
+            <button 
+              onClick={handleAddFavorite}
+              className="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded"
+            >
+              Save Favorite
+            </button>
+          </div>
+        )}
+        
+        {favorites.length === 0 ? (
+          <p className="text-gray-400">No favorites added yet</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {favorites.map(favorite => (
+              <div key={favorite.id} className="bg-gray-800 text-white p-4 rounded-lg shadow-md">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-lg font-bold flex items-center gap-2">
+                    <FaStar className="text-yellow-400" />
+                    {favorite.name}
+                  </h3>
+                  <button 
+                    onClick={() => handleDeleteFavorite(favorite.id)}
+                    className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-2 rounded text-xs"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <p className="text-sm text-gray-400 mb-4">{favorite.path}</p>
+                <a 
+                  href={favorite.path}
+                  className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded inline-block w-full text-center"
+                >
+                  Go to Page
+                </a>
               </div>
             ))}
           </div>
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
 };

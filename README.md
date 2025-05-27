@@ -1,6 +1,6 @@
-# UN-Dashboard
+# Nexus Control
 
-UN-Dashboard is a comprehensive network monitoring and Docker management system that provides real-time visibility into your network devices and Docker containers. It enables network scanning, performance monitoring, Docker container management, and secure SSH connections from a unified web interface.
+Nexus Control is a comprehensive network monitoring and Docker management system that provides real-time visibility into your network devices and Docker containers. It enables network scanning, performance monitoring, Docker container management, and secure SSH connections from a unified web interface.
 
 ## Recent Updates
 
@@ -59,8 +59,8 @@ UN-Dashboard is a comprehensive network monitoring and Docker management system 
 ### Setup Steps
 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/un-dashboard.git
-cd un-dashboard
+git clone https://github.com/yourusername/nexus-control.git
+cd nexus-control
 ```
 
 2. Install dependencies
@@ -154,7 +154,7 @@ DOCKER_HOST=tcp://<your-server-ip>:2375 docker ps
    
 ## Architecture
 
-UN-Dashboard uses a client-server architecture:
+Nexus Control uses a client-server architecture:
 - **Backend Servers**:
   - `server-network.js`: Handles network scanning and performance monitoring
   - `server-docker.js`: Manages Docker container operations
@@ -174,7 +174,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Network Topology Visualization
 
-UN-Dashboard provides multiple ways to visualize your network:
+Nexus Control provides multiple ways to visualize your network:
 
 ### Visualization Types
 - **Circular View**: Displays devices in a radial layout, grouped by category, vendor, or scan source

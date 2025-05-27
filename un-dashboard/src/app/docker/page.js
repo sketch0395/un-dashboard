@@ -1,6 +1,5 @@
 "use client";
 
-import CustomLinks from "../components/CustomLinks";
 import DockerStatus from "./components/dockerstatus";
 import DockerControls from "./components/DockerControls";
 import { useState } from 'react';
@@ -22,7 +21,6 @@ export default function DockerManager() {
                 filterValue={filterValue}
                 showStoppedContainers={showStoppedContainers}
             />
-            <CustomLinks />
         </>
     );
 }

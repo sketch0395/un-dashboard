@@ -1,10 +1,10 @@
-# UN-Dashboard
+# Nexus Control
 
 A comprehensive network monitoring and Docker management system built with [Next.js](https://nextjs.org).
 
 ## Project Overview
 
-UN-Dashboard offers advanced network topology visualization and management features:
+Nexus Control offers advanced network topology visualization and management features:
 
 - Interactive network maps with circular, hierarchical, and geographic views
 - Device categorization and custom naming
@@ -106,7 +106,7 @@ Make sure both the Next.js server and the network scanning server are running fo
 
 ## Contributing
 
-Contributions to UN-Dashboard are welcome! Please follow these steps:
+Contributions to Nexus Control are welcome! Please follow these steps:
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)

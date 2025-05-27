@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "UN-Dashboard | Unified System Management",
+  title: "Nexus Control | Unified System Management",
   description: "A unified dashboard for monitoring and managing Docker containers, networks, and system performance.",
 };
 

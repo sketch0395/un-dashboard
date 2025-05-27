@@ -150,7 +150,7 @@ const Drawer = () => {
               ? 'text-center mb-4 text-xs w-[calc(var(--drawer-width-collapsed)-1rem)]' 
               : 'text-xl mb-6 w-[calc(var(--drawer-width-expanded)-2rem)]'
           }`}>
-            {isCollapsed ? 'UN' : 'UN-Dashboard'}
+            {isCollapsed ? 'NC' : 'Nexus Control'}
           </h2>
           
           <nav className="space-y-2">

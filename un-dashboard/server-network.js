@@ -1298,7 +1298,7 @@ const initNetworkToolsContainer = async () => {
         // Create but don't start the container yet
         networkToolsContainer = await docker.createContainer({
             Image: 'jonlabelle/network-tools',
-            name: 'un-dashboard-network-tools',
+            name: 'nexus-control-network-tools',
             Tty: true,
             OpenStdin: true,
             StdinOnce: false,
@@ -1425,7 +1425,7 @@ const ensureContainer = async () => {
             const containers = await docker.listContainers({
                 all: true,
                 filters: JSON.stringify({
-                    name: ['un-dashboard-network-tools']
+                    name: ['nexus-control-network-tools']
                 })
             });
             

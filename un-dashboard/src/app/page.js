@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
+import CustomLinks from './components/CustomLinks';
 
 export default function Home() {
   const dashboardItems = [
@@ -28,9 +29,8 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <div className="max-w-6xl mx-auto p-6">
-        <section className="mb-12 pt-6">
-          <h1 className="text-4xl font-bold mb-2">Welcome to UN-Dashboard</h1>
+      <div className="max-w-6xl mx-auto p-6 pt-20">        <section className="mb-12 pt-">
+          <h1 className="text-4xl font-bold mb-2">Welcome to Nexus Control</h1>
           <p className="text-xl text-gray-400">Your unified dashboard for system monitoring and management</p>
         </section>
 
@@ -55,16 +55,19 @@ export default function Home() {
           ))}
         </section>
 
-        <section className="bg-gray-800 rounded-lg p-6">
+        <section className="bg-gray-800 rounded-lg p-6 mb-6">
           <h2 className="text-2xl font-bold mb-4">System Overview</h2>
           <p className="text-gray-400 mb-4">
-            UN-Dashboard provides a comprehensive view of your system resources, Docker containers, and network.
+            Nexus Control provides a comprehensive view of your system resources, Docker containers, and network.
             Monitor performance, scan your network, and manage Docker containers all from one place.
           </p>
           <p className="text-gray-400">
             Select one of the dashboard panels above to get started.
           </p>
         </section>
+
+        {/* Custom Links & Favorites section */}
+        <CustomLinks />
       </div>
     </div>
   );
