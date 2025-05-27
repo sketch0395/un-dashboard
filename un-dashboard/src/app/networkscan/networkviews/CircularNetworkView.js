@@ -23,10 +23,9 @@ const CircularNetworkView = ({
     refreshTrigger
 }) => {
     const svgRef = useRef();
-    
-    useEffect(() => {
+      useEffect(() => {
         if (!devices || devices.length === 0) return;
-        if (!dimensions.width || !dimensions.height) return;
+        if (!dimensions || !dimensions.width || !dimensions.height) return;
         
         const { width, height } = dimensions;
         

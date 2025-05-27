@@ -143,8 +143,7 @@ const DockerCard = ({ container, onAction, onOpenContainerPage, operations }) =>
                     )}
                 </div>
             )}
-            
-            {/* Action buttons */}
+              {/* Action buttons */}
             <div className="mt-4 flex flex-wrap gap-2">
                 <button
                     className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-3 rounded disabled:opacity-50"
@@ -174,6 +173,16 @@ const DockerCard = ({ container, onAction, onOpenContainerPage, operations }) =>
                 >
                     Delete
                 </button>
+                {Status.includes("Up") && (
+                    <button
+                        className="bg-purple-500 hover:bg-purple-700 text-white font-bold py-1 px-3 rounded disabled:opacity-50 flex items-center gap-1"
+                        onClick={() => onAction(container.Id, "terminal")}
+                        disabled={refreshing || isActive}
+                    >
+                        <FaTerminal className="text-xs" />
+                        SSH Terminal
+                    </button>
+                )}
                 {PublishedPort && (
                     <button
                         className="bg-green-500 hover:bg-green-700 text-white font-bold py-1 px-3 rounded disabled:opacity-50"

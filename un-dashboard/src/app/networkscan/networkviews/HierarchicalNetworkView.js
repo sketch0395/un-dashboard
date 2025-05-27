@@ -17,10 +17,9 @@ const HierarchicalNetworkView = ({
     setCustomNames  // Added setCustomNames to receive updates from parent
 }) => {
     const svgRef = useRef();
-    
-    useEffect(() => {
+      useEffect(() => {
         if (!devices || devices.length === 0) return;
-        if (!dimensions.width || !dimensions.height) return;
+        if (!dimensions || !dimensions.width || !dimensions.height) return;
         
         // Validate network relationships before rendering
         try {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import DockerCard from "./dockercard";
+import DockerTerminal from "../../components/dockerterminal";
 
 export default function DockerStatus({ filterValue, showStoppedContainers }) {
     const [containers, setContainers] = useState([]);
@@ -14,6 +15,9 @@ export default function DockerStatus({ filterValue, showStoppedContainers }) {
         total: 0,
         loaded: 0
     });
+    const [terminalVisible, setTerminalVisible] = useState(false);
+    const [terminalContainerId, setTerminalContainerId] = useState(null);
+    const [terminalContainerName, setTerminalContainerName] = useState(null);
     
     // Determine the server URL based on environment
     const SOCKET_URL = (() => {
@@ -195,6 +199,15 @@ export default function DockerStatus({ filterValue, showStoppedContainers }) {
 
         if (!id) {
             console.error("Invalid container ID");
+            return;
+        }
+
+        // Handle terminal action differently
+        if (action === "terminal") {
+            const container = containers.find(c => c.Id === id);
+            setTerminalContainerId(id);
+            setTerminalContainerName(container?.Names?.[0] || id);
+            setTerminalVisible(true);
             return;
         }
 
@@ -418,8 +431,7 @@ export default function DockerStatus({ filterValue, showStoppedContainers }) {
                     </div>
                 </div>
             )}
-            
-            {/* Batch Operations Status Bar */}
+              {/* Batch Operations Status Bar */}
             {operations.batchOperation && (
                 <div className={`fixed bottom-16 right-4 p-3 rounded-lg shadow-lg z-20 ${
                     operations.batchOperation.status === 'start' ? 'bg-purple-800' :
@@ -439,6 +451,18 @@ export default function DockerStatus({ filterValue, showStoppedContainers }) {
                     </div>
                 </div>
             )}
+
+            {/* Docker Terminal */}
+            <DockerTerminal
+                containerId={terminalContainerId}
+                containerName={terminalContainerName}
+                visible={terminalVisible}
+                onClose={() => {
+                    setTerminalVisible(false);
+                    setTerminalContainerId(null);
+                    setTerminalContainerName(null);
+                }}
+            />
         </div>
     );
 }

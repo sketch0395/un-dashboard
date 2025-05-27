@@ -483,12 +483,99 @@ io.on('connection', (socket) => {
                 status: 'error',
                 message: error.message
             });
-            socket.emit('error', error.message);
+            socket.emit('error', error.message);        }
+    });
+
+    // Docker exec terminal functionality
+    socket.on('dockerExecConnect', async (data) => {
+        const { containerId } = data;
+        console.log(`Attempting Docker exec connection to container: ${containerId}`);
+        
+        try {
+            if (!containerId) {
+                socket.emit('dockerExecData', '\r\nError: Container ID is required\r\n');
+                socket.emit('dockerExecClose');
+                return;
+            }
+
+            // Get the container
+            const container = docker.getContainer(containerId);
+            
+            // Check if container is running
+            const containerInfo = await container.inspect();
+            if (!containerInfo.State.Running) {
+                socket.emit('dockerExecData', '\r\nError: Container is not running\r\n');
+                socket.emit('dockerExecClose');
+                return;
+            }
+
+            socket.emit('dockerExecData', `Connected to container: ${containerInfo.Name || containerId}\r\n`);
+            socket.emit('dockerExecData', 'Starting shell...\r\n');
+
+            // Create exec instance
+            const exec = await container.exec({
+                Cmd: ['/bin/bash'],
+                AttachStdin: true,
+                AttachStdout: true,
+                AttachStderr: true,
+                Tty: true
+            });
+
+            // Start the exec session
+            const stream = await exec.start({
+                hijack: true,
+                stdin: true
+            });
+
+            // Handle data from container
+            stream.on('data', (data) => {
+                socket.emit('dockerExecData', data.toString('utf-8'));
+            });
+
+            // Handle stream close
+            stream.on('close', () => {
+                console.log('Docker exec stream closed');
+                socket.emit('dockerExecClose');
+            });
+
+            stream.on('error', (err) => {
+                console.error('Docker exec stream error:', err);
+                socket.emit('dockerExecData', `\r\nStream error: ${err.message}\r\n`);
+                socket.emit('dockerExecClose');
+            });
+
+            // Handle user input
+            socket.on('dockerExecData', (data) => {
+                try {
+                    stream.write(data);
+                } catch (err) {
+                    console.error('Error writing to Docker exec stream:', err);
+                }
+            });
+
+            // Store stream reference for cleanup
+            socket.dockerExecStream = stream;
+            socket.dockerExec = exec;
+
+        } catch (error) {
+            console.error('Docker exec connection error:', error);
+            socket.emit('dockerExecData', `\r\nConnection error: ${error.message}\r\n`);
+            socket.emit('dockerExecClose');
         }
     });
 
     socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
+        
+        // Clean up Docker exec stream if it exists
+        if (socket.dockerExecStream) {
+            try {
+                socket.dockerExecStream.destroy();
+            } catch (err) {
+                console.error('Error cleaning up Docker exec stream:', err);
+            }
+        }
+        
         activeConnections.delete(socket.id);
         io.emit('connectionCount', activeConnections.size);
         clearInterval(fetchContainersInterval);
