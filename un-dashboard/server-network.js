@@ -93,15 +93,14 @@ const parseNmapOutput = (output) => {
     let currentOSSection = false;
     let osInfoArray = []; // Temporary array to store OS info lines
 
-    lines.forEach((line) => {
-        if (line.includes('Nmap scan report for')) {
+    lines.forEach((line) => {        if (line.includes('Nmap scan report for')) {
             if (Object.keys(currentDevice).length) {
                 // Process the device before adding it to enhance SSH detection
                 if (currentDevice.ports) {
                     // Explicitly check and mark if SSH is available on this device
                     currentDevice.sshAvailable = currentDevice.ports.some(port => 
                         port.includes('22/tcp') && 
-                        port.includes('open') && 
+                        (port.includes('open') || port.includes('filtered')) && 
                         port.includes('ssh')
                     );
                 }
@@ -161,9 +160,8 @@ const parseNmapOutput = (output) => {
         } else if (line.match(/^\d+\/tcp/)) {
             if (!currentDevice.ports) currentDevice.ports = [];
             currentDevice.ports.push(line.trim());
-            
-            // Check specifically for SSH service
-            if (line.includes('22/tcp') && line.includes('open') && line.includes('ssh')) {
+              // Check specifically for SSH service
+            if (line.includes('22/tcp') && (line.includes('open') || line.includes('filtered')) && line.includes('ssh')) {
                 currentDevice.sshService = {
                     available: true,
                     version: line.includes('ssh') ? line.split('ssh')[1].trim() : 'unknown'
@@ -253,21 +251,19 @@ const parseNmapOutput = (output) => {
             accuracy: currentDevice.osDetails ? currentDevice.osDetails.accuracy || null : null,
             full: osInfoArray
         };
-    }
-
-    // Add the last device if there is one
+    }    // Add the last device if there is one
     if (Object.keys(currentDevice).length) {
         // Process the device before adding it
         if (currentDevice.ports) {
             // Explicitly check and mark if SSH is available on this device
             currentDevice.sshAvailable = currentDevice.ports.some(port => 
                 port.includes('22/tcp') && 
-                port.includes('open') && 
+                (port.includes('open') || port.includes('filtered')) && 
                 port.includes('ssh')
             );
         }
         devices.push(currentDevice);
-    }    // Filter to only include devices that are actually online
+    }// Filter to only include devices that are actually online
     // This fixes the issue of showing all 255 IPs instead of only active ones
     const activeDevices = devices.filter(device => device.status === 'up');
     console.log(`[PARSE] Filtering ${devices.length} total devices to ${activeDevices.length} active devices`);
@@ -1893,135 +1889,64 @@ io.on('connection', (socket) => {
     });
 });
 
-// Add route to handle file uploads for import
-app.post('/api/network/import', (req, res) => {
-    try {
-        const data = req.body;
-        
-        if (!data || (!data.devices && !data.customNames)) {
-            return res.status(400).json({ 
-                status: 'error', 
-                error: 'Invalid import data format' 
-            });
-        }
-        
-        // Validate the imported data
-        const validateDeviceFormat = (device) => {
-            // Required fields
-            if (!device.ip) {
-                return false;
+// Handle device status polling for real-time monitoring
+io.on('connection', (socket) => {
+    socket.on('pollDeviceStatus', async (data) => {
+        try {
+            const { ips, timestamp } = data;
+            
+            if (!ips || !Array.isArray(ips) || ips.length === 0) {
+                console.log('[POLLING] No IPs provided for status polling');
+                return;
             }
             
-            // Validate IP format with regex
-            const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
-            if (!ipRegex.test(device.ip)) {
-                return false;
-            }
+            console.log(`[POLLING] Status poll requested for ${ips.length} devices at ${timestamp}`);
             
-            return true;
-        };
-        
-        // Check device format for at least some devices
-        if (data.devices) {
-            let deviceArray = [];
-            let isValid = true;
+            const statusResults = [];
             
-            // Flatten the devices object into an array
-            if (Array.isArray(data.devices)) {
-                deviceArray = data.devices;
-            } else {
-                // Handle object format where keys are IP addresses
-                Object.values(data.devices).forEach(devicesAtIP => {
-                    if (Array.isArray(devicesAtIP)) {
-                        deviceArray = [...deviceArray, ...devicesAtIP];
-                    } else if (typeof devicesAtIP === 'object') {
-                        deviceArray.push(devicesAtIP);
-                    }
-                });
-            }
-            
-            // Validate at least a subset of devices
-            const samplesToCheck = Math.min(deviceArray.length, 50);
-            for (let i = 0; i < samplesToCheck; i++) {
-                const index = Math.floor(Math.random() * deviceArray.length);
-                if (!validateDeviceFormat(deviceArray[index])) {
-                    isValid = false;
-                    break;
+            // Check status for each IP using ping
+            for (const ip of ips) {
+                try {
+                    // Use existing latency check function which includes alive status
+                    const result = await checkLatency(ip);
+                    
+                    statusResults.push({
+                        ip: ip,
+                        alive: result.alive,
+                        latency: result.latency,
+                        packetLoss: result.packetLoss,
+                        timestamp: new Date().toISOString()
+                    });
+                    
+                } catch (error) {
+                    console.error(`[POLLING] Error checking status for ${ip}:`, error.message);
+                    statusResults.push({
+                        ip: ip,
+                        alive: false,
+                        latency: null,
+                        packetLoss: 100,
+                        timestamp: new Date().toISOString(),
+                        error: error.message
+                    });
                 }
             }
             
-            if (!isValid) {
-                return res.status(400).json({
-                    status: 'error',
-                    error: 'Invalid device data format in import file'
-                });
-            }
-        }
-        
-        // Check customNames format if included
-        if (data.customNames && typeof data.customNames !== 'object') {
-            return res.status(400).json({
-                status: 'error',
-                error: 'Invalid customNames format in import file'
+            // Emit results back to client
+            socket.emit('deviceStatusUpdate', {
+                timestamp: new Date().toISOString(),
+                results: statusResults
+            });
+            
+            console.log(`[POLLING] Status poll completed for ${statusResults.length} devices`);
+            
+        } catch (error) {
+            console.error('[ERROR] Device status polling:', error.message);
+            socket.emit('deviceStatusError', { 
+                error: error.message,
+                timestamp: new Date().toISOString()
             });
         }
-        
-        const deviceCount = data.devices ? 
-            (Array.isArray(data.devices) ? 
-                data.devices.length : 
-                Object.values(data.devices).flat().length) : 0;
-                
-        console.log(`[INFO] Successfully validated import data with ${deviceCount} devices via API`);        // Extract or generate IP range for history
-        const ipRange = data.metadata?.ipRange || 'API Import';
-        
-        // Add scan source information to devices if missing
-        const timestamp = new Date().toISOString();
-        const formattedDate = new Intl.DateTimeFormat('en-US', {
-            year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', second: '2-digit',
-            hour12: false
-        }).format(new Date());
-        
-        Object.values(data.devices).forEach(deviceList => {
-            deviceList.forEach(device => {
-                if (!device.scanSource) {
-                    device.scanSource = {
-                        id: require('crypto').randomUUID(),
-                        name: 'API Import',
-                        timestamp: formattedDate
-                    };
-                }
-            });
-        });
-        
-        // Broadcast data to all connected clients
-        io.emit('networkScanData', data.devices);
-        
-        if (data.customNames) {
-            io.emit('customNamesUpdate', data.customNames);
-        }
-        
-        // Emit event to save to scan history
-        io.emit('saveToScanHistory', {
-            devices: data.devices,
-            ipRange: ipRange,
-            timestamp: timestamp
-        });
-        
-        return res.status(200).json({
-            status: 'success',
-            message: `Successfully imported ${deviceCount} devices`,
-            deviceCount,
-            ipRange
-        });
-        
-    } catch (error) {
-        console.error('[ERROR] Import scan data API:', error.message);
-        return res.status(500).json({ 
-            status: 'error', 
-            error: error.message 
-        });
-    }
+    });
 });
 
 // Error-handling middleware

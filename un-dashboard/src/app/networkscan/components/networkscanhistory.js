@@ -321,17 +321,14 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
 
     const toggleMenu = (index) => {
         setMenuOpenIndex((prev) => (prev === index ? null : index));
-    };
-
-    const isSSHAvailable = (device) => {
+    };    const isSSHAvailable = (device) => {
         if (!device || !device.ports) return false;
 
-        // Check if port 22 is not marked as "filtered" or "closed"
+        // Check if port 22 is not marked as "closed" (allow filtered and open)
         if (Array.isArray(device.ports)) {
             return device.ports.some(port =>
                 typeof port === 'string' &&
                 port.includes('22/tcp') &&
-                !port.includes('filtered') &&
                 !port.includes('closed')
             );
         }
@@ -340,7 +337,6 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             return Object.entries(device.ports).some(([key, value]) =>
                 (key === '22' || key === 22) &&
                 typeof value === 'string' &&
-                !value.toLowerCase().includes('filtered') &&
                 !value.toLowerCase().includes('closed')
             );
         }

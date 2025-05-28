@@ -278,7 +278,7 @@ export const isSSHAvailable = (device) => {
     
     // Check if there's any port entry that contains port 22 (SSH)
     const ports = Array.isArray(device.ports) ? device.ports : [];
-    return ports.some(port => port.includes('22/tcp') && port.includes('open'));
+    return ports.some(port => port.includes('22/tcp') && (port.includes('open') || port.includes('filtered')));
 };
 
 // Group devices by subnet (extract subnet from IP)

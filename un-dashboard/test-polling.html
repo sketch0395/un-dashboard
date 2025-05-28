@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Device Polling</title>
+</head>
+<body>
+    <h1>Device Polling Test</h1>
+    <div id="output"></div>
+    
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(message) {
+            const div = document.createElement('div');
+            div.textContent = `${new Date().toLocaleTimeString()}: ${message}`;
+            output.appendChild(div);
+            console.log(message);
+        }
+        
+        // Check localStorage for devices
+        const devices = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+        log(`Found ${Object.keys(devices).length} devices in localStorage`);
+        
+        Object.entries(devices).forEach(([ip, props]) => {
+            log(`Device: ${ip} - ${props.name || 'Unnamed'}`);
+        });
+        
+        // Connect to socket
+        const socket = io('http://localhost:4000', {
+            transports: ['polling', 'websocket'],
+            timeout: 10000
+        });
+        
+        socket.on('connect', () => {
+            log('Connected to server');
+            
+            // Test polling if devices exist
+            const deviceIPs = Object.keys(devices);
+            if (deviceIPs.length > 0) {
+                log(`Testing polling with ${deviceIPs.length} devices`);
+                socket.emit('pollDeviceStatus', {
+                    ips: deviceIPs,
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                log('No devices found to poll');
+            }
+        });
+        
+        socket.on('deviceStatusUpdate', (data) => {
+            log(`Received status update for ${data.results?.length || 0} devices`);
+            if (data.results) {
+                data.results.forEach(result => {
+                    log(`${result.ip}: ${result.alive ? 'alive' : 'dead'} (${result.latency}ms)`);
+                });
+            }
+        });
+        
+        socket.on('disconnect', () => {
+            log('Disconnected from server');
+        });
+        
+        socket.on('connect_error', (error) => {
+            log(`Connection error: ${error}`);
+        });
+    </script>
+</body>
+</html>

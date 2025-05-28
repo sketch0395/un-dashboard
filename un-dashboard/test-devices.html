@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Add Test Devices</title>
+</head>
+<body>
+    <h1>Adding Test Devices for Polling</h1>
+    <p>This will add test devices to localStorage and redirect to Device Management.</p>
+    
+    <script>
+        // Add test devices to localStorage
+        const testDevices = {
+            "127.0.0.1": {
+                name: "Localhost",
+                category: "Development Server",
+                networkRole: null,
+                parentGateway: null,
+                parentSwitch: null,
+                connectedGateways: [],
+                connectedSwitches: [],
+                notes: [],
+                isMainGateway: false,
+                history: []
+            },
+            "10.5.1.83": {
+                name: "Current Machine",
+                category: "Workstation",
+                networkRole: null,
+                parentGateway: null,
+                parentSwitch: null,
+                connectedGateways: [],
+                connectedSwitches: [],
+                notes: [],
+                isMainGateway: false,
+                history: []
+            },
+            "8.8.8.8": {
+                name: "Google DNS",
+                category: "Router",
+                networkRole: "gateway",
+                parentGateway: null,
+                parentSwitch: null,
+                connectedGateways: [],
+                connectedSwitches: [],
+                notes: [],
+                isMainGateway: true,
+                history: []
+            }
+        };
+
+        // Create a recent scan entry
+        const scanData = {
+            "127.0.0.1": [
+                {
+                    ip: "127.0.0.1",
+                    status: "up",
+                    alive: true,
+                    latency: 1.0,
+                    hostname: "localhost",
+                    ports: ["22/tcp open ssh"],
+                    vendor: "Local",
+                    macInfo: { available: false }
+                }
+            ],
+            "10.5.1.83": [
+                {
+                    ip: "10.5.1.83",
+                    status: "up", 
+                    alive: true,
+                    latency: 2.0,
+                    hostname: "kirito",
+                    ports: ["80/tcp open http", "3000/tcp open ppp"],
+                    vendor: "Intel",
+                    macInfo: { available: true, address: "00:11:22:33:44:55", vendor: "Intel" }
+                }
+            ],
+            "8.8.8.8": [
+                {
+                    ip: "8.8.8.8",
+                    status: "up",
+                    alive: false,
+                    latency: null,
+                    hostname: "dns.google",
+                    ports: ["53/tcp open domain"],
+                    vendor: "Google",
+                    macInfo: { available: false }
+                }
+            ]
+        };
+
+        const scanHistory = [{
+            timestamp: new Date().toISOString(),
+            ipRange: "Test Data",
+            data: scanData,
+            deviceCount: 3
+        }];
+
+        // Store in localStorage
+        localStorage.setItem("customDeviceProperties", JSON.stringify(testDevices));
+        localStorage.setItem("scanHistory", JSON.stringify(scanHistory));
+        
+        console.log("Test devices added to localStorage:", testDevices);
+        console.log("Test scan history added:", scanHistory);
+        
+        alert("Test devices added! Redirecting to Device Management...");
+        
+        // Redirect to device management page
+        setTimeout(() => {
+            window.location.href = "/device-management";
+        }, 1000);
+    </script>
+</body>
+</html>

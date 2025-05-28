@@ -21,12 +21,11 @@ export const getSSHStatus = (device) => {
     }
     
     // Legacy check for SSH availability
-    if (device.ports) {
-        if (Array.isArray(device.ports)) {
+    if (device.ports) {        if (Array.isArray(device.ports)) {
             const sshPort = device.ports.find(port => 
                 typeof port === 'string' &&
                 port.includes('22/tcp') &&
-                port.includes('open') &&
+                (port.includes('open') || port.includes('filtered')) &&
                 port.includes('ssh')
             );
             
@@ -38,12 +37,10 @@ export const getSSHStatus = (device) => {
                 };
             }
         }
-        
-        if (typeof device.ports === 'object') {
+          if (typeof device.ports === 'object') {
             const sshPort = Object.entries(device.ports).find(([key, value]) =>
                 (key === '22' || key === 22) &&
                 typeof value === 'string' &&
-                !value.toLowerCase().includes('filtered') &&
                 !value.toLowerCase().includes('closed')
             );
             
