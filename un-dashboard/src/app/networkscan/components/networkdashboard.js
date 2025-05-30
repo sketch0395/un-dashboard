@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, lazy, Suspense, useEffect, useRef } from "react";
-import NetworkScanControl from "./DashboardNetworkScanControl";
 import TopologyMap from "./networktopology";
 import UnifiedDeviceModal from "../../components/UnifiedDeviceModal";
-import { FaChevronLeft, FaChevronRight, FaCog, FaBug } from "react-icons/fa";
+import NetworkControlModal from "../../components/NetworkControlModal";
+import { useNetworkControlModal } from "../../components/useNetworkControlModal";
+import { FaNetworkWired, FaCog, FaBug, FaExpand, FaCompress } from "react-icons/fa";
 import { format } from "date-fns";
 import { debugNetworkRelationships, fixSwitchParentGateway } from "../../utils/networkRelationshipDebug";
 
@@ -26,8 +27,11 @@ export default function NetworkDashboard() {
     const [sshPassword, setSSHPassword] = useState("");
     const [showTerminal, setShowTerminal] = useState(false);
 
-    // Control panel minimization state
-    const [controlsMinimized, setControlsMinimized] = useState(false);
+    // Network Control Modal integration
+    const networkModal = useNetworkControlModal();
+    
+    // Full screen topology state
+    const [isTopologyFullscreen, setIsTopologyFullscreen] = useState(false);
     const [contentDimensions, setContentDimensions] = useState({ width: 0, height: 0 });
     
     // Add ref for the topology map component
@@ -64,15 +68,33 @@ export default function NetworkDashboard() {
             resizeObserver.disconnect();
             window.removeEventListener('resize', updateDimensions);
         };
-    }, []); // Remove contentRef.current from dependency array
-
-    // Flatten the devices object into an array for easier use with components
+    }, []); // Remove contentRef.current from dependency array    // Flatten the devices object into an array for easier use with components
     useEffect(() => {
         if (devices && Object.keys(devices).length > 0) {
             const devicesList = Object.values(devices).flat();
             setFlattenedDevices(devicesList);
         }
-    }, [devices]);    // Helper function to identify what's changed in the device
+    }, [devices]);
+
+    // Handle scan completion from modal
+    const handleNetworkScanComplete = (scanResults) => {
+        console.log("Network scan completed from modal:", scanResults);
+        // The modal will handle updating devices through onDevicesUpdate
+    };
+
+    // Handle devices update from modal
+    const handleDevicesUpdate = (newDevices) => {
+        console.log("Devices updated from modal:", newDevices);
+        setDevices(newDevices);
+        networkModal.handleDevicesUpdate(newDevices);
+    };
+
+    // Handle custom names update from modal
+    const handleCustomNamesUpdate = (newCustomNames) => {
+        console.log("Custom names updated from modal:", newCustomNames);
+        setCustomNames(newCustomNames);
+        networkModal.handleCustomNamesUpdate(newCustomNames);
+    };// Helper function to identify what's changed in the device
     const getDeviceChanges = (oldDevice, newDevice) => {
         const changes = {};
         if (oldDevice.name !== newDevice.name) changes.name = newDevice.name;
@@ -271,44 +293,36 @@ export default function NetworkDashboard() {
         }
         
         return allDevices;
-    };
-
-    return (
-        <div className="flex bg-gray-900 text-white h-screen w-screen overflow-hidden">
-            {/* Left Panel - Collapsible */}
-            <div 
-                className={`bg-gray-800 p-4 panel-transition flex flex-col ${controlsMinimized ? 'w-12' : 'w-[350px]'}`}
-            >
-                <div className="flex justify-between items-center mb-4">
-                    {!controlsMinimized && <h2 className="text-lg font-semibold">Network Controls</h2>}
-                    <button 
-                        className={`bg-gray-700 p-2 rounded-full hover:bg-gray-600 ${controlsMinimized ? 'mx-auto' : ''}`}
-                        onClick={() => setControlsMinimized(!controlsMinimized)}
-                        title={controlsMinimized ? "Expand controls" : "Minimize controls"}
-                    >
-                        {controlsMinimized ? <FaChevronRight /> : <FaChevronLeft />}
-                    </button>
-                </div>
-                  <div className={`overflow-y-auto max-h-[calc(100vh-120px)] flex-grow ${controlsMinimized ? 'hidden' : ''}`}>
-                    <NetworkScanControl
-                        devices={devices}
-                        setDevices={setDevices}
-                        vendorColors={vendorColors}
-                        setVendorColors={setVendorColors}
-                        customNames={customNames}
-                        setCustomNames={setCustomNames}
-                    />
-                </div>
-                
-                {/* Minimized state shows only icons */}                {controlsMinimized && (
-                    <div className="flex flex-col items-center gap-3 mt-4">
-                        <button 
-                            className="bg-gray-700 p-2 rounded-full hover:bg-gray-600"
-                            title="Network settings"
+    };    return (
+        <div className="flex flex-col bg-gray-900 text-white h-screen w-screen overflow-hidden">
+            {/* Top Control Bar */}
+            <div className="bg-gray-800 p-4 border-b border-gray-700">
+                <div className="flex justify-between items-center">                    <div className="flex items-center space-x-4">
+                        <h2 className="text-xl font-semibold">Network Topology</h2>
+                        <div className="flex items-center space-x-4 text-sm text-gray-400">
+                            <span>{flattenedDevices.length} devices</span>
+                            {Object.keys(devices).length > 0 && (
+                                <span>{Object.keys(devices).length} vendors</span>
+                            )}
+                            {Object.keys(customNames).length > 0 && (
+                                <span>{Object.keys(customNames).length} custom names</span>
+                            )}
+                        </div>
+                    </div>
+                    
+                    <div className="flex items-center space-x-3">
+                        {/* Network Control Button */}
+                        <button
+                            onClick={networkModal.openModal}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center transition-colors"
                         >
-                            <FaCog />
-                        </button>                        <button 
-                            className="bg-gray-700 p-2 rounded-full hover:bg-gray-600"
+                            <FaNetworkWired className="mr-2" />
+                            Network Control
+                        </button>
+                        
+                        {/* Debug Tools */}
+                        <button 
+                            className="bg-gray-700 p-2 rounded hover:bg-gray-600"
                             title="Debug Network Relationships"
                             onClick={() => {
                                 debugNetworkRelationships();
@@ -319,8 +333,10 @@ export default function NetworkDashboard() {
                         >
                             <FaBug />
                         </button>
+                        
+                        {/* Fix Switch Connections */}
                         <button 
-                            className="bg-yellow-700 p-2 rounded-full hover:bg-yellow-600"
+                            className="bg-yellow-700 p-2 rounded hover:bg-yellow-600"
                             title="Fix Switch-Gateway Connections"
                             onClick={() => {
                                 if (fixGatewaySwitchConnections()) {
@@ -332,30 +348,37 @@ export default function NetworkDashboard() {
                         >
                             <FaCog />
                         </button>
-                    </div>
-                )}
-            </div>
-
-            {/* Right Panel - Expanded to fill available space */}
-            <div className="flex-1 flex flex-col p-4 overflow-hidden">
-                {/* Content - Now only showing topology */}
-                <div 
-                    ref={contentRef}
-                    className="flex-1 bg-gray-800 rounded-lg overflow-hidden"
-                >
-                    <div className="w-full h-full overflow-hidden">                        <TopologyMap
-                            ref={topologyMapRef}
-                            devices={devices}
-                            vendorColors={vendorColors}
-                            customNames={customNames}
-                            setCustomNames={setCustomNames}
-                            openSSHModal={handleOpenSSH}
-                            contentDimensions={contentDimensions}
-                            setModalDevice={setModalDevice}
-                        />
+                        
+                        {/* Fullscreen Toggle */}
+                        <button
+                            onClick={() => setIsTopologyFullscreen(!isTopologyFullscreen)}
+                            className="bg-gray-700 p-2 rounded hover:bg-gray-600"
+                            title={isTopologyFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                        >
+                            {isTopologyFullscreen ? <FaCompress /> : <FaExpand />}
+                        </button>
                     </div>
                 </div>
-            </div>            {/* Device Modal */}
+            </div>
+
+            {/* Main Content - Topology Map */}
+            <div className={`flex-1 p-4 overflow-hidden ${isTopologyFullscreen ? 'absolute inset-0 z-40 bg-gray-900' : ''}`}>
+                <div 
+                    ref={contentRef}
+                    className="w-full h-full bg-gray-800 rounded-lg overflow-hidden"
+                >
+                    <TopologyMap
+                        ref={topologyMapRef}
+                        devices={devices}
+                        vendorColors={vendorColors}
+                        customNames={customNames}
+                        setCustomNames={setCustomNames}
+                        openSSHModal={handleOpenSSH}
+                        contentDimensions={contentDimensions}
+                        setModalDevice={setModalDevice}
+                    />
+                </div>
+            </div>{/* Device Modal */}
             <UnifiedDeviceModal
                 modalDevice={modalDevice}
                 setModalDevice={setModalDevice}
@@ -413,8 +436,7 @@ export default function NetworkDashboard() {
                     </div>
                 </div>
             )}
-            
-            {/* SSH Terminal */}
+              {/* SSH Terminal */}
             {showTerminal && sshTarget && (
                 <Suspense fallback={<div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">Loading SSH terminal...</div>}>
                     <SSHTerminal
@@ -426,6 +448,22 @@ export default function NetworkDashboard() {
                     />
                 </Suspense>
             )}
+
+            {/* Network Control Modal */}
+            <NetworkControlModal
+                isVisible={networkModal.isModalVisible}
+                onClose={networkModal.closeModal}
+                onScanComplete={handleNetworkScanComplete}
+                onDevicesUpdate={handleDevicesUpdate}
+                onCustomNamesUpdate={handleCustomNamesUpdate}
+                title="Network Scan Control"
+                defaultIpRange="10.5.1.1-255"
+                allowFullscreen={true}
+                showExportImport={true}
+                showHistory={true}
+                showRawDataInspector={true}
+                currentState={{ devices }}
+            />
         </div>
     );
 }

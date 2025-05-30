@@ -1,0 +1,284 @@
+"use client";
+
+import React, { useState } from 'react';
+import { FaNetworkWired, FaSearch, FaCog } from 'react-icons/fa';
+import NetworkControlModal from '../components/NetworkControlModal';
+import { useNetworkControlModal } from '../components/useNetworkControlModal';
+
+/**
+ * Enhanced Device Management Page with Network Control Modal Integration
+ * This shows how to add the NetworkControlModal to an existing page
+ */
+export default function DeviceManagementWithNetworkControl() {
+    // Original page state (simplified for example)
+    const [devices, setDevices] = useState([]);
+    const [filteredDevices, setFilteredDevices] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
+
+    // Network Control Modal integration
+    const networkModal = useNetworkControlModal();
+
+    // Handle scan completion - update the device list
+    const handleNetworkScanComplete = (scanResults) => {
+        console.log("Network scan completed, updating device list:", scanResults);
+        
+        // Convert scan results to device management format
+        const formattedDevices = scanResults.map(device => ({
+            id: device.ip || `${device.mac}_${Date.now()}`,
+            name: device.hostname || `Device-${device.ip}`,
+            ip: device.ip,
+            mac: device.mac,
+            vendor: device.vendor || 'Unknown',
+            status: device.status || 'online',
+            category: device.category || 'Network Device',
+            role: device.role || 'Unknown',
+            lastSeen: new Date().toISOString(),
+            scanType: device.scanType,
+            scanTime: device.scanTime,
+            // SSH status if available
+            hasSSH: device.services && device.services.includes('ssh'),
+            sshPort: device.sshPort || 22,
+        }));
+
+        setDevices(formattedDevices);
+        setFilteredDevices(formattedDevices);
+    };
+
+    // Handle devices update from modal
+    const handleDevicesUpdate = (newDevices) => {
+        networkModal.handleDevicesUpdate(newDevices);
+        
+        // Also update local device list if needed
+        if (newDevices && Object.keys(newDevices).length > 0) {
+            const flattenedDevices = [];
+            Object.entries(newDevices).forEach(([vendor, deviceList]) => {
+                deviceList.forEach(device => {
+                    flattenedDevices.push({
+                        id: device.ip || `${device.mac}_${Date.now()}`,
+                        name: device.hostname || `Device-${device.ip}`,
+                        ip: device.ip,
+                        mac: device.mac,
+                        vendor: vendor !== "Unknown" ? vendor : device.vendor || 'Unknown',
+                        status: device.status || 'online',
+                        category: device.category || 'Network Device',
+                        role: device.role || 'Unknown',
+                        lastSeen: new Date().toISOString(),
+                        hasSSH: device.services && device.services.includes('ssh'),
+                        sshPort: device.sshPort || 22,
+                    });
+                });
+            });
+            
+            setDevices(flattenedDevices);
+            setFilteredDevices(flattenedDevices);
+        }
+    };
+
+    const handleQuickNetworkScan = () => {
+        networkModal.openModal();
+    };
+
+    const handleAdvancedNetworkTools = () => {
+        networkModal.openModal();
+    };
+
+    return (
+        <div className="p-6 bg-gray-900 min-h-screen">
+            <div className="max-w-7xl mx-auto">
+                {/* Enhanced Header with Network Tools */}
+                <div className="flex justify-between items-center mb-8">
+                    <div>
+                        <h1 className="text-3xl font-bold text-white">Device Management</h1>
+                        <p className="text-gray-400 mt-2">Manage and monitor your network devices</p>
+                    </div>
+                    
+                    {/* Network Action Buttons */}
+                    <div className="flex space-x-4">
+                        <button
+                            onClick={handleQuickNetworkScan}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center transition-colors"
+                        >
+                            <FaNetworkWired className="mr-2" />
+                            Discover Devices
+                        </button>
+                        
+                        <button
+                            onClick={handleAdvancedNetworkTools}
+                            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded flex items-center transition-colors"
+                        >
+                            <FaCog className="mr-2" />
+                            Network Tools
+                        </button>
+                    </div>
+                </div>
+
+                {/* Device Statistics */}
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                    <div className="bg-gray-800 rounded-lg p-6">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-gray-400 text-sm">Total Devices</p>
+                                <p className="text-2xl font-bold text-white">{devices.length}</p>
+                            </div>
+                            <FaNetworkWired className="text-blue-400 text-2xl" />
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-800 rounded-lg p-6">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-gray-400 text-sm">Online Devices</p>
+                                <p className="text-2xl font-bold text-green-400">
+                                    {devices.filter(d => d.status === 'online').length}
+                                </p>
+                            </div>
+                            <div className="w-3 h-3 bg-green-400 rounded-full"></div>
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-800 rounded-lg p-6">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-gray-400 text-sm">SSH Enabled</p>
+                                <p className="text-2xl font-bold text-purple-400">
+                                    {devices.filter(d => d.hasSSH).length}
+                                </p>
+                            </div>
+                            <FaTerminal className="text-purple-400 text-2xl" />
+                        </div>
+                    </div>
+
+                    <div className="bg-gray-800 rounded-lg p-6">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-gray-400 text-sm">Unique Vendors</p>
+                                <p className="text-2xl font-bold text-yellow-400">
+                                    {new Set(devices.map(d => d.vendor)).size}
+                                </p>
+                            </div>
+                            <div className="w-3 h-3 bg-yellow-400 rounded-full"></div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Search and Filter Bar */}
+                <div className="bg-gray-800 rounded-lg p-6 mb-8">
+                    <div className="flex flex-wrap gap-4 items-center">
+                        <div className="flex-1 min-w-64">
+                            <div className="relative">
+                                <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search devices..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2 bg-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                        </div>
+                        
+                        <button
+                            onClick={handleQuickNetworkScan}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+                        >
+                            <FaNetworkWired className="mr-2 inline" />
+                            Scan Network
+                        </button>
+                    </div>
+                </div>
+
+                {/* Device List */}
+                <div className="bg-gray-800 rounded-lg p-6">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-xl font-semibold text-white">Network Devices</h2>
+                        <button
+                            onClick={handleAdvancedNetworkTools}
+                            className="text-blue-400 hover:text-blue-300 text-sm"
+                        >
+                            Advanced Network Tools →
+                        </button>
+                    </div>
+
+                    {devices.length === 0 ? (
+                        <div className="text-center py-12">
+                            <FaNetworkWired className="mx-auto text-6xl text-gray-600 mb-4" />
+                            <h3 className="text-xl font-medium text-gray-400 mb-2">No Devices Found</h3>
+                            <p className="text-gray-500 mb-6">Start by scanning your network to discover devices</p>
+                            <button
+                                onClick={handleQuickNetworkScan}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition-colors"
+                            >
+                                <FaNetworkWired className="mr-2 inline" />
+                                Scan Network Now
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
+                                <thead>
+                                    <tr className="border-b border-gray-700">
+                                        <th className="pb-3 text-gray-400 font-medium">Device</th>
+                                        <th className="pb-3 text-gray-400 font-medium">IP Address</th>
+                                        <th className="pb-3 text-gray-400 font-medium">Vendor</th>
+                                        <th className="pb-3 text-gray-400 font-medium">Status</th>
+                                        <th className="pb-3 text-gray-400 font-medium">Services</th>
+                                        <th className="pb-3 text-gray-400 font-medium">Last Seen</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredDevices.map((device) => (
+                                        <tr key={device.id} className="border-b border-gray-700 hover:bg-gray-700">
+                                            <td className="py-4">
+                                                <div>
+                                                    <p className="text-white font-medium">{device.name}</p>
+                                                    <p className="text-gray-400 text-sm">{device.mac}</p>
+                                                </div>
+                                            </td>
+                                            <td className="py-4 text-gray-300">{device.ip}</td>
+                                            <td className="py-4 text-gray-300">{device.vendor}</td>
+                                            <td className="py-4">
+                                                <span className={`px-2 py-1 rounded-full text-xs ${
+                                                    device.status === 'online' 
+                                                        ? 'bg-green-900 text-green-300' 
+                                                        : 'bg-red-900 text-red-300'
+                                                }`}>
+                                                    {device.status}
+                                                </span>
+                                            </td>
+                                            <td className="py-4">
+                                                {device.hasSSH && (
+                                                    <span className="px-2 py-1 bg-purple-900 text-purple-300 rounded-full text-xs mr-2">
+                                                        SSH
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="py-4 text-gray-400 text-sm">
+                                                {new Date(device.lastSeen).toLocaleString()}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+
+                {/* Network Control Modal */}
+                <NetworkControlModal
+                    isVisible={networkModal.isModalVisible}
+                    onClose={networkModal.closeModal}
+                    onScanComplete={handleNetworkScanComplete}
+                    onDevicesUpdate={handleDevicesUpdate}
+                    onCustomNamesUpdate={networkModal.handleCustomNamesUpdate}
+                    title="Network Device Discovery"
+                    defaultIpRange="10.5.1.1-255"
+                    allowFullscreen={true}
+                    showExportImport={true}
+                    showHistory={true}
+                    showRawDataInspector={false} // Hide for simpler interface
+                    currentState={{ devices: networkModal.devices }}
+                />
+            </div>
+        </div>
+    );
+}
