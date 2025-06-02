@@ -102,44 +102,46 @@ export default function NetworkControlModal({
             console.log("NetworkControlModal: Updating custom names:", data.customNames);
             handleCustomNamesUpdate(data.customNames);
         }
-    };    // Reset state when modal becomes visible to ensure clean state
+    };    // Reset state when modal becomes visible - COMPREHENSIVE FIX
     useEffect(() => {
         if (isVisible) {
-            console.log("NetworkControlModal: Modal opened, resetting to clean state");
-            
-            // Reset scan results and data
+            console.log('NETWORK MODAL: Comprehensive state reset on modal open');
+              // COMPLETE reset of ALL state variables
             setDevices({});
-            setCustomNames({});
             setRawNetworkData(null);
             setRawHistoryData(null);
-            setScanHistoryData(null);
-            
-            // Reset scan status
-            setStatus("Idle");
-            setScanOutput("");
-            setErrorMessage("");
-            setError(null);
+            setStatus('');
+            setErrorMessage('');
             setIsScanning(false);
-            setLastScanTime(null);
+            setShowCurrentResults(false);
+            setShowAdvancedOptions(false);
+            setModalDevice(null);
             
-            // Reset scan options to defaults
+            // Reset scan options to defaults every time
             setIpRange(defaultIpRange);
             setUseDocker(true);
             setScanType('ping');
-            
-            // Reset UI visibility states
-            setShowCurrentResults(false);
-            setShowRawNetworkData(false);
-            setShowRawHistoryData(false);
-            setShowSshInfo(false);
-            setShowAdvancedOptions(false);
-            setShowScanTypeInfo(false);
-            setShowRawData(false);
-            
-            // Reset modal state
-            setModalDevice(null);
+              // Clear any persisted scan data from previous sessions
+            console.log('NETWORK MODAL: State reset complete');
         }
     }, [isVisible, defaultIpRange]);
+
+    // Enhanced debugging for device state changes
+    useEffect(() => {
+        console.log('NETWORK MODAL DEBUG: Devices state changed:', {
+            deviceCount: Object.values(devices).flat().length,
+            devices: Object.values(devices).flat().map(d => ({ ip: d.ip, name: d.name })),
+            timestamp: new Date().toISOString()
+        });
+    }, [devices]);
+
+    useEffect(() => {
+        console.log('NETWORK MODAL DEBUG: Modal visibility changed:', {
+            isVisible,
+            deviceCount: Object.values(devices).flat().length,
+            timestamp: new Date().toISOString()
+        });
+    }, [isVisible, devices]);
 
     // Socket.IO connection setup
     useEffect(() => {
@@ -305,35 +307,30 @@ export default function NetworkControlModal({
                 socket.off('networkData');
                 socket.off('saveToScanHistory');
                 socket.disconnect();
-            }
-        };
-    }, [isVisible, ipRange, scanType, onScanComplete, handleDevicesUpdate]);    const startNetworkScan = useCallback(() => {
-        // Reset all scan-related state
-        setErrorMessage("");
-        setError(null);
-        setStatus("Starting scan...");
-        setScanOutput("");
-        setShowSshInfo(false);
-        setIsScanning(true);
+            }        };
+    }, [isVisible, ipRange, scanType, onScanComplete, handleDevicesUpdate]);
+
+    const startNetworkScan = useCallback(() => {
+        console.log('NETWORK MODAL: Starting new scan');        console.log('NETWORK MODAL: Current state before scan:', {
+            devicesCount: Object.values(devices).flat().length,
+            rawDataCount: rawNetworkData ? Object.keys(rawNetworkData).length : 0,
+            ipRange,
+            scanType,
+            useDocker
+        });
         
-        // Clear previous scan results to ensure clean state
+        // Additional safety reset before starting scan
         setDevices({});
-        setCustomNames({});
         setRawNetworkData(null);
         setRawHistoryData(null);
+        setStatus('Initializing scan...');
+        setErrorMessage('');
+        setIsScanning(true);
+        setModalDevice(null);
         setScanHistoryData(null);
-        
-        // Reset UI state
         setShowCurrentResults(false);
-        setShowRawNetworkData(false);
-        setShowRawHistoryData(false);
         
-        console.log(`NetworkControlModal: Starting fresh ${scanType} scan with IP range: ${ipRange}`);
-        console.log(`Using Docker: ${useDocker}, Scan Type: ${scanType}`);
-        console.log("Previous scan state cleared");
-        
-        const currentTime = new Date();
-        setLastScanTime(currentTime);
+        console.log('NETWORK MODAL: Scan initialization complete, starting network scan');
         
         socketRef.current.emit("startNetworkScan", { 
             range: ipRange, 
@@ -805,7 +802,6 @@ export default function NetworkControlModal({
                         }}
                     />
                 </Suspense>
-            )}
-        </div>
+            )}        </div>
     );
 }

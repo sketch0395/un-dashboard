@@ -79,7 +79,6 @@ const UnifiedDeviceModal = ({
         { name: "Production Server", icon: FaServer, color: "#10b981" },
         { name: "Development Server", icon: FaServer, color: "#8b5cf6" },
         { name: "Database", icon: FaDatabase, color: "#f59e0b" },
-        { name: "Router", icon: FaNetworkWired, color: "#3b82f6" },
         { name: "Switch", icon: FaNetworkWired, color: "#06b6d4" },
         { name: "Firewall", icon: FaShieldAlt, color: "#ef4444" },
         { name: "IoT Device", icon: FaMicrochip, color: "#f97316" },
@@ -339,63 +338,49 @@ const UnifiedDeviceModal = ({
                         </div>
                     </div>
                     <div className="text-gray-400 text-sm">{enhancedDevice?.ip}</div>
-                </div>                {/* Device Type/Role Section */}
+                </div>                {/* Network Role/Device Type Section */}
                 <div className="mb-4">
                     <label className="block text-sm text-gray-300 mb-1">Device Type</label>
                     <div className="relative">
                         <select
                             value={enhancedDevice?.networkRole || ""}
                             onChange={(e) => {
-                                const selectedType = e.target.value === "" ? null : e.target.value;
-                                const typeConfig = getDeviceTypeConfig(selectedType);
+                                const newRole = e.target.value;
+                                console.log("Device type changing from", enhancedDevice?.networkRole, "to", newRole);
                                 
                                 setEnhancedDevice((prev) => {
-                                    const updates = { 
-                                        ...prev, 
-                                        networkRole: selectedType,
-                                        category: selectedType, // Also store as category for backward compatibility
-                                        icon: typeConfig.icon.name, // Store icon name for persistence
-                                        color: typeConfig.color
-                                    };
+                                    const updated = { ...prev, networkRole: newRole };
                                     
-                                    // Reset connections when changing roles, but only for specific network infrastructure types
-                                    if (selectedType === 'Gateway') {
-                                        updates.parentGateway = null;
-                                        updates.parentSwitch = null;
-                                        updates.connectedGateways = [];
-                                        updates.connectedSwitches = [];
-                                    } else if (selectedType === 'Switch') {
-                                        updates.parentSwitch = null;
-                                        updates.connectedGateways = [];
-                                        updates.connectedSwitches = [];
-                                    } else if (selectedType === 'Router') {
-                                        // Routers can act like gateways in some cases
-                                        updates.parentGateway = null;
-                                        updates.parentSwitch = null;
-                                        updates.connectedGateways = [];
-                                        updates.connectedSwitches = [];
+                                    // Handle role-specific logic
+                                    if (newRole === 'Gateway') {
+                                        // Gateways don't connect to other gateways
+                                        updated.parentGateway = null;
+                                        updated.parentSwitch = null;
+                                        updated.connectedGateways = updated.connectedGateways || [];
+                                        updated.connectedSwitches = updated.connectedSwitches || [];
+                                        updated.isMainGateway = updated.isMainGateway || false;
+                                    } else if (newRole === 'Switch') {
+                                        // Switches can connect to gateways but not other switches as parent
+                                        updated.connectedSwitches = updated.connectedSwitches || [];
+                                        updated.connectedGateways = updated.connectedGateways || [];
                                     } else {
-                                        // Regular devices - clear all network role specific properties
-                                        updates.parentGateway = null;
-                                        updates.isMainGateway = false;
-                                        updates.connectedGateways = null;
-                                        updates.connectedSwitches = null;
+                                        // All other devices are regular devices that can connect to switches/gateways
+                                        updated.connectedGateways = null;
+                                        updated.connectedSwitches = null;
+                                        updated.isMainGateway = null;
                                     }
                                     
-                                    return updates;
+                                    return updated;
                                 });
                             }}
                             className="w-full bg-gray-700 text-white px-3 py-2 rounded appearance-none"
                         >
                             <option value="">Select device type</option>
-                            {deviceTypes.map(type => {
-                                const IconComponent = type.icon;
-                                return (
-                                    <option key={type.name} value={type.name}>
-                                        {type.name}
-                                    </option>
-                                );
-                            })}
+                            {deviceTypes.map(type => (
+                                <option key={type.name} value={type.name}>
+                                    {type.name}
+                                </option>
+                            ))}
                         </select>
                         
                         {/* Display icon and color indicator for selected type */}

@@ -22,24 +22,23 @@ export { determineDeviceRoles };
  * Get device type configuration including icon and color
  * This matches the device type system from UnifiedDeviceModal
  */
-export const getDeviceTypeConfig = (typeName) => {
-    const deviceTypes = [
-        { name: "Production Server", icon: FaServer, color: "#10b981" },
-        { name: "Database", icon: FaDatabase, color: "#3b82f6" },
-        { name: "Router", icon: FaNetworkWired, color: "#8b5cf6" },
-        { name: "Switch", icon: FaNetworkWired, color: "#06b6d4" },
-        { name: "Firewall", icon: FaShieldAlt, color: "#ef4444" },
-        { name: "IoT Device", icon: FaMicrochip, color: "#f59e0b" },
-        { name: "Workstation", icon: FaDesktop, color: "#6b7280" },
-        { name: "Mobile Device", icon: FaMobile, color: "#ec4899" },
-        { name: "Printer", icon: FaPrint, color: "#84cc16" },
-        { name: "Camera", icon: FaCamera, color: "#f97316" },
-        { name: "Development Server", icon: FaServer, color: "#14b8a6" },
-        { name: "Gateway", icon: FaRoad, color: "#fbbf24" },
-        { name: "Other", icon: FaMicrochip, color: "#9ca3af" }
-    ];
+export const getDeviceTypeConfig = (deviceType) => {
+    const deviceTypeConfigs = {
+        'Production Server': { icon: FaServer, color: '#10b981' },
+        'Development Server': { icon: FaServer, color: '#8b5cf6' },
+        'Database': { icon: FaDatabase, color: '#f59e0b' },
+        'Switch': { icon: FaNetworkWired, color: '#06b6d4' },
+        'Firewall': { icon: FaShieldAlt, color: '#ef4444' },
+        'IoT Device': { icon: FaMicrochip, color: '#f97316' },
+        'Workstation': { icon: FaDesktop, color: '#6b7280' },
+        'Mobile Device': { icon: FaMobile, color: '#ec4899' },
+        'Printer': { icon: FaPrint, color: '#84cc16' },
+        'Camera': { icon: FaCamera, color: '#14b8a6' },
+        'Gateway': { icon: FaRoad, color: '#fbbf24' },
+        'Other': { icon: FaMicrochip, color: '#9ca3af' }
+    };
     
-    return deviceTypes.find(type => type.name === typeName) || deviceTypes[deviceTypes.length - 1]; // Default to "Other"
+    return deviceTypeConfigs[deviceType] || deviceTypeConfigs['Other'];
 };
 
 /**
