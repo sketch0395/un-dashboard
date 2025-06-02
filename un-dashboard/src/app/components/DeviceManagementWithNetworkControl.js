@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { FaNetworkWired, FaSearch, FaCog } from 'react-icons/fa';
+import { FaNetworkWired, FaSearch, FaCog, FaTerminal } from 'react-icons/fa';
 import { io } from 'socket.io-client';
 import NetworkControlModal from '../components/NetworkControlModal';
 import { useNetworkControlModal } from '../components/useNetworkControlModal';

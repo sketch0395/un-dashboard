@@ -6,7 +6,8 @@ import {
     processDeviceData, 
     calculateNodeSize, 
     calculateMinDistance, 
-    getDeviceStatus
+    getDeviceStatus,
+    getDeviceIconAndColor
 } from './NetworkViewUtils';
 import { determineDeviceRoles } from "../../utils/deviceManagementUtils";
 
@@ -307,21 +308,31 @@ const CircularNetworkView = ({
             .selectAll("g")
             .data(nodes)
             .join("g")
-            .attr("transform", d => `translate(${d.x},${d.y})`);
-
-        nodeGroups.each(function(d) {
+            .attr("transform", d => `translate(${d.x},${d.y})`);        nodeGroups.each(function(d) {
             const node = d3.select(this);
             
             // Get device roles using helper function
             const { isGateway, isSwitch } = determineDeviceRoles(d);
+              // Get device icon and color using enhanced device type system
+            const deviceIconData = getDeviceIconAndColor(d, customNames);
 
-            // Choose color based on type
+            // Choose color based on device type first, then fallback to legacy logic
             const deviceColor = () => {
+                // Priority 1: Device type color from enhanced system
+                if (deviceIconData.source !== 'default') {
+                    return deviceIconData.color;
+                }
+                
+                // Priority 2: Custom color from device properties
                 if (d.ip && customNames?.[d.ip]?.color) {
                     return customNames[d.ip].color;
                 }
+                
+                // Priority 3: Legacy role-based colors
                 if (isGateway) return "#10b981";
                 if (isSwitch) return "#6366f1";
+                
+                // Fallback
                 return d.groupColor || "#6b7280";
             };
 
@@ -404,31 +415,14 @@ const CircularNetworkView = ({
                 iconContainer.style.justifyContent = 'center';
                 iconContainer.style.alignItems = 'center';
                 iconContainer.style.pointerEvents = 'none';
-                iconContainer.style.color = 'white';
-
-                // Determine icon component
-                let iconComponent;
-                if (customNames?.[d.ip]?.networkRole === 'switch') {
-                    iconComponent = iconMap.switch || iconMap.network;
-                } else if (customNames?.[d.ip]?.icon) {
-                    iconComponent = iconMap[customNames[d.ip].icon];
-                } else if (d.vendor) {
-                    const vendor = d.vendor.toLowerCase();
-                    iconComponent = 
-                        vendor.includes('cisco') ? iconMap.cisco :
-                        vendor.includes('raspberry') ? iconMap.raspberry :
-                        vendor.includes('apple') ? iconMap.apple :
-                        vendor.includes('intel') ? iconMap.intel :
-                        vendor.includes('nvidia') ? iconMap.nvidia :
-                        vendor.includes('samsung') ? iconMap.samsung :
-                        iconMap.network;
-                } else {
-                    iconComponent = iconMap.network;
-                }
-
-                if (iconComponent) {
+                iconContainer.style.color = 'white';                // Use the device type icon and color we already determined
+                const iconComponent = deviceIconData.iconComponent;
+                const nodeColor = deviceIconData.color;if (iconComponent) {
                     const root = createRoot(iconContainer);
-                    root.render(React.createElement(iconComponent, { size: iconSize }));
+                    root.render(React.createElement(iconComponent, { 
+                        size: iconSize, 
+                        style: { color: nodeColor }
+                    }));
 
                     const foreignObject = node.append('foreignObject')
                         .attr('width', iconSize * 2)

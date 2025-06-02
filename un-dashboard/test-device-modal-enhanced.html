@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced Device Modal Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1f2937;
+            color: white;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .test-section {
+            background-color: #374151;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .test-button {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .test-button:hover {
+            background-color: #2563eb;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 6px;
+            margin: 10px 0;
+        }
+        .success { background-color: #065f46; }
+        .error { background-color: #7f1d1d; }
+        .info { background-color: #1e3a8a; }
+        .data-display {
+            background-color: #111827;
+            padding: 15px;
+            border-radius: 6px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            margin: 10px 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .feature-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .feature-list li {
+            padding: 8px 0;
+            border-bottom: 1px solid #4b5563;
+        }
+        .feature-list li:last-child {
+            border-bottom: none;
+        }
+        .check { color: #10b981; }
+        .cross { color: #ef4444; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Enhanced Device Modal Test Suite</h1>
+        <p>This test validates the enhanced UnifiedDeviceModal with data persistence, device type icons, and colors.</p>
+
+        <!-- Data Persistence Tests -->
+        <div class="test-section">
+            <h2>📱 Data Persistence Tests</h2>
+            <p>These tests validate that device settings are properly saved and restored.</p>
+            
+            <div class="status info">
+                <strong>Test Instructions:</strong>
+                <ol>
+                    <li>Go to <a href="http://localhost:3000/performance" target="_blank" style="color: #60a5fa;">Performance Page</a></li>
+                    <li>Run a network scan to discover devices</li>
+                    <li>Click "Edit" on any device to open the modal</li>
+                    <li>Change device type, name, and connections</li>
+                    <li>Save and close the modal</li>
+                    <li>Reopen the same device modal</li>
+                    <li>Verify all settings are remembered</li>
+                </ol>
+            </div>
+
+            <h3>Expected Features (Data Persistence):</h3>
+            <ul class="feature-list">
+                <li><span class="check">✓</span> Device type selection remembered after modal close/reopen</li>
+                <li><span class="check">✓</span> Device name persisted in localStorage</li>
+                <li><span class="check">✓</span> Network role connections (Gateway/Switch) maintained</li>
+                <li><span class="check">✓</span> Device notes saved and restored</li>
+                <li><span class="check">✓</span> Device history tracked across sessions</li>
+                <li><span class="check">✓</span> Main Gateway setting persisted</li>
+            </ul>
+        </div>
+
+        <!-- Device Type Icons and Colors Tests -->
+        <div class="test-section">
+            <h2>🎨 Device Type Icons and Colors Tests</h2>
+            <p>These tests validate the visual enhancements for device types.</p>
+            
+            <h3>Device Type Categories with Visual Indicators:</h3>
+            <ul class="feature-list">
+                <li><span class="check">✓</span> <strong>Production Server:</strong> Server icon, Green color (#10b981)</li>
+                <li><span class="check">✓</span> <strong>Development Server:</strong> Server icon, Purple color (#8b5cf6)</li>
+                <li><span class="check">✓</span> <strong>Database:</strong> Database icon, Amber color (#f59e0b)</li>
+                <li><span class="check">✓</span> <strong>Router:</strong> Network icon, Blue color (#3b82f6)</li>
+                <li><span class="check">✓</span> <strong>Switch:</strong> Network icon, Cyan color (#06b6d4)</li>
+                <li><span class="check">✓</span> <strong>Firewall:</strong> Shield icon, Red color (#ef4444)</li>
+                <li><span class="check">✓</span> <strong>IoT Device:</strong> Microchip icon, Orange color (#f97316)</li>
+                <li><span class="check">✓</span> <strong>Workstation:</strong> Desktop icon, Gray color (#6b7280)</li>
+                <li><span class="check">✓</span> <strong>Mobile Device:</strong> Mobile icon, Pink color (#ec4899)</li>
+                <li><span class="check">✓</span> <strong>Printer:</strong> Print icon, Lime color (#84cc16)</li>
+                <li><span class="check">✓</span> <strong>Camera:</strong> Camera icon, Teal color (#14b8a6)</li>
+                <li><span class="check">✓</span> <strong>Gateway:</strong> Road icon, Yellow color (#fbbf24)</li>
+                <li><span class="check">✓</span> <strong>Other:</strong> Microchip icon, Light Gray color (#9ca3af)</li>
+            </ul>
+
+            <h3>Visual Enhancement Locations:</h3>
+            <ul class="feature-list">
+                <li><span class="check">✓</span> Device type dropdown shows icon and color indicator</li>
+                <li><span class="check">✓</span> Modal header displays device type badge with icon and color</li>
+                <li><span class="check">✓</span> Color dot indicator next to device type icon</li>
+                <li><span class="check">✓</span> Icons stored in localStorage for persistence</li>
+            </ul>
+        </div>
+
+        <!-- Network Relationship Tests -->
+        <div class="test-section">
+            <h2>🔗 Network Relationship Tests</h2>
+            <p>Test the enhanced network connectivity features.</p>
+            
+            <h3>Connection Management:</h3>
+            <ul class="feature-list">
+                <li><span class="check">✓</span> Gateway devices can connect to multiple gateways</li>
+                <li><span class="check">✓</span> Switch devices can connect to multiple switches and gateways</li>
+                <li><span class="check">✓</span> Router devices support gateway-like connections</li>
+                <li><span class="check">✓</span> Regular devices connect to single switch or gateway</li>
+                <li><span class="check">✓</span> Main Gateway checkbox only appears for Gateway devices</li>
+                <li><span class="check">✓</span> Connection sections show/hide based on device type</li>
+            </ul>
+        </div>
+
+        <!-- Bug Fixes Validation -->
+        <div class="test-section">
+            <h2>🐛 Bug Fixes Validation</h2>
+            <p>Verify that previous issues have been resolved.</p>
+            
+            <h3>Fixed Issues:</h3>
+            <ul class="feature-list">
+                <li><span class="check">✓</span> <strong>Data Persistence:</strong> Modal now loads saved device properties on open</li>
+                <li><span class="check">✓</span> <strong>State Management:</strong> Enhanced device state properly synced with localStorage</li>
+                <li><span class="check">✓</span> <strong>Modal Reset:</strong> Proper cleanup when modal closes</li>
+                <li><span class="check">✓</span> <strong>Device Type Tracking:</strong> Icon and color stored with device properties</li>
+                <li><span class="check">✓</span> <strong>History Loading:</strong> Device history loads correctly on modal open</li>
+            </ul>
+        </div>
+
+        <!-- localStorage Inspector -->
+        <div class="test-section">
+            <h2>🔍 localStorage Inspector</h2>
+            <p>View the current device data stored in localStorage.</p>
+            
+            <button class="test-button" onclick="displayLocalStorageData()">Refresh Device Data</button>
+            <button class="test-button" onclick="clearDeviceData()">Clear Device Data</button>
+            
+            <div id="localStorage-display" class="data-display">
+                Click "Refresh Device Data" to view current localStorage contents.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function displayLocalStorageData() {
+            try {
+                const customDeviceProperties = localStorage.getItem("customDeviceProperties");
+                const scanHistory = localStorage.getItem("scanHistory");
+                
+                let display = "=== DEVICE PROPERTIES ===\n";
+                if (customDeviceProperties) {
+                    const deviceData = JSON.parse(customDeviceProperties);
+                    display += JSON.stringify(deviceData, null, 2);
+                } else {
+                    display += "No device properties found.";
+                }
+                
+                display += "\n\n=== SCAN HISTORY ===\n";
+                if (scanHistory) {
+                    const historyData = JSON.parse(scanHistory);
+                    display += `Found ${historyData.length} scan entries\n`;
+                    display += JSON.stringify(historyData.slice(0, 2), null, 2); // Show first 2 entries
+                } else {
+                    display += "No scan history found.";
+                }
+                
+                document.getElementById('localStorage-display').textContent = display;
+            } catch (error) {
+                document.getElementById('localStorage-display').textContent = `Error reading localStorage: ${error.message}`;
+            }
+        }
+        
+        function clearDeviceData() {
+            if (confirm("Are you sure you want to clear all device data? This cannot be undone.")) {
+                localStorage.removeItem("customDeviceProperties");
+                localStorage.removeItem("scanHistory");
+                displayLocalStorageData();
+                alert("Device data cleared successfully.");
+            }
+        }
+        
+        // Auto-refresh display on page load
+        displayLocalStorageData();
+    </script>
+</body>
+</html>

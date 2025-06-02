@@ -55,14 +55,19 @@ const NetworkViewManager = forwardRef(({
         x: 0,
         y: 0,
         content: ''
-    });
-
-    // Expose the refresh method via ref
+    });    // Expose the refresh method via ref
     useImperativeHandle(ref, () => ({
         refresh: () => {
-            console.log("Topology refresh triggered by parent");
+            console.log("NETWORK VIEW MANAGER - Topology refresh triggered by parent", {
+                currentRefreshTrigger: refreshTrigger,
+                timestamp: new Date().toISOString()
+            });
             // Increment the refreshTrigger to force re-render
-            setRefreshTrigger(prev => prev + 1);
+            setRefreshTrigger(prev => {
+                const newValue = prev + 1;
+                console.log("NETWORK VIEW MANAGER - RefreshTrigger updated:", prev, "->", newValue);
+                return newValue;
+            });
         }
     }));
 
@@ -533,8 +538,9 @@ const NetworkViewManager = forwardRef(({
                     </div>
                 </div>
             )}
-        </div>
-    );
+        </div>    );
 });
+
+NetworkViewManager.displayName = 'NetworkViewManager';
 
 export default NetworkViewManager;

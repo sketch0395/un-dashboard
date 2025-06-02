@@ -3,7 +3,7 @@ import * as d3 from 'd3';
 import { createRoot } from 'react-dom/client';
 import { iconMap } from '../../components/icons/iconMapping';
 import { determineDeviceRoles } from "../../utils/deviceManagementUtils";
-import { validateNetworkRelationships } from './NetworkViewUtils';
+import { validateNetworkRelationships, getDeviceIconAndColor } from './NetworkViewUtils';
 
 const HierarchicalNetworkView = ({ 
     devices, 
@@ -39,9 +39,10 @@ const HierarchicalNetworkView = ({
             const gatewayDevices = Object.entries(customNames).filter(([_, props]) => props.networkRole === 'gateway');
             
             console.log(`Found ${switchDevices.length} switches and ${gatewayDevices.length} gateways`);
+              console.log("Switch devices:", switchDevices);
+            console.log("Gateway devices:", gatewayDevices);
             
-            console.log("Switch devices:", switchDevices);
-            console.log("Gateway devices:", gatewayDevices);            // More detailed check of switch-to-gateway connections
+            // More detailed check of switch-to-gateway connections
             console.log("=== NETWORK RELATIONSHIP VALIDATION ===");
             console.log("CUSTOM NAMES FULL DATA:", JSON.stringify(customNames, null, 2));
             
@@ -149,10 +150,20 @@ const HierarchicalNetworkView = ({
                   .duration(750)
                   .call(zoomBehavior.transform, d3.zoomIdentity);
            });
-           
-        // Render the hierarchical view
+             // Render the hierarchical view
         renderHierarchicalView(svg, zoomLayer, devices, width, height);
         
+    }, [devices, customNames, dimensions, subnetGroups, refreshTrigger]);
+
+    // Debug: Track when useEffect dependencies change
+    useEffect(() => {
+        console.log('HIERARCHICAL VIEW DEBUG - Dependencies changed:', {
+            devicesCount: devices?.length || 0,
+            customNamesCount: Object.keys(customNames || {}).length,
+            refreshTrigger,
+            timestamp: new Date().toISOString()
+        });
+        console.log('HIERARCHICAL VIEW DEBUG - Current customNames:', customNames);
     }, [devices, customNames, dimensions, subnetGroups, refreshTrigger]);
     
     // Render hierarchical tree visualization
@@ -831,8 +842,7 @@ const HierarchicalNetworkView = ({
 
         const nodeGroups = nodeGroup.selectAll("g")
             .data(treeData.descendants().filter(d => d.data.type !== "virtual-root"))
-            .join("g")
-            .attr("transform", d => `translate(${d.x},${d.y})`);
+            .join("g")            .attr("transform", d => `translate(${d.x},${d.y})`);
         
         // Add different styling based on node type
         nodeGroups.each(function(d) {
@@ -841,14 +851,27 @@ const HierarchicalNetworkView = ({
             // Get device roles using helper function
             const deviceData = d.data.data || {};
             const { isGateway, isSwitch } = determineDeviceRoles(deviceData);
+            
+            // Get device icon and color using enhanced device type system
+            const deviceIconData = getDeviceIconAndColor(deviceData, customNames);
 
-            // Choose color based on type
+            // Choose color based on device type first, then fallback to legacy logic
             const deviceColor = () => {
+                // Priority 1: Device type color from enhanced system
+                if (deviceIconData.source !== 'default') {
+                    return deviceIconData.color;
+                }
+                
+                // Priority 2: Custom color from device properties
                 if (deviceData.ip && customNames?.[deviceData.ip]?.color) {
                     return customNames[deviceData.ip].color;
                 }
+                
+                // Priority 3: Legacy role-based colors
                 if (isGateway) return "#10b981";
                 if (isSwitch) return "#6366f1";
+                
+                // Fallback
                 return "#6b7280"; // Default gray
             };
 
@@ -958,36 +981,14 @@ const HierarchicalNetworkView = ({
                 iconContainer.style.justifyContent = 'center';
                 iconContainer.style.alignItems = 'center';
                 iconContainer.style.pointerEvents = 'none';
-                iconContainer.style.color = 'white';
-
-                // Determine icon component based on node type/device info
-                let iconComponent;
-                
-                if (d.data.type === "switch" || 
-                    (deviceData.ip && customNames?.[deviceData.ip]?.networkRole === 'switch')) {
-                    iconComponent = iconMap.switch || iconMap.network;
-                } else if (d.data.type === "gateway" ||
-                          (deviceData.ip && customNames?.[deviceData.ip]?.networkRole === 'gateway')) {
-                    iconComponent = iconMap.router || iconMap.network;
-                } else if (deviceData.ip && customNames?.[deviceData.ip]?.icon) {
-                    iconComponent = iconMap[customNames[deviceData.ip].icon];
-                } else if (deviceData.vendor) {
-                    const vendor = deviceData.vendor.toLowerCase();
-                    iconComponent = 
-                        vendor.includes('cisco') ? iconMap.cisco :
-                        vendor.includes('raspberry') ? iconMap.raspberry :
-                        vendor.includes('apple') ? iconMap.apple :
-                        vendor.includes('intel') ? iconMap.intel :
-                        vendor.includes('nvidia') ? iconMap.nvidia :
-                        vendor.includes('samsung') ? iconMap.samsung :
-                        iconMap.network;
-                } else {
-                    iconComponent = iconMap.network;
-                }
-
-                if (iconComponent) {
+                iconContainer.style.color = 'white';                // Use the device type icon and color we already determined
+                const iconComponent = deviceIconData.iconComponent;
+                const nodeColor = deviceIconData.color;if (iconComponent) {
                     const root = createRoot(iconContainer);
-                    root.render(React.createElement(iconComponent, { size: iconSize }));
+                    root.render(React.createElement(iconComponent, { 
+                        size: iconSize,
+                        style: { color: nodeColor }
+                    }));
 
                     const foreignObject = node.append('foreignObject')
                         .attr('width', iconSize * 2)

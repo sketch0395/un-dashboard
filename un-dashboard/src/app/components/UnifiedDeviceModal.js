@@ -2,7 +2,23 @@
 
 import React, { useState, useEffect } from "react";
 import Modal from "./Modal";
-import { FaEdit, FaSave, FaTimes, FaPlus, FaTrash } from "react-icons/fa";
+import { 
+    FaEdit, 
+    FaSave, 
+    FaTimes, 
+    FaPlus, 
+    FaTrash,
+    FaServer,
+    FaDatabase,
+    FaNetworkWired,
+    FaShieldAlt,
+    FaMicrochip,
+    FaDesktop,
+    FaMobile,
+    FaPrint,
+    FaCamera,
+    FaRoad
+} from "react-icons/fa";
 import { updateDeviceProperties } from "../utils/deviceManagementUtils";
 
 const UnifiedDeviceModal = ({
@@ -26,29 +42,59 @@ const UnifiedDeviceModal = ({
                 return [...prev, index];
             }
         });
-    };
-
-    // Enhanced device with all necessary information
-    const enhancedDevice = modalDevice ? {
-        ...modalDevice,
-        notes: modalDevice.notes || []
-    } : null;
-
-    // Pre-defined device categories
-    const deviceCategories = [
-        "Production Server",
-        "Development Server",
-        "Database",
-        "Router",
-        "Switch",
-        "Firewall",
-        "IoT Device",
-        "Workstation",
-        "Mobile Device",
-        "Printer",
-        "Camera",
-        "Other"
+    };    // Enhanced device with all necessary information loaded from localStorage
+    const [enhancedDevice, setEnhancedDevice] = useState(null);
+    
+    // Load device data from localStorage when modal opens
+    useEffect(() => {
+        if (modalDevice?.ip && typeof window !== 'undefined') {
+            const savedCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
+            const savedDeviceData = savedCustomProperties[modalDevice.ip] || {};
+            
+            // Merge modalDevice with saved properties, prioritizing saved data
+            const mergedDevice = {
+                ...modalDevice,
+                // Load saved properties, fallback to modalDevice properties
+                name: savedDeviceData.name || modalDevice.name,
+                networkRole: savedDeviceData.networkRole || modalDevice.networkRole || modalDevice.category,
+                category: savedDeviceData.category || modalDevice.category,
+                notes: savedDeviceData.notes || modalDevice.notes || [],
+                parentGateway: savedDeviceData.parentGateway || modalDevice.parentGateway,
+                parentSwitch: savedDeviceData.parentSwitch || modalDevice.parentSwitch,
+                connectedGateways: savedDeviceData.connectedGateways || modalDevice.connectedGateways || [],
+                connectedSwitches: savedDeviceData.connectedSwitches || modalDevice.connectedSwitches || [],
+                isMainGateway: savedDeviceData.isMainGateway || modalDevice.isMainGateway || false,
+                color: savedDeviceData.color || modalDevice.color,
+                icon: savedDeviceData.icon || modalDevice.icon
+            };
+            
+            setEnhancedDevice(mergedDevice);
+            setDeviceHistory(savedDeviceData.history || []);
+        } else {
+            setEnhancedDevice(null);
+            setDeviceHistory([]);
+        }
+    }, [modalDevice]);    // Pre-defined device types with icons and colors
+    const deviceTypes = [
+        { name: "Production Server", icon: FaServer, color: "#10b981" },
+        { name: "Development Server", icon: FaServer, color: "#8b5cf6" },
+        { name: "Database", icon: FaDatabase, color: "#f59e0b" },
+        { name: "Router", icon: FaNetworkWired, color: "#3b82f6" },
+        { name: "Switch", icon: FaNetworkWired, color: "#06b6d4" },
+        { name: "Firewall", icon: FaShieldAlt, color: "#ef4444" },
+        { name: "IoT Device", icon: FaMicrochip, color: "#f97316" },
+        { name: "Workstation", icon: FaDesktop, color: "#6b7280" },
+        { name: "Mobile Device", icon: FaMobile, color: "#ec4899" },
+        { name: "Printer", icon: FaPrint, color: "#84cc16" },
+        { name: "Camera", icon: FaCamera, color: "#14b8a6" },
+        { name: "Gateway", icon: FaRoad, color: "#fbbf24" },
+        { name: "Other", icon: FaMicrochip, color: "#9ca3af" }
     ];
+
+    // Helper function to get device type configuration
+    const getDeviceTypeConfig = (typeName) => {
+        return deviceTypes.find(type => type.name === typeName) || deviceTypes[deviceTypes.length - 1]; // Default to "Other"
+    };
 
     useEffect(() => {
         if (enhancedDevice?.ip && typeof window !== 'undefined') {
@@ -79,11 +125,11 @@ const UnifiedDeviceModal = ({
             const prevName = previousChanges ? previousChanges.name : undefined;
             const prevCategory = previousChanges ? previousChanges.category : undefined;
             const prevNetworkRole = previousChanges ? previousChanges.networkRole : undefined;
-            
-            if (enhancedDevice.name !== prevName) changes.name = enhancedDevice.name;
+              if (enhancedDevice.name !== prevName) changes.name = enhancedDevice.name;
             if (enhancedDevice.category !== prevCategory) changes.category = enhancedDevice.category;
             if (enhancedDevice.networkRole !== prevNetworkRole) changes.networkRole = enhancedDevice.networkRole;            // Compare connection properties based on device role
-            if (enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') {
+            if (enhancedDevice.networkRole === 'Switch' || enhancedDevice.networkRole === 'Gateway' || enhancedDevice.networkRole === 'Router' || 
+                enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') {
                 const prevParentGateway = previousChanges ? previousChanges.parentGateway : undefined;
                 if (enhancedDevice.parentGateway !== prevParentGateway) {
                     changes.parentGateway = enhancedDevice.parentGateway;
@@ -103,7 +149,8 @@ const UnifiedDeviceModal = ({
                 }
             }
             
-            if (enhancedDevice.networkRole !== 'gateway' && enhancedDevice.networkRole !== 'switch') {
+            if (enhancedDevice.networkRole !== 'Gateway' && enhancedDevice.networkRole !== 'Switch' && enhancedDevice.networkRole !== 'Router' && 
+                enhancedDevice.networkRole !== 'gateway' && enhancedDevice.networkRole !== 'switch') {
                 const prevParentSwitch = previousChanges ? previousChanges.parentSwitch : undefined;
                 if (enhancedDevice.parentSwitch !== prevParentSwitch) {
                     changes.parentSwitch = enhancedDevice.parentSwitch;
@@ -123,9 +170,9 @@ const UnifiedDeviceModal = ({
                     changes: changes
                 });
             }
-            
-            // DEBUG: Check connections
-            if (enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') {
+              // DEBUG: Check connections
+            if (enhancedDevice.networkRole === 'Switch' || enhancedDevice.networkRole === 'Gateway' || enhancedDevice.networkRole === 'Router' ||
+                enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') {
                 console.log(`DEBUG - ${enhancedDevice.networkRole} parentGateway before save: "${enhancedDevice.parentGateway}"`);
                 console.log(`DEBUG - ${enhancedDevice.networkRole} connected gateways before save:`, enhancedDevice.connectedGateways);
                 console.log(`DEBUG - ${enhancedDevice.networkRole} parentSwitch before save: "${enhancedDevice.parentSwitch}"`);
@@ -143,15 +190,11 @@ const UnifiedDeviceModal = ({
             };
 
             // Update device properties in localStorage
-            updateDeviceProperties(deviceToSave);
-
-            // Call parent save handler
+            updateDeviceProperties(deviceToSave);            // Call parent save handler
             onSave(deviceToSave);
-            setModalDevice(null);
+            handleCloseModal();
         }
-    };
-
-    // Note management
+    };    // Note management
     const handleAddNote = () => {
         if (!newNote.trim()) return;
         
@@ -162,14 +205,14 @@ const UnifiedDeviceModal = ({
         };
         
         const updatedNotes = [...(enhancedDevice.notes || []), newNoteObj];
-        setModalDevice(prev => ({ ...prev, notes: updatedNotes }));
+        setEnhancedDevice(prev => ({ ...prev, notes: updatedNotes }));
         setNewNote('');
     };
 
     const handleDeleteNote = (noteId) => {
         const updatedNotes = enhancedDevice.notes.filter(note => note.id !== noteId);
-        setModalDevice(prev => ({ ...prev, notes: updatedNotes }));
-    };    // Format date
+        setEnhancedDevice(prev => ({ ...prev, notes: updatedNotes }));
+    };// Format date
     const formatDate = (isoString) => {
         try {
             const date = new Date(isoString);
@@ -198,10 +241,9 @@ const UnifiedDeviceModal = ({
         }
         
         const changedItems = [];
-        
-        if (changes.name !== undefined) changedItems.push("name");
+          if (changes.name !== undefined) changedItems.push("name");
         if (changes.category !== undefined) changedItems.push("category");
-        if (changes.networkRole !== undefined) changedItems.push("network role");
+        if (changes.networkRole !== undefined) changedItems.push("device type");
         if (changes.parentGateway !== undefined) changedItems.push("parent gateway");
         if (changes.parentSwitch !== undefined) changedItems.push("parent switch");
         if (changes.connectedGateways !== undefined) changedItems.push("gateway connections");
@@ -216,26 +258,55 @@ const UnifiedDeviceModal = ({
             const lastItem = changedItems.pop();
             return `Updated ${changedItems.join(', ')} and ${lastItem}`;
         }
+    };    const handleCloseModal = () => {
+        setModalDevice(null);
+        setEnhancedDevice(null);
+        setDeviceHistory([]);
+        setIsEditing(false);
+        setNewNote('');
+        setExpandedHistoryItems([0]);
     };
 
     return (
-        <Modal isVisible={!!enhancedDevice} onClose={() => setModalDevice(null)}>
+        <Modal isVisible={!!enhancedDevice} onClose={handleCloseModal}>
             <div className="max-h-[80vh] overflow-y-auto pr-2">
                 {/* Header Section */}
                 <div className="sticky top-0 bg-gray-800 z-10 pb-2">
-                    <div className="flex justify-between mb-4">
-                        {isEditing ? (
+                    <div className="flex justify-between mb-4">                        {isEditing ? (
                             <input
                                 type="text"
                                 value={enhancedDevice?.name || ""}
                                 onChange={(e) =>
-                                    setModalDevice((prev) => ({ ...prev, name: e.target.value }))
+                                    setEnhancedDevice((prev) => ({ ...prev, name: e.target.value }))
                                 }
                                 className="flex-1 bg-gray-700 text-white px-3 py-2 rounded mr-2"
                                 placeholder="Enter device name"
-                            />
-                        ) : (
-                            <h2 className="text-white text-xl py-2">{enhancedDevice?.name || "Edit Device"}</h2>
+                            />                        ) : (
+                            <div className="flex items-center">
+                                <h2 className="text-white text-xl py-2">{enhancedDevice?.name || "Edit Device"}</h2>
+                                {enhancedDevice?.networkRole && (
+                                    <div className="ml-3 flex items-center">
+                                        {(() => {
+                                            const typeConfig = getDeviceTypeConfig(enhancedDevice.networkRole);
+                                            const IconComponent = typeConfig.icon;
+                                            return (
+                                                <div className="flex items-center bg-gray-700 px-2 py-1 rounded">
+                                                    <div 
+                                                        className="w-2 h-2 rounded-full mr-2" 
+                                                        style={{ backgroundColor: typeConfig.color }}
+                                                    ></div>
+                                                    <IconComponent 
+                                                        className="mr-1" 
+                                                        style={{ color: typeConfig.color }}
+                                                        size={14}
+                                                    />
+                                                    <span className="text-xs text-gray-300">{enhancedDevice.networkRole}</span>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                )}
+                            </div>
                         )}
                         
                         <div className="flex items-center">
@@ -268,88 +339,98 @@ const UnifiedDeviceModal = ({
                         </div>
                     </div>
                     <div className="text-gray-400 text-sm">{enhancedDevice?.ip}</div>
+                </div>                {/* Device Type/Role Section */}
+                <div className="mb-4">
+                    <label className="block text-sm text-gray-300 mb-1">Device Type</label>
+                    <div className="relative">
+                        <select
+                            value={enhancedDevice?.networkRole || ""}
+                            onChange={(e) => {
+                                const selectedType = e.target.value === "" ? null : e.target.value;
+                                const typeConfig = getDeviceTypeConfig(selectedType);
+                                
+                                setEnhancedDevice((prev) => {
+                                    const updates = { 
+                                        ...prev, 
+                                        networkRole: selectedType,
+                                        category: selectedType, // Also store as category for backward compatibility
+                                        icon: typeConfig.icon.name, // Store icon name for persistence
+                                        color: typeConfig.color
+                                    };
+                                    
+                                    // Reset connections when changing roles, but only for specific network infrastructure types
+                                    if (selectedType === 'Gateway') {
+                                        updates.parentGateway = null;
+                                        updates.parentSwitch = null;
+                                        updates.connectedGateways = [];
+                                        updates.connectedSwitches = [];
+                                    } else if (selectedType === 'Switch') {
+                                        updates.parentSwitch = null;
+                                        updates.connectedGateways = [];
+                                        updates.connectedSwitches = [];
+                                    } else if (selectedType === 'Router') {
+                                        // Routers can act like gateways in some cases
+                                        updates.parentGateway = null;
+                                        updates.parentSwitch = null;
+                                        updates.connectedGateways = [];
+                                        updates.connectedSwitches = [];
+                                    } else {
+                                        // Regular devices - clear all network role specific properties
+                                        updates.parentGateway = null;
+                                        updates.isMainGateway = false;
+                                        updates.connectedGateways = null;
+                                        updates.connectedSwitches = null;
+                                    }
+                                    
+                                    return updates;
+                                });
+                            }}
+                            className="w-full bg-gray-700 text-white px-3 py-2 rounded appearance-none"
+                        >
+                            <option value="">Select device type</option>
+                            {deviceTypes.map(type => {
+                                const IconComponent = type.icon;
+                                return (
+                                    <option key={type.name} value={type.name}>
+                                        {type.name}
+                                    </option>
+                                );
+                            })}
+                        </select>
+                        
+                        {/* Display icon and color indicator for selected type */}
+                        {enhancedDevice?.networkRole && (
+                            <div className="absolute right-10 top-1/2 transform -translate-y-1/2 flex items-center pointer-events-none">
+                                {(() => {
+                                    const typeConfig = getDeviceTypeConfig(enhancedDevice.networkRole);
+                                    const IconComponent = typeConfig.icon;
+                                    return (
+                                        <div className="flex items-center">
+                                            <div 
+                                                className="w-3 h-3 rounded-full mr-2" 
+                                                style={{ backgroundColor: typeConfig.color }}
+                                            ></div>
+                                            <IconComponent 
+                                                className="text-gray-400" 
+                                                style={{ color: typeConfig.color }}
+                                                size={16}
+                                            />
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+                        )}
+                    </div>
                 </div>
-
-                {/* Category Selection */}
-                <div className="mb-4">
-                    <label className="block text-sm text-gray-300 mb-1">Category</label>
-                    <select
-                        value={enhancedDevice?.category || ""}
-                        onChange={(e) =>
-                            setModalDevice((prev) => ({ ...prev, category: e.target.value }))
-                        }
-                        className="w-full bg-gray-700 text-white px-3 py-2 rounded"
-                    >
-                        <option value="">Select a category</option>
-                        {deviceCategories.map(category => (
-                            <option key={category} value={category}>{category}</option>
-                        ))}
-                    </select>
-                </div>                {/* Network Role Section */}
-                <div className="mb-4">
-                    <label className="block text-sm text-gray-300 mb-1">Network Role</label>
-                    <div className="flex gap-2">                        <button
-                            className={`px-3 py-2 rounded text-xs flex-1 ${enhancedDevice?.networkRole === 'gateway' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}                            
-                            onClick={() => {
-                                if (enhancedDevice?.networkRole !== 'gateway') {
-                                    setModalDevice((prev) => ({ 
-                                        ...prev, 
-                                        networkRole: 'gateway',
-                                        parentGateway: null,
-                                        parentSwitch: null,
-                                        connectedGateways: [],
-                                        connectedSwitches: []
-                                    }));
-                                } else {
-                                    setModalDevice((prev) => ({ ...prev, networkRole: null }));
-                                }
-                            }}
-                        >
-                            Gateway
-                        </button>                        <button
-                            className={`px-3 py-2 rounded text-xs flex-1 ${enhancedDevice?.networkRole === 'switch' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}                            
-                            onClick={() => {
-                                if (enhancedDevice?.networkRole !== 'switch') {
-                                    setModalDevice((prev) => ({ 
-                                        ...prev, 
-                                        networkRole: 'switch',
-                                        parentSwitch: null,
-                                        connectedGateways: [],
-                                        connectedSwitches: []
-                                    }));
-                                } else {
-                                    setModalDevice((prev) => ({ ...prev, networkRole: null }));
-                                }
-                            }}
-                        >
-                            Switch
-                        </button>                        <button
-                            className={`px-3 py-2 rounded text-xs flex-1 ${enhancedDevice?.networkRole === null || enhancedDevice?.networkRole === undefined ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}                            
-                            onClick={() => {
-                                setModalDevice((prev) => ({ 
-                                    ...prev, 
-                                    networkRole: null,
-                                    parentGateway: null, 
-                                    isMainGateway: false,
-                                    connectedGateways: null,
-                                    connectedSwitches: null
-                                }));
-                            }}
-                        >
-                            Regular Device
-                        </button>
-                    </div>                </div>
-                
-                {/* Main Gateway Checkbox - only shown when device role is gateway */}
-                {enhancedDevice?.networkRole === 'gateway' && (
+                  {/* Main Gateway Checkbox - only shown when device type is Gateway */}
+                {enhancedDevice?.networkRole === 'Gateway' && (
                     <div className="mb-4">
                         <div className="flex items-center">
                             <input
                                 type="checkbox"
                                 id="isMainGateway"
-                                checked={enhancedDevice.isMainGateway || false}
-                                onChange={(e) => {
-                                    setModalDevice((prev) => ({
+                                checked={enhancedDevice.isMainGateway || false}                                onChange={(e) => {
+                                    setEnhancedDevice((prev) => ({
                                         ...prev,
                                         isMainGateway: e.target.checked
                                     }));
@@ -364,11 +445,9 @@ const UnifiedDeviceModal = ({
                             Main gateways serve as the root nodes for network hierarchy and can connect to sub-gateways
                         </p>
                     </div>
-                )}
-
-                {/* Connection Sections */}
-                {/* 1. Gateway Connections - only shown for switches and other gateways */}
-                {(enhancedDevice?.networkRole === 'switch' || enhancedDevice?.networkRole === 'gateway') && (
+                )}                {/* Connection Sections */}
+                {/* 1. Gateway Connections - only shown for switches, routers, and other gateways */}
+                {(enhancedDevice?.networkRole === 'Switch' || enhancedDevice?.networkRole === 'Router' || enhancedDevice?.networkRole === 'Gateway') && (
                     <div className="mb-4">
                         <label className="block text-sm text-gray-300 mb-1">
                             Connected to Gateway(s)
@@ -384,12 +463,11 @@ const UnifiedDeviceModal = ({
                                         'Not connected to any gateway'
                                 }
                             </div>
-                            
-                            {/* List of gateways with checkboxes */}
+                              {/* List of gateways with checkboxes */}
                             <div className="max-h-32 overflow-y-auto bg-gray-700 rounded p-2 mb-2">
                                 {typeof window !== 'undefined' && 
                                     Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
-                                        .filter(([ip, props]) => props.networkRole === 'gateway' && ip !== enhancedDevice?.ip)
+                                        .filter(([ip, props]) => (props.networkRole === 'Gateway' || props.networkRole === 'gateway') && ip !== enhancedDevice?.ip)
                                         .map(([ip, props]) => {
                                             // Check if gateway is in the connectedGateways array or is the parentGateway (for backward compatibility)
                                             const isConnected = 
@@ -424,11 +502,10 @@ const UnifiedDeviceModal = ({
                                                             }
                                                             
                                                             console.log(`Updating ${enhancedDevice.networkRole} ${enhancedDevice.ip} gateway connections:`, newConnections);
-                                                            
-                                                            // Keep the first gateway as parentGateway for backward compatibility
+                                                              // Keep the first gateway as parentGateway for backward compatibility
                                                             const newParentGateway = newConnections.length > 0 ? newConnections[0] : null;
                                                             
-                                                            setModalDevice((prev) => ({
+                                                            setEnhancedDevice((prev) => ({
                                                                 ...prev, 
                                                                 connectedGateways: newConnections,
                                                                 parentGateway: newParentGateway
@@ -444,27 +521,24 @@ const UnifiedDeviceModal = ({
                                         })
                                 }
                             </div>
-                            
-                            {typeof window !== 'undefined' && 
+                              {typeof window !== 'undefined' && 
                                 Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
-                                    .filter(([ip, props]) => props.networkRole === 'gateway' && ip !== enhancedDevice?.ip).length === 0 && (
+                                    .filter(([ip, props]) => (props.networkRole === 'Gateway' || props.networkRole === 'gateway') && ip !== enhancedDevice?.ip).length === 0 && (
                                 <div className="text-center text-gray-500 py-2">
                                     No gateways available. Create a gateway first.
                                 </div>
                             )}
                         </div>
                     </div>
-                )}
-
-                {/* 2. Switch Connections - shown for regular devices, switches, and gateways */}
+                )}                {/* 2. Switch Connections - shown for regular devices, switches, routers, and gateways */}
                 <div className="mb-4">
                     <label className="block text-sm text-gray-300 mb-1">
-                        {enhancedDevice?.networkRole === 'switch' || enhancedDevice?.networkRole === 'gateway'
+                        {enhancedDevice?.networkRole === 'Switch' || enhancedDevice?.networkRole === 'Gateway' || enhancedDevice?.networkRole === 'Router'
                             ? 'Connected to Switch(es)' 
                             : 'Connected to Switch'}
                     </label>
                     
-                    {(enhancedDevice?.networkRole === 'switch' || enhancedDevice?.networkRole === 'gateway') ? (
+                    {(enhancedDevice?.networkRole === 'Switch' || enhancedDevice?.networkRole === 'Gateway' || enhancedDevice?.networkRole === 'Router') ? (
                         /* For switches and gateways - allow multiple switch connections */
                         <div>
                             {/* Show current connections info */}
@@ -477,11 +551,10 @@ const UnifiedDeviceModal = ({
                                 }
                             </div>
                             
-                            {/* List of switches with checkboxes */}
-                            <div className="max-h-32 overflow-y-auto bg-gray-700 rounded p-2 mb-2">
+                            {/* List of switches with checkboxes */}                            <div className="max-h-32 overflow-y-auto bg-gray-700 rounded p-2 mb-2">
                                 {typeof window !== 'undefined' && 
                                     Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
-                                        .filter(([ip, props]) => props.networkRole === 'switch' && ip !== enhancedDevice?.ip)
+                                        .filter(([ip, props]) => (props.networkRole === 'Switch' || props.networkRole === 'switch') && ip !== enhancedDevice?.ip)
                                         .map(([ip, props]) => {
                                             // Check if switch is in the connectedSwitches array or is the parentSwitch
                                             const isConnected = 
@@ -516,11 +589,10 @@ const UnifiedDeviceModal = ({
                                                             }
                                                             
                                                             console.log(`Updating ${enhancedDevice.networkRole} ${enhancedDevice.ip} switch connections:`, newConnections);
-                                                            
-                                                            // Keep the first switch as parentSwitch for backward compatibility
+                                                              // Keep the first switch as parentSwitch for backward compatibility
                                                             const newParentSwitch = newConnections.length > 0 ? newConnections[0] : null;
                                                             
-                                                            setModalDevice((prev) => ({
+                                                            setEnhancedDevice((prev) => ({
                                                                 ...prev, 
                                                                 connectedSwitches: newConnections,
                                                                 parentSwitch: newParentSwitch
@@ -536,10 +608,9 @@ const UnifiedDeviceModal = ({
                                         })
                                 }
                             </div>
-                            
-                            {typeof window !== 'undefined' && 
+                              {typeof window !== 'undefined' && 
                                 Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
-                                    .filter(([ip, props]) => props.networkRole === 'switch' && ip !== enhancedDevice?.ip).length === 0 && (
+                                    .filter(([ip, props]) => (props.networkRole === 'Switch' || props.networkRole === 'switch') && ip !== enhancedDevice?.ip).length === 0 && (
                                 <div className="text-center text-gray-500 py-2">
                                     No switches available. Create a switch first.
                                 </div>
@@ -556,23 +627,21 @@ const UnifiedDeviceModal = ({
                                 }
                             </div>
                             <select
-                                value={enhancedDevice?.parentSwitch || ""}
-                                onChange={(e) => {
+                                value={enhancedDevice?.parentSwitch || ""}                                onChange={(e) => {
                                     const selectedValue = e.target.value;
                                     console.log(`Setting device ${enhancedDevice.ip} parent switch to: "${selectedValue}"`);
-                                    setModalDevice((prev) => ({
+                                    setEnhancedDevice((prev) => ({
                                         ...prev, 
                                         parentSwitch: selectedValue === "" ? null : selectedValue,
                                         parentGateway: null
                                     }));
                                 }}
                                 className="w-full bg-gray-700 text-white px-3 py-2 rounded"
-                            >
-                                <option value="">Not connected to a switch</option>
+                            >                                <option value="">Not connected to a switch</option>
                                 {typeof window !== 'undefined' && 
                                  Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
                                     .filter(([ip, props]) => 
-                                        props.networkRole === 'switch' && ip !== enhancedDevice?.ip
+                                        (props.networkRole === 'Switch' || props.networkRole === 'switch') && ip !== enhancedDevice?.ip
                                     )
                                     .map(([ip, props]) => (
                                         <option key={ip} value={ip}>
@@ -683,10 +752,9 @@ const UnifiedDeviceModal = ({
                                                     )}
                                                     {record.changes.category !== undefined && (
                                                         <div><span className="text-blue-300">Category:</span> {record.changes.category}</div>
-                                                    )}
-                                                    {record.changes.networkRole !== undefined && (
+                                                    )}                                                    {record.changes.networkRole !== undefined && (
                                                         <div>
-                                                            <span className="text-blue-300">Network Role:</span> 
+                                                            <span className="text-blue-300">Device Type:</span> 
                                                             {record.changes.networkRole || 'Regular Device'}
                                                         </div>
                                                     )}
@@ -737,13 +805,12 @@ const UnifiedDeviceModal = ({
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex justify-end gap-2 sticky bottom-0 bg-gray-800 py-3">
-                    <button
-                        onClick={() => setModalDevice(null)}
+                <div className="flex justify-end gap-2 sticky bottom-0 bg-gray-800 py-3">                    <button
+                        onClick={handleCloseModal}
                         className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
                     >
                         Cancel
-                    </button>                    <button
+                    </button><button
                         onClick={() => {
                             handleSave();
                             setTimeout(() => {
@@ -766,9 +833,10 @@ const debugParentRelationships = () => {
         const devices = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
         
         console.log("========== NETWORK RELATIONSHIP DEBUG ==========");
-        
-        // Check all switches
-        const switches = Object.entries(devices).filter(([_, props]) => props.networkRole === 'switch');
+          // Check all switches
+        const switches = Object.entries(devices).filter(([_, props]) => 
+            props.networkRole === 'switch' || props.networkRole === 'Switch'
+        );
         console.log(`Found ${switches.length} switches`);
         
         switches.forEach(([ip, props]) => {
@@ -808,11 +876,10 @@ const debugParentRelationships = () => {
                     console.warn(`  ⚠️ Warning: parentSwitch (${parentSwitch}) doesn't match first connectedSwitch (${connectedSwitches[0]})`);
                 }
             }
-            
-            // Find switches that connect to this switch
+              // Find switches that connect to this switch
             const switchesConnectingToThis = Object.entries(devices)
                 .filter(([_, p]) => 
-                    p.networkRole === 'switch' && 
+                    (p.networkRole === 'switch' || p.networkRole === 'Switch') && 
                     (p.parentSwitch === ip || 
                      (Array.isArray(p.connectedSwitches) && p.connectedSwitches.includes(ip)))
                 )

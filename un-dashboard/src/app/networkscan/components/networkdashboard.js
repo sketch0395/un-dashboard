@@ -130,15 +130,26 @@ export default function NetworkDashboard() {
             parentGateway: updatedDevice.parentGateway,
             parentSwitch: updatedDevice.parentSwitch
         });
-        
-        // Check if network role is changing
+          // Check if network role is changing or if this is a new device with network relationships
         let networkRoleChanged = false;
+        let isNewDevice = !customNames[updatedDevice.ip];
+        let hasNetworkRelationships = updatedDevice.networkRole || updatedDevice.parentGateway || updatedDevice.parentSwitch;
+        
         if (customNames[updatedDevice.ip]) {
             networkRoleChanged = 
                 customNames[updatedDevice.ip].networkRole !== updatedDevice.networkRole ||
                 customNames[updatedDevice.ip].parentGateway !== updatedDevice.parentGateway ||
                 customNames[updatedDevice.ip].parentSwitch !== updatedDevice.parentSwitch;
-        }        // We need to preserve the parent relationships exactly as they are in the updatedDevice
+        }
+        
+        // Force refresh if it's a new device with network relationships or if relationships changed
+        let shouldRefresh = networkRoleChanged || (isNewDevice && hasNetworkRelationships);
+        console.log("NETWORK DASHBOARD - Refresh decision:", {
+            networkRoleChanged,
+            isNewDevice,
+            hasNetworkRelationships,
+            shouldRefresh
+        });// We need to preserve the parent relationships exactly as they are in the updatedDevice
         // Do not modify or set to null unless specifically intended
         console.log("NETWORK DASHBOARD - Device being saved:", {
             ip: updatedDevice.ip,
@@ -151,8 +162,7 @@ export default function NetworkDashboard() {
         if (updatedDevice.networkRole === 'switch') {
             console.log(`Ensuring switch ${updatedDevice.ip} connection to gateway ${updatedDevice.parentGateway} is preserved`);
         }
-        
-        // Update the device in the local state WITHOUT overriding parent relationships
+          // Update the device in the local state WITHOUT overriding parent relationships
         const updatedCustomNames = {
             ...customNames,
             [updatedDevice.ip]: {
@@ -160,26 +170,35 @@ export default function NetworkDashboard() {
                 ...updatedDevice
             }
         };
-          console.log(`Updated device ${updatedDevice.ip} relationships:`, {
+          console.log(`NETWORK DASHBOARD - Updated device ${updatedDevice.ip} relationships:`, {
             networkRole: updatedDevice.networkRole,
             parentGateway: updatedDevice.parentGateway,
             parentSwitch: updatedDevice.parentSwitch
-        });
+        });        console.log('NETWORK DASHBOARD - Setting customNames state with:', updatedCustomNames);
         
         setCustomNames(updatedCustomNames);
         
-        // If network role changed, reload from localStorage to ensure consistency
-        if (networkRoleChanged) {
-            console.log("Network role or parent relationship changed, reloading custom names from localStorage");
+        // Force an immediate refresh if we have network relationships that need to be displayed
+        if (shouldRefresh && topologyMapRef.current) {
+            console.log("NETWORK DASHBOARD - Triggering immediate refresh for network relationship changes");
+            topologyMapRef.current.refresh();
+        }// If network role changed or we need to refresh, reload from localStorage to ensure consistency
+        if (shouldRefresh) {
+            console.log("NETWORK DASHBOARD - Network role or parent relationship changed, reloading custom names from localStorage");
             setTimeout(() => {
                 try {
                     const storedProps = localStorage.getItem("customDeviceProperties");
                     if (storedProps) {
-                        setCustomNames(JSON.parse(storedProps));
+                        const parsedProps = JSON.parse(storedProps);
+                        console.log("NETWORK DASHBOARD - Reloading from localStorage:", parsedProps);
+                        setCustomNames(parsedProps);
                         
                         // Also refresh the topology map
                         if (topologyMapRef.current) {
+                            console.log("NETWORK DASHBOARD - Calling topologyMapRef.current.refresh()");
                             topologyMapRef.current.refresh();
+                        } else {
+                            console.log("NETWORK DASHBOARD - WARNING: topologyMapRef.current is null, cannot refresh");
                         }
                     }
                 } catch (error) {

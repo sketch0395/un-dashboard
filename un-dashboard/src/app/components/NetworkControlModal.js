@@ -102,8 +102,45 @@ export default function NetworkControlModal({
             console.log("NetworkControlModal: Updating custom names:", data.customNames);
             handleCustomNamesUpdate(data.customNames);
         }
-    };
-    
+    };    // Reset state when modal becomes visible to ensure clean state
+    useEffect(() => {
+        if (isVisible) {
+            console.log("NetworkControlModal: Modal opened, resetting to clean state");
+            
+            // Reset scan results and data
+            setDevices({});
+            setCustomNames({});
+            setRawNetworkData(null);
+            setRawHistoryData(null);
+            setScanHistoryData(null);
+            
+            // Reset scan status
+            setStatus("Idle");
+            setScanOutput("");
+            setErrorMessage("");
+            setError(null);
+            setIsScanning(false);
+            setLastScanTime(null);
+            
+            // Reset scan options to defaults
+            setIpRange(defaultIpRange);
+            setUseDocker(true);
+            setScanType('ping');
+            
+            // Reset UI visibility states
+            setShowCurrentResults(false);
+            setShowRawNetworkData(false);
+            setShowRawHistoryData(false);
+            setShowSshInfo(false);
+            setShowAdvancedOptions(false);
+            setShowScanTypeInfo(false);
+            setShowRawData(false);
+            
+            // Reset modal state
+            setModalDevice(null);
+        }
+    }, [isVisible, defaultIpRange]);
+
     // Socket.IO connection setup
     useEffect(() => {
         if (!isVisible) return;
@@ -270,9 +307,8 @@ export default function NetworkControlModal({
                 socket.disconnect();
             }
         };
-    }, [isVisible, ipRange, scanType, onScanComplete, handleDevicesUpdate]);
-
-    const startNetworkScan = useCallback(() => {
+    }, [isVisible, ipRange, scanType, onScanComplete, handleDevicesUpdate]);    const startNetworkScan = useCallback(() => {
+        // Reset all scan-related state
         setErrorMessage("");
         setError(null);
         setStatus("Starting scan...");
@@ -280,8 +316,21 @@ export default function NetworkControlModal({
         setShowSshInfo(false);
         setIsScanning(true);
         
-        console.log(`NetworkControlModal: Starting ${scanType} scan with IP range: ${ipRange}`);
+        // Clear previous scan results to ensure clean state
+        setDevices({});
+        setCustomNames({});
+        setRawNetworkData(null);
+        setRawHistoryData(null);
+        setScanHistoryData(null);
+        
+        // Reset UI state
+        setShowCurrentResults(false);
+        setShowRawNetworkData(false);
+        setShowRawHistoryData(false);
+        
+        console.log(`NetworkControlModal: Starting fresh ${scanType} scan with IP range: ${ipRange}`);
         console.log(`Using Docker: ${useDocker}, Scan Type: ${scanType}`);
+        console.log("Previous scan state cleared");
         
         const currentTime = new Date();
         setLastScanTime(currentTime);

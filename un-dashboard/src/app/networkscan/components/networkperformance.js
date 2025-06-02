@@ -824,7 +824,7 @@ const NetworkPerformance = forwardRef(({
                 <div className="bg-gray-700 text-white p-3 rounded mb-4 flex items-center">
                     <FaInfoCircle className="mr-2 text-blue-400" /> 
                     <span>
-                        No performance data available. Select devices and click "Check Now" to start monitoring.
+                        No performance data available. Select devices and click &quot;Check Now&quot; to start monitoring.
                     </span>
                 </div>
             )}

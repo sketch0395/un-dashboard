@@ -2,9 +2,126 @@
 import * as d3 from "d3";
 import { getMacInfo, getOSInfo } from "../../utils/sshScanUtils";
 import { determineDeviceRoles } from "../../utils/deviceManagementUtils";
+import { 
+    FaServer,
+    FaDatabase,
+    FaNetworkWired,
+    FaShieldAlt,
+    FaMicrochip,
+    FaDesktop,
+    FaMobile,
+    FaPrint,
+    FaCamera,
+    FaRoad
+} from "react-icons/fa";
 
 // Re-export the determineDeviceRoles function
 export { determineDeviceRoles };
+
+/**
+ * Get device type configuration including icon and color
+ * This matches the device type system from UnifiedDeviceModal
+ */
+export const getDeviceTypeConfig = (typeName) => {
+    const deviceTypes = [
+        { name: "Production Server", icon: FaServer, color: "#10b981" },
+        { name: "Database", icon: FaDatabase, color: "#3b82f6" },
+        { name: "Router", icon: FaNetworkWired, color: "#8b5cf6" },
+        { name: "Switch", icon: FaNetworkWired, color: "#06b6d4" },
+        { name: "Firewall", icon: FaShieldAlt, color: "#ef4444" },
+        { name: "IoT Device", icon: FaMicrochip, color: "#f59e0b" },
+        { name: "Workstation", icon: FaDesktop, color: "#6b7280" },
+        { name: "Mobile Device", icon: FaMobile, color: "#ec4899" },
+        { name: "Printer", icon: FaPrint, color: "#84cc16" },
+        { name: "Camera", icon: FaCamera, color: "#f97316" },
+        { name: "Development Server", icon: FaServer, color: "#14b8a6" },
+        { name: "Gateway", icon: FaRoad, color: "#fbbf24" },
+        { name: "Other", icon: FaMicrochip, color: "#9ca3af" }
+    ];
+    
+    return deviceTypes.find(type => type.name === typeName) || deviceTypes[deviceTypes.length - 1]; // Default to "Other"
+};
+
+/**
+ * Enhanced function to determine device icon and color based on device type first, then fallback to vendor
+ */
+export const getDeviceIconAndColor = (device, customNames) => {
+    // First priority: Check if device has a specific device type set
+    if (device.ip && customNames?.[device.ip]?.networkRole) {
+        const typeConfig = getDeviceTypeConfig(customNames[device.ip].networkRole);
+        return {
+            iconComponent: typeConfig.icon,
+            color: typeConfig.color,
+            source: 'deviceType'
+        };
+    }
+    
+    // Second priority: Legacy network role mapping
+    if (customNames?.[device.ip]?.networkRole === 'switch') {
+        return {
+            iconComponent: FaNetworkWired,
+            color: "#06b6d4",
+            source: 'networkRole'
+        };
+    } else if (customNames?.[device.ip]?.networkRole === 'gateway') {
+        return {
+            iconComponent: FaRoad,
+            color: "#fbbf24",
+            source: 'networkRole'
+        };
+    }
+    
+    // Third priority: Custom icon stored in device properties
+    if (customNames?.[device.ip]?.icon) {
+        // Try to map stored icon names to actual components
+        const iconMap = {
+            'FaServer': FaServer,
+            'FaDatabase': FaDatabase,
+            'FaNetworkWired': FaNetworkWired,
+            'FaShieldAlt': FaShieldAlt,
+            'FaMicrochip': FaMicrochip,
+            'FaDesktop': FaDesktop,
+            'FaMobile': FaMobile,
+            'FaPrint': FaPrint,
+            'FaCamera': FaCamera,
+            'FaRoad': FaRoad
+        };
+        
+        const iconComponent = iconMap[customNames[device.ip].icon];
+        if (iconComponent) {
+            return {
+                iconComponent,
+                color: customNames[device.ip].color || "#9ca3af",
+                source: 'customIcon'
+            };
+        }
+    }
+    
+    // Fourth priority: Vendor-based icon (legacy fallback)
+    if (device.vendor) {
+        const vendor = device.vendor.toLowerCase();
+        if (vendor.includes('cisco')) {
+            return { iconComponent: FaNetworkWired, color: "#06b6d4", source: 'vendor' };
+        } else if (vendor.includes('raspberry')) {
+            return { iconComponent: FaMicrochip, color: "#10b981", source: 'vendor' };
+        } else if (vendor.includes('apple')) {
+            return { iconComponent: FaDesktop, color: "#6b7280", source: 'vendor' };
+        } else if (vendor.includes('intel')) {
+            return { iconComponent: FaMicrochip, color: "#3b82f6", source: 'vendor' };
+        } else if (vendor.includes('nvidia')) {
+            return { iconComponent: FaMicrochip, color: "#10b981", source: 'vendor' };
+        } else if (vendor.includes('samsung')) {
+            return { iconComponent: FaMobile, color: "#ec4899", source: 'vendor' };
+        }
+    }
+    
+    // Default fallback
+    return {
+        iconComponent: FaMicrochip,
+        color: "#9ca3af",
+        source: 'default'
+    };
+};
 
 // Verify and validate parent-child relationships
 export const validateNetworkRelationships = (devices, customNames) => {
@@ -17,14 +134,12 @@ export const validateNetworkRelationships = (devices, customNames) => {
     const validatedNames = { ...customNames };
     
     // First pass: validate that all switches have valid gateway parents
-    Object.entries(validatedNames).forEach(([ip, props]) => {
-        // If this is a switch, make sure it has a valid parent gateway
-        if (props.networkRole === 'switch') {
+    Object.entries(validatedNames).forEach(([ip, props]) => {        // If this is a switch, make sure it has a valid parent gateway
+        if (props.networkRole === 'switch' || props.networkRole === 'Switch') {
             if (props.parentGateway) {
                 const parentProps = validatedNames[props.parentGateway];
-                
-                // If parent doesn't exist or isn't a gateway, clear the relationship
-                if (!parentProps || parentProps.networkRole !== 'gateway') {
+                  // If parent doesn't exist or isn't a gateway, clear the relationship
+                if (!parentProps || (parentProps.networkRole !== 'gateway' && parentProps.networkRole !== 'Gateway')) {
                     console.warn(`Invalid parent gateway for switch ${ip}: ${props.parentGateway}`, 
                                parentProps ? `Parent role: ${parentProps.networkRole}` : 'Parent not found');
                     validatedNames[ip] = { ...props, parentGateway: null };

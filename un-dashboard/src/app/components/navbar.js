@@ -110,9 +110,10 @@ const Navbar = memo(() => {
                 >
                     Performance
                 </button>
-            </div>
-        </nav>
+            </div>        </nav>
     );
 });
+
+Navbar.displayName = 'Navbar';
 
 export default Navbar;

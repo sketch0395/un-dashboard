@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enhanced UnifiedDeviceModal Validation Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background-color: #fafafa;
+        }
+        .test-section h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .checklist {
+            list-style: none;
+            padding: 0;
+        }
+        .checklist li {
+            margin: 10px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+        }
+        .checklist input[type="checkbox"] {
+            margin-right: 10px;
+            transform: scale(1.2);
+        }
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status.pass { background-color: #d4edda; color: #155724; }
+        .status.fail { background-color: #f8d7da; color: #721c24; }
+        .status.pending { background-color: #fff3cd; color: #856404; }
+        .device-types {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .device-type {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: white;
+            display: flex;
+            align-items: center;
+        }
+        .color-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        .instructions {
+            background-color: #e7f3ff;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #007bff;
+            margin-bottom: 20px;
+        }
+        .error-log {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+            margin-top: 15px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Enhanced UnifiedDeviceModal Validation Test</h1>
+        <p><strong>Date:</strong> <span id="testDate"></span></p>
+        
+        <div class="instructions">
+            <h3>📋 Testing Instructions</h3>
+            <p>This validation test covers the enhanced UnifiedDeviceModal with data persistence fixes and device type visual enhancements. Follow each test section and check off completed items.</p>
+            <p><strong>Application URL:</strong> <a href="http://localhost:3000" target="_blank">http://localhost:3000</a></p>
+        </div>
+
+        <div class="test-section">
+            <h3>🔧 1. Data Persistence Validation</h3>
+            <ul class="checklist">
+                <li>
+                    <input type="checkbox" id="test1-1">
+                    <label for="test1-1">Open a device modal and add custom information (notes, aliases, groups)</label>
+                    <span class="status pending" id="status1-1">PENDING</span>
+                </li>
+                <li>
+                    <input type="checkbox" id="test1-2">
+                    <label for="test1-2">Save the device and close the modal</label>
+                    <span class="status pending" id="status1-2">PENDING</span>
+                </li>
+                <li>
+                    <input type="checkbox" id="test1-3">
+                    <label for="test1-3">Reopen the same device modal - verify all custom data is preserved</label>
+                    <span class="status pending" id="status1-3">PENDING</span>
+                </li>
+                <li>
+                    <input type="checkbox" id="test1-4">
+                    <label for="test1-4">Change device type and save - verify type persists after modal reopen</label>
+                    <span class="status pending" id="status1-4">PENDING</span>
+                </li>
+                <li>
+                    <input type="checkbox" id="test1-5">
+                    <label for="test1-5">Refresh browser page - verify device data still persists from localStorage</label>
+                    <span class="status pending" id="status1-5">PENDING</span>
+                </li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h3>🎨 2. Device Type Visual Enhancements</h3>
+            <ul class="checklist">
+                <li>
+                    <input type="checkbox" id="test2-1">
+                    <label for="test2-1">Open device modal and verify device type dropdown shows color dots and icons</label>
+                    <span class="status pending" id="status2-1">PENDING</span>
+                </li>
+                <li>
+                    <input type="checkbox" id="test2-2">
+                    <label for="test2-2">Verify modal header displays device type badge with appropriate icon and color</label>
+                    <span class="status pending" id="status2-2">PENDING</span>
+                </li>
+                <li>
+                    <input type="checkbox" id="test2-3">
+                    <label for="test2-3">Test all 13 device types and verify each has unique icon and color</label>
+                    <span class="status pending" id="status2-3">PENDING</span>
+                </li>
+                <li>
+                    <input type="checkbox" id="test2-4">
+                    <label for="test2-4">Change device type - verify header badge updates immediately</label>
+                    <span class="status pending" id="status2-4">PENDING</span>
+                </li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h3>📱 3. Device Type Reference</h3>
+            <p>Expected device types with their colors and icons:</p>
+            <div class="device-types">
+                <div class="device-type">
+                    <span class="color-dot" style="background-color: #22c55e;"></span>
+                    <span>🖥️ Production Server (Green)</span>
+                </div>
+                <div class="device-type">
+                    <span class="color-dot" style="background-color: #f59e0b;"></span>
+                    <span>🗄️ Database (Amber)</span>
+                </div>
+                <div class="device-type">
+                    <span class="color-dot" style="background-color: #3b82f6;"></span>
+                    <span>🌐 Router (Blue)</span>
+                </div>
+                <div class="device-type">
+                    <span class="color-dot" style="background-color: #8b5cf6;"></span>
+                    <span>🔌 Switch (Purple)</span>
+                </div>
+                <div class="device-type">
+                    <span class="color-dot" style="background-color: #06b6d4;"></span>
+                    <span>📡 Access Point (Cyan)</span>
+                </div>
+                <div class="device-type">
+                    <span class="color-dot" style="background-color: #ef4444;"></span>
+                    <span>🔥 Firewall (Red)</span>
+                </div>
+                <div class="device-type">
+                    <span class="color-dot" style="background-color: #84cc16;"></span>
+                    <span>🖨️ Printer (Lime)</span>
+                </div>
+                <div class="device-type">
+                    <span class="color-dot" style="background-color: #f97316;"></span>
+                    <span>📱 Mobile Device (Orange)</span>
+                </div>
+                <div class="device-type">
+                    <span class="color-dot" style="background-color: #ec4899;"></span>
+                    <span>💻 Laptop (Pink)</span>
+                </div>
+                <div class="device-type">
+                    <span class="color-dot" style="background-color: #14b8a6;"></span>
+                    <span>🖥️ Desktop (Teal)</span>
+                </div>
+                <div class="device-type">
+                    <span class="color-dot" style="background-color: #a855f7;"></span>
+                    <span>📹 Camera (Violet)</span>
+                </div>
+                <div class="device-type">
+                    <span class="color-dot" style="background-color: #64748b;"></span>
+                    <span>💾 Storage (Slate)</span>
+                </div>
+                <div class="device-type">
+                    <span class="color-dot" style="background-color: #6b7280;"></span>
+                    <span>❓ Unknown (Gray)</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔄 4. State Management Validation</h3>
+            <ul class="checklist">
+                <li>
+                    <input type="checkbox" id="test4-1">
+                    <label for="test4-1">Open multiple device modals consecutively - verify no data bleeding between devices</label>
+                    <span class="status pending" id="status4-1">PENDING</span>
+                </li>
+                <li>
+                    <input type="checkbox" id="test4-2">
+                    <label for="test4-2">Cancel modal changes without saving - verify original data is preserved</label>
+                    <span class="status pending" id="status4-2">PENDING</span>
+                </li>
+                <li>
+                    <input type="checkbox" id="test4-3">
+                    <label for="test4-3">Test modal cleanup - verify state resets properly when closing modal</label>
+                    <span class="status pending" id="status4-3">PENDING</span>
+                </li>
+                <li>
+                    <input type="checkbox" id="test4-4">
+                    <label for="test4-4">Verify enhancedDevice state updates properly reflect in UI immediately</label>
+                    <span class="status pending" id="status4-4">PENDING</span>
+                </li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h3>🚨 5. Error Handling</h3>
+            <ul class="checklist">
+                <li>
+                    <input type="checkbox" id="test5-1">
+                    <label for="test5-1">Test with corrupted localStorage data - verify graceful fallback</label>
+                    <span class="status pending" id="status5-1">PENDING</span>
+                </li>
+                <li>
+                    <input type="checkbox" id="test5-2">
+                    <label for="test5-2">Test with missing device data - verify proper initialization</label>
+                    <span class="status pending" id="status5-2">PENDING</span>
+                </li>
+                <li>
+                    <input type="checkbox" id="test5-3">
+                    <label for="test5-3">Check browser console for any JavaScript errors during testing</label>
+                    <span class="status pending" id="status5-3">PENDING</span>
+                </li>
+            </ul>
+        </div>
+
+        <div class="test-section">
+            <h3>📊 6. Test Results Summary</h3>
+            <p><strong>Total Tests:</strong> <span id="totalTests">21</span></p>
+            <p><strong>Passed:</strong> <span id="passedTests">0</span></p>
+            <p><strong>Failed:</strong> <span id="failedTests">0</span></p>
+            <p><strong>Pending:</strong> <span id="pendingTests">21</span></p>
+            <p><strong>Success Rate:</strong> <span id="successRate">0%</span></p>
+        </div>
+
+        <div class="error-log" id="errorLog" style="display: none;">
+            <h4>🐛 Error Log:</h4>
+            <div id="errorContent"></div>
+        </div>
+    </div>
+
+    <script>
+        // Set test date
+        document.getElementById('testDate').textContent = new Date().toLocaleString();
+
+        // Track test status
+        const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+        let errorLog = [];
+
+        // Update test results
+        function updateResults() {
+            const total = checkboxes.length;
+            let passed = 0;
+            let failed = 0;
+            let pending = 0;
+
+            checkboxes.forEach(checkbox => {
+                const statusId = checkbox.id.replace('test', 'status');
+                const statusElement = document.getElementById(statusId);
+                
+                if (checkbox.checked) {
+                    statusElement.textContent = 'PASS';
+                    statusElement.className = 'status pass';
+                    passed++;
+                } else {
+                    statusElement.textContent = 'PENDING';
+                    statusElement.className = 'status pending';
+                    pending++;
+                }
+            });
+
+            document.getElementById('totalTests').textContent = total;
+            document.getElementById('passedTests').textContent = passed;
+            document.getElementById('failedTests').textContent = failed;
+            document.getElementById('pendingTests').textContent = pending;
+            document.getElementById('successRate').textContent = total > 0 ? Math.round((passed / total) * 100) + '%' : '0%';
+        }
+
+        // Add event listeners
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', updateResults);
+        });
+
+        // Log errors function
+        function logError(message) {
+            errorLog.push(`[${new Date().toLocaleTimeString()}] ${message}`);
+            const errorLogElement = document.getElementById('errorLog');
+            const errorContent = document.getElementById('errorContent');
+            errorContent.textContent = errorLog.join('\n');
+            errorLogElement.style.display = 'block';
+        }
+
+        // Monitor for console errors
+        window.addEventListener('error', function(e) {
+            logError(`JavaScript Error: ${e.message} at ${e.filename}:${e.lineno}`);
+        });
+
+        // Initialize
+        updateResults();
+
+        console.log('Enhanced UnifiedDeviceModal Validation Test loaded successfully');
+        console.log('To test localStorage functionality, use: localStorage.getItem("networkDevices")');
+        console.log('To clear localStorage: localStorage.clear()');
+    </script>
+</body>
+</html>

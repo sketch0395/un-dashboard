@@ -1,5 +1,5 @@
-import React, { forwardRef } from "react";
-import { NetworkViewManager } from '../networkviews'; // Import our new componentized views
+import { forwardRef } from 'react';
+import NetworkViewManager from '../networkviews/NetworkViewManager'; // Direct import
 
 // determineDeviceRoles has been moved to deviceManagementUtils.js
 
@@ -8,17 +8,20 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, setCustomN
     // Simply pass through props to the NetworkViewManager component
     // which now handles all visualization logic and UI controls
     return (
-        <div className="w-full h-full">            <NetworkViewManager 
+        <div className="w-full h-full">
+            <NetworkViewManager 
                 ref={ref}
                 devices={devices} 
                 vendorColors={vendorColors} 
                 customNames={customNames}
                 setCustomNames={setCustomNames}
-                openSSHModal={openSSHModal} 
-                setModalDevice={setModalDevice} 
+                openSSHModal={openSSHModal}
+                setModalDevice={setModalDevice}
             />
         </div>
     );
 });
+
+TopologyMap.displayName = 'TopologyMap';
 
 export default TopologyMap;

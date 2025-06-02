@@ -8,7 +8,7 @@ import {
   SiIntellijidea, SiGitlab, SiStackoverflow, SiPostman,
   SiFigma, SiAdobexd, SiAdobephotoshop, SiAdobeillustrator,
   SiJenkins, SiCircleci, SiTravisci, SiKubernetes, SiGrafana, SiKibana,
-  SiGooglechrome, SiFirefox, SiMicrosoftedge, SiNgrok, SiUbuntu, SiLinux,
+  SiGooglechrome, SiFirefox, SiNgrok, SiUbuntu, SiLinux,
   SiJupyter, SiMysql, SiRedis, SiClickup, SiLinear
 } from 'react-icons/si';
 
@@ -89,11 +89,10 @@ export const iconMap = {
   'k8s': SiKubernetes,
   'grafana': SiGrafana,
   'kibana': SiKibana,
-  
-  // Browsers
+    // Browsers
   'chrome': SiGooglechrome,
   'firefox': SiFirefox,
-  'edge': SiMicrosoftedge,
+  'edge': FaGlobe, // Using fallback icon instead of SiMicrosoftedge
   
   // Operating systems
   'ubuntu': SiUbuntu,

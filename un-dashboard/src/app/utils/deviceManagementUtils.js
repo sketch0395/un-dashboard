@@ -28,10 +28,8 @@ export const updateDeviceProperties = (device) => {
         console.log(`- networkRole: ${device.networkRole}`);
         console.log(`- parentGateway: "${device.parentGateway}"`);
         console.log(`- parentSwitch: "${device.parentSwitch}"`);
-        console.log(`- connectedGateways:`, device.connectedGateways);
-
-        // For switches, ensure gateway connections are preserved as-is
-        if (device.networkRole === 'switch') {
+        console.log(`- connectedGateways:`, device.connectedGateways);        // For switches, ensure gateway connections are preserved as-is
+        if (device.networkRole === 'switch' || device.networkRole === 'Switch') {
             console.log(`Preserving gateway connections for switch ${device.ip}`);
             if (device.connectedGateways && Array.isArray(device.connectedGateways)) {
                 console.log(`Switch is connected to ${device.connectedGateways.length} gateways:`, device.connectedGateways);
@@ -39,15 +37,14 @@ export const updateDeviceProperties = (device) => {
                 console.log(`Switch has legacy parentGateway connection: "${device.parentGateway}"`);
             }
         }
-        
-        // For regular devices, ensure parentSwitch is preserved as-is
-        if (!device.networkRole || device.networkRole !== 'gateway') {
+          // For regular devices, ensure parentSwitch is preserved as-is
+        if (!device.networkRole || (device.networkRole !== 'gateway' && device.networkRole !== 'Gateway')) {
             console.log(`Preserving parent switch "${device.parentSwitch}" for device ${device.ip}`);
-        }
-          // Handle connection arrays - ensure they're properly initialized
+        }        // Handle connection arrays - ensure they're properly initialized
         // 1. For gateway connections (switches and gateways can connect to gateways)
         let connectedGateways = [];
-        if (device.networkRole === 'switch' || device.networkRole === 'gateway') {
+        if (device.networkRole === 'switch' || device.networkRole === 'gateway' || 
+            device.networkRole === 'Switch' || device.networkRole === 'Gateway') {
             if (Array.isArray(device.connectedGateways)) {
                 // Use provided array
                 connectedGateways = device.connectedGateways;
@@ -56,10 +53,10 @@ export const updateDeviceProperties = (device) => {
                 connectedGateways = [device.parentGateway];
             }
         }
-        
-        // 2. For switch connections (switches and gateways can connect to switches)
+          // 2. For switch connections (switches and gateways can connect to switches)
         let connectedSwitches = [];
-        if (device.networkRole === 'switch' || device.networkRole === 'gateway') {
+        if (device.networkRole === 'switch' || device.networkRole === 'gateway' || 
+            device.networkRole === 'Switch' || device.networkRole === 'Gateway') {
             if (Array.isArray(device.connectedSwitches)) {
                 // Use provided array
                 connectedSwitches = device.connectedSwitches;
@@ -67,24 +64,31 @@ export const updateDeviceProperties = (device) => {
                 // Create array from legacy parentSwitch for backward compatibility
                 connectedSwitches = [device.parentSwitch];
             }
-        }
-
-        // Update the properties for this device - use the parent relationships directly from device
+        }        // Update the properties for this device - use the parent relationships directly from device
         customProps[device.ip] = {
             ...customProps[device.ip],
             name: device.name,
             category: device.category,
             networkRole: device.networkRole,
-            // Ensure we're setting the correct parent relationships based on role
-            parentGateway: (device.networkRole === 'switch' || device.networkRole === 'gateway') ? 
-                           device.parentGateway : null,
-            parentSwitch: device.networkRole === null ? device.parentSwitch : 
-                          (device.networkRole === 'switch' || device.networkRole === 'gateway') ? 
-                          device.parentSwitch : null,
-            // Add connection arrays for switches and gateways
-            connectedGateways: (device.networkRole === 'switch' || device.networkRole === 'gateway') ? 
+            
+            // FIXED: Preserve parent relationships correctly based on device role
+            // All devices can have a parentSwitch (regular devices, switches, gateways, routers)
+            parentSwitch: device.parentSwitch || null,
+            
+            // Only switches, gateways, and routers can have a parentGateway
+            parentGateway: (device.networkRole === 'switch' || device.networkRole === 'gateway' || 
+                           device.networkRole === 'Switch' || device.networkRole === 'Gateway' ||
+                           device.networkRole === 'Router') ? 
+                           device.parentGateway || null : null,
+            
+            // Add connection arrays for switches, gateways, and routers
+            connectedGateways: (device.networkRole === 'switch' || device.networkRole === 'gateway' || 
+                               device.networkRole === 'Switch' || device.networkRole === 'Gateway' ||
+                               device.networkRole === 'Router') ? 
                                connectedGateways : null,
-            connectedSwitches: (device.networkRole === 'switch' || device.networkRole === 'gateway') ? 
+            connectedSwitches: (device.networkRole === 'switch' || device.networkRole === 'gateway' || 
+                               device.networkRole === 'Switch' || device.networkRole === 'Gateway' ||
+                               device.networkRole === 'Router') ? 
                                connectedSwitches : null,
             notes: device.notes || [],
             icon: device.icon,
@@ -92,9 +96,9 @@ export const updateDeviceProperties = (device) => {
             isMainGateway: device.isMainGateway || false,
             history: device.history || []
         };
-        
-        // Additional debug validation checks
-        if (device.networkRole === 'switch' || device.networkRole === 'gateway') {
+          // Additional debug validation checks
+        if (device.networkRole === 'switch' || device.networkRole === 'gateway' || 
+            device.networkRole === 'Switch' || device.networkRole === 'Gateway') {
             // Verify the gateway connections were saved correctly
             if (device.parentGateway && customProps[device.ip].parentGateway !== device.parentGateway) {
                 console.error(`ERROR: Failed to save parent gateway "${device.parentGateway}" for ${device.networkRole} ${device.ip}`);
@@ -157,10 +161,8 @@ export const getDeviceHierarchy = (deviceIp, customNames = null) => {
             parents: [],
             children: [],
             adjacentGateways: []
-        };
-
-        // Build parent hierarchy
-        if (device.networkRole === 'switch' && device.parentGateway) {
+        };        // Build parent hierarchy
+        if ((device.networkRole === 'switch' || device.networkRole === 'Switch') && device.parentGateway) {
             const gateway = customProps[device.parentGateway];
             if (gateway) {
                 hierarchy.parents.push({
@@ -221,14 +223,13 @@ export const getDeviceHierarchy = (deviceIp, customNames = null) => {
                 });
             }
         });        // Gateway-specific hierarchy handling
-        if (device.networkRole === 'gateway') {
+        if (device.networkRole === 'gateway' || device.networkRole === 'Gateway') {
             // If this is a main gateway, find other main gateways and sub-gateways
             if (device.isMainGateway) {
                 Object.entries(customProps).forEach(([ip, props]) => {
                     if (ip === deviceIp) return; // Skip self
-                    
-                    // Find other main gateways
-                    if (props.networkRole === 'gateway' && props.isMainGateway) {
+                      // Find other main gateways
+                    if ((props.networkRole === 'gateway' || props.networkRole === 'Gateway') && props.isMainGateway) {
                         hierarchy.adjacentGateways.push({
                             ip,
                             name: props.name || ip,
@@ -236,11 +237,10 @@ export const getDeviceHierarchy = (deviceIp, customNames = null) => {
                             isMain: true
                         });
                     }
-                    
-                    // Find sub-gateways connected to this main gateway
-                    if (props.networkRole === 'gateway' && 
+                      // Find sub-gateways connected to this main gateway
+                    if ((props.networkRole === 'gateway' || props.networkRole === 'Gateway') && 
                         !props.isMainGateway && 
-                        (props.parentGateway === deviceIp || 
+                        (props.parentGateway === deviceIp ||
                          (Array.isArray(props.connectedGateways) && props.connectedGateways.includes(deviceIp)))) {
                         
                         hierarchy.children.push({
@@ -316,11 +316,17 @@ export const wouldCreateCircularDependency = (sourceIp, targetIp, connectionType
  */
 export const getDevicesByRole = (role) => {
     try {
-        const customProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
-        return Object.entries(customProps)
+        const customProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");        return Object.entries(customProps)
             .filter(([_, props]) => {
                 if (role === 'device') {
                     return !props.networkRole;
+                }
+                // Support both old lowercase and new capitalized values
+                if (role === 'gateway') {
+                    return props.networkRole === 'gateway' || props.networkRole === 'Gateway';
+                }
+                if (role === 'switch') {
+                    return props.networkRole === 'switch' || props.networkRole === 'Switch';
                 }
                 return props.networkRole === role;
             })
