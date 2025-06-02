@@ -6,6 +6,7 @@ import { Line } from "react-chartjs-2";
 import { FaWifi, FaServer, FaChartLine, FaExclamationTriangle, FaCheck, FaTimes, FaInfoCircle, FaNetworkWired, FaDocker, FaDesktop, FaClock, FaEdit, FaTerminal } from "react-icons/fa";
 import UnifiedDeviceModal from "../../components/UnifiedDeviceModal";
 import SSHTerminal from "../../components/sshterminal";
+import { syncPerformanceToDeviceStatus, createStatusUpdateListener } from "../../utils/performanceDeviceStatusSync";
 import {
     Chart as ChartJS,
     CategoryScale,
@@ -72,6 +73,9 @@ const NetworkPerformance = forwardRef(({
         password: ""
     });
     
+    // State for device status updates from performance sync
+    const [deviceStatusUpdates, setDeviceStatusUpdates] = useState({});
+    
     // Format system uptime string in a human-readable way
     const formatSystemUptime = (uptimeString) => {
         if (!uptimeString) return 'Unknown';
@@ -79,6 +83,56 @@ const NetworkPerformance = forwardRef(({
         // Already nicely formatted by Linux uptime command
         return uptimeString;
     };
+    
+    // Set up status update listener for real-time device status synchronization
+    useEffect(() => {
+        const statusUpdateListener = createStatusUpdateListener((updates) => {
+            console.log("[PERFORMANCE SYNC] Received device status updates:", updates);
+            
+            // Update local state with new device statuses
+            const statusMap = {};
+            updates.forEach(update => {
+                statusMap[update.ip] = {
+                    status: update.newStatus,
+                    lastChecked: update.lastChecked,
+                    performanceData: update.performanceData
+                };
+            });
+            
+            setDeviceStatusUpdates(prev => ({
+                ...prev,
+                ...statusMap
+            }));
+        });
+        
+        // Listen for custom device status update events
+        const handleCustomStatusUpdate = (event) => {
+            const { updates, source } = event.detail;
+            console.log(`[PERFORMANCE SYNC] Custom status update from ${source}:`, updates);
+            
+            const statusMap = {};
+            updates.forEach(update => {
+                statusMap[update.ip] = {
+                    status: update.newStatus,
+                    lastChecked: new Date().toISOString(),
+                    performanceData: update.performanceData
+                };
+            });
+            
+            setDeviceStatusUpdates(prev => ({
+                ...prev,
+                ...statusMap
+            }));
+        };
+        
+        window.addEventListener('deviceStatusUpdated', handleCustomStatusUpdate);
+        
+        // Cleanup
+        return () => {
+            statusUpdateListener();
+            window.removeEventListener('deviceStatusUpdated', handleCustomStatusUpdate);
+        };
+    }, []);
 
     // Expose methods to parent component via ref
     useImperativeHandle(ref, () => ({
@@ -272,6 +326,28 @@ const NetworkPerformance = forwardRef(({
                 uptime: data.uptime || [],
             });
             setIsLoading(false);
+            
+            // Sync performance results to device management status
+            if (data.latency || data.uptime) {
+                try {
+                    const statusUpdates = syncPerformanceToDeviceStatus(
+                        data.latency || [], 
+                        data.uptime || [], 
+                        socketRef.current
+                    );
+                    
+                    if (statusUpdates.length > 0) {
+                        console.log(`[PERFORMANCE SYNC] Updated status for ${statusUpdates.length} devices`);
+                        
+                        // Trigger a custom event to notify other components
+                        window.dispatchEvent(new CustomEvent('deviceStatusUpdated', {
+                            detail: { updates: statusUpdates, source: 'performance_monitoring' }
+                        }));
+                    }
+                } catch (error) {
+                    console.error("Error syncing performance to device status:", error);
+                }
+            }
         });
         
         // Handle partial updates for individual IPs
@@ -296,6 +372,26 @@ const NetworkPerformance = forwardRef(({
                     uptime: mergeArrays(prev.uptime, data.data.uptime)
                 };
             });
+            
+            // Also sync partial updates to device status
+            if (data.data.latency || data.data.uptime) {
+                try {
+                    const statusUpdates = syncPerformanceToDeviceStatus(
+                        data.data.latency || [], 
+                        data.data.uptime || [], 
+                        socketRef.current
+                    );
+                    
+                    if (statusUpdates.length > 0) {
+                        // Trigger a custom event for partial updates
+                        window.dispatchEvent(new CustomEvent('deviceStatusUpdated', {
+                            detail: { updates: statusUpdates, source: 'performance_monitoring_partial' }
+                        }));
+                    }
+                } catch (error) {
+                    console.error("Error syncing partial performance to device status:", error);
+                }
+            }
         });
 
         socket.on("historicalPerformanceData", (data) => {

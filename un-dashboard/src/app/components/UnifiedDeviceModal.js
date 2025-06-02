@@ -68,34 +68,35 @@ const UnifiedDeviceModal = ({
                 connectedSwitches: enhancedDevice.connectedSwitches
             });
               // Add to history if there were changes
-            const newHistory = [...deviceHistory];
-            
-            // Get the previous history entry to compare changes
+            const newHistory = [...deviceHistory];            // Get the previous history entry to compare changes
             const previousEntry = deviceHistory.length > 0 ? deviceHistory[0] : null;
-            const previousChanges = previousEntry ? previousEntry.changes : {};
+            const previousChanges = (previousEntry && previousEntry.changes) ? previousEntry.changes : {};
             
             // Track only the properties that have actually changed
             const changes = {};
             
-            // Compare basic properties
-            if (enhancedDevice.name !== previousChanges.name) changes.name = enhancedDevice.name;
-            if (enhancedDevice.category !== previousChanges.category) changes.category = enhancedDevice.category;
-            if (enhancedDevice.networkRole !== previousChanges.networkRole) changes.networkRole = enhancedDevice.networkRole;
+            // Compare basic properties (handle undefined values properly)
+            const prevName = previousChanges ? previousChanges.name : undefined;
+            const prevCategory = previousChanges ? previousChanges.category : undefined;
+            const prevNetworkRole = previousChanges ? previousChanges.networkRole : undefined;
             
-            // Compare connection properties based on device role
+            if (enhancedDevice.name !== prevName) changes.name = enhancedDevice.name;
+            if (enhancedDevice.category !== prevCategory) changes.category = enhancedDevice.category;
+            if (enhancedDevice.networkRole !== prevNetworkRole) changes.networkRole = enhancedDevice.networkRole;            // Compare connection properties based on device role
             if (enhancedDevice.networkRole === 'switch' || enhancedDevice.networkRole === 'gateway') {
-                if (enhancedDevice.parentGateway !== previousChanges.parentGateway) {
+                const prevParentGateway = previousChanges ? previousChanges.parentGateway : undefined;
+                if (enhancedDevice.parentGateway !== prevParentGateway) {
                     changes.parentGateway = enhancedDevice.parentGateway;
                 }
                 
                 // Compare arrays properly
-                const prevGateways = previousChanges.connectedGateways || [];
+                const prevGateways = (previousChanges && previousChanges.connectedGateways) ? previousChanges.connectedGateways : [];
                 const currGateways = enhancedDevice.connectedGateways || [];
                 if (JSON.stringify(prevGateways) !== JSON.stringify(currGateways)) {
                     changes.connectedGateways = currGateways;
                 }
                 
-                const prevSwitches = previousChanges.connectedSwitches || [];
+                const prevSwitches = (previousChanges && previousChanges.connectedSwitches) ? previousChanges.connectedSwitches : [];
                 const currSwitches = enhancedDevice.connectedSwitches || [];
                 if (JSON.stringify(prevSwitches) !== JSON.stringify(currSwitches)) {
                     changes.connectedSwitches = currSwitches;
@@ -103,13 +104,13 @@ const UnifiedDeviceModal = ({
             }
             
             if (enhancedDevice.networkRole !== 'gateway' && enhancedDevice.networkRole !== 'switch') {
-                if (enhancedDevice.parentSwitch !== previousChanges.parentSwitch) {
+                const prevParentSwitch = previousChanges ? previousChanges.parentSwitch : undefined;
+                if (enhancedDevice.parentSwitch !== prevParentSwitch) {
                     changes.parentSwitch = enhancedDevice.parentSwitch;
                 }
-            }
-            
+            }            
             // Compare notes
-            const prevNotes = previousChanges.notes || [];
+            const prevNotes = (previousChanges && previousChanges.notes) ? previousChanges.notes : [];
             const currNotes = enhancedDevice.notes || [];
             if (JSON.stringify(prevNotes) !== JSON.stringify(currNotes)) {
                 changes.notes = currNotes;
@@ -670,11 +671,10 @@ const UnifiedDeviceModal = ({
                                                 </div>
                                             </div>
                                         </div>
-                                        
-                                        {expandedHistoryItems.includes(index) && (
+                                          {expandedHistoryItems.includes(index) && (
                                             <div className="text-sm border-t border-gray-600 pt-2 mt-1">
                                                 {/* Track the changes that were made */}
-                                                {Object.keys(record.changes).length === 0 ? (
+                                                {(!record.changes || Object.keys(record.changes).length === 0) ? (
                                                     <div className="text-gray-400">No changes detected</div>
                                                 ) : (
                                                 <>

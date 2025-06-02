@@ -17,20 +17,12 @@ import {
     FaCog,
     FaEye,
     FaTerminal,
-    FaExclamationTriangle,
-    FaCheck,
-    FaTimes
+    FaExclamationTriangle
 } from "react-icons/fa";
 import PerformanceControls from "./components/PerformanceControls";
 import NetworkControlModal from "../components/NetworkControlModal";
 import { useNetworkControlModal } from "../components/useNetworkControlModal";
 import UnifiedDeviceModal from "../components/UnifiedDeviceModal";
-import { 
-    getDeviceStatusFromStorage, 
-    getStatusColor, 
-    createStatusUpdateListener 
-} from "../utils/performanceDeviceStatusSync";
-import { io } from 'socket.io-client';
 
 // Use dynamic import with no SSR to avoid the "Component is not a function" error
 const NetworkPerformance = dynamic(
@@ -64,12 +56,10 @@ export default function PerformanceDeviceManagementPage() {
     const [dockerHost, setDockerHost] = useState("10.5.1.212");
     const [showDockerConfig, setShowDockerConfig] = useState(false);
     const [isCheckingNow, setIsCheckingNow] = useState(false);
-      // Chart visualization state
+    
+    // Chart visualization state
     const [activeChartTab, setActiveChartTab] = useState('latency');
     const [currentView, setCurrentView] = useState('performance'); // 'performance' or 'devices'
-    
-    // Real-time status update state
-    const [recentStatusChanges, setRecentStatusChanges] = useState(new Set());
     
     // Reference to NetworkPerformance component
     const networkPerformanceRef = useRef(null);
@@ -114,112 +104,10 @@ export default function PerformanceDeviceManagementPage() {
                     .map(device => device.ip);
                 filtered = filtered.filter(device => selectedScanDeviceIPs.includes(device.ip));
             }
-        }        setFilteredDevices(filtered);
-    }, [devices, searchQuery, filterStatus, filterVendor, selectedScan, scanHistory]);    // Set up real-time device status update listener
-    useEffect(() => {
-        const statusUpdateListener = createStatusUpdateListener((updates) => {
-            console.log('[PERFORMANCE PAGE] Device status updates received:', updates);
-            
-            // Track recent changes for visual feedback
-            const changedIPs = new Set(updates.map(update => update.ip));
-            setRecentStatusChanges(changedIPs);
-            
-            // Clear visual indicators after 3 seconds
-            setTimeout(() => {
-                setRecentStatusChanges(new Set());
-            }, 3000);
-            
-            // Update devices with new status information
-            setDevices(prevDevices => 
-                prevDevices.map(device => {
-                    const statusUpdate = updates.find(update => update.ip === device.ip);
-                    if (statusUpdate) {
-                        return {
-                            ...device,
-                            status: statusUpdate.newStatus,
-                            lastChecked: statusUpdate.lastChecked,
-                            performanceData: statusUpdate.performanceData
-                        };
-                    }
-                    return device;
-                })
-            );
-        });
-          return statusUpdateListener; // Cleanup function
-    }, []);    // Set up socket connection for real-time device status updates from performance monitoring
-    useEffect(() => {
-        let socket = null;
-        
-        const connectSocket = () => {
-            // Determine the server URL based on environment
-            let serverUrl = "http://10.5.1.83:4000";
-            const protocol = window.location.protocol;
-            const hostname = window.location.hostname;
-            
-            // If not on localhost, use the same hostname but different port
-            if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-                serverUrl = `${protocol}//${hostname}:4000`;
-            }
-            
-            console.log(`[PERFORMANCE PAGE] Connecting to ${serverUrl} for device status updates`);
-            
-            socket = io(serverUrl, {
-                transports: ['polling', 'websocket'],
-                reconnectionAttempts: 5,
-                reconnectionDelay: 1000,
-                timeout: 10000
-            });
-            
-            socket.on('connect', () => {
-                console.log('[PERFORMANCE PAGE] Socket connected for device status updates');
-            });
-            
-            socket.on('deviceStatusUpdate', (data) => {
-                console.log('[PERFORMANCE PAGE] Device status update from performance monitoring:', data);
-                
-                if (data.ip) {
-                    // Track recent changes for visual feedback
-                    setRecentStatusChanges(prev => new Set([...prev, data.ip]));
-                    
-                    // Clear visual indicator after 3 seconds
-                    setTimeout(() => {
-                        setRecentStatusChanges(prev => {
-                            const newSet = new Set(prev);
-                            newSet.delete(data.ip);
-                            return newSet;
-                        });
-                    }, 3000);
-                    
-                    setDevices(prevDevices => 
-                        prevDevices.map(device => {
-                            if (device.ip === data.ip) {
-                                return {
-                                    ...device,
-                                    status: data.status,
-                                    lastChecked: data.timestamp,
-                                    latency: data.latency,
-                                    packetLoss: data.packetLoss
-                                };
-                            }
-                            return device;
-                        })
-                    );
-                }
-            });
-            
-            socket.on('connect_error', (err) => {
-                console.error('[PERFORMANCE PAGE] Socket connection error:', err);
-            });
-        };
-        
-        connectSocket();
-        
-        return () => {
-            if (socket) {
-                socket.disconnect();
-            }
-        };
-    }, []);
+        }
+
+        setFilteredDevices(filtered);
+    }, [devices, searchQuery, filterStatus, filterVendor, selectedScan, scanHistory]);
 
     const loadDevicesAndScans = () => {
         // Load scan history from localStorage
@@ -318,50 +206,28 @@ export default function PerformanceDeviceManagementPage() {
         }
         
         setIsLoading(false);
-    };    // Handle scan completion from modal
-    const handleNetworkScanComplete = (scanResults) => {        console.log("Network scan completed:", scanResults);
+    };
+
+    // Handle scan completion from modal
+    const handleNetworkScanComplete = (scanResults) => {
+        console.log("Network scan completed:", scanResults);
         
-        // Convert scan results to device format with defensive programming
-        let formattedDevices = [];
-        if (Array.isArray(scanResults)) {
-            formattedDevices = scanResults.map(device => ({
-                id: device.ip || `${device.mac}_${Date.now()}`,
-                name: device.hostname || device.name || `Device-${device.ip}`,
-                ip: device.ip,
-                mac: device.mac,
-                vendor: device.vendor || 'Unknown',
-                status: device.status || 'online',
-                category: device.category || 'Network Device',
-                role: device.role || 'Unknown',
-                lastSeen: new Date().toISOString(),
-                scanType: device.scanType,
-                scanTime: device.scanTime,
-                hasSSH: device.services && device.services.includes('ssh'),
-                sshPort: device.sshPort || 22,
-            }));
-        } else {
-            console.warn("Expected array for scanResults but got:", typeof scanResults, scanResults);
-            // Try to extract device data if it's an object with device arrays
-            if (scanResults && typeof scanResults === 'object') {
-                if (scanResults.devices && Array.isArray(scanResults.devices)) {
-                    formattedDevices = scanResults.devices.map(device => ({
-                        id: device.ip || `${device.mac}_${Date.now()}`,
-                        name: device.hostname || device.name || `Device-${device.ip}`,
-                        ip: device.ip,
-                        mac: device.mac,
-                        vendor: device.vendor || 'Unknown',
-                        status: device.status || 'online',
-                        category: device.category || 'Network Device',
-                        role: device.role || 'Unknown',
-                        lastSeen: new Date().toISOString(),
-                        scanType: device.scanType,
-                        scanTime: device.scanTime,
-                        hasSSH: device.services && device.services.includes('ssh'),
-                        sshPort: device.sshPort || 22,
-                    }));
-                }
-            }
-        }
+        // Convert scan results to device format
+        const formattedDevices = scanResults.map(device => ({
+            id: device.ip || `${device.mac}_${Date.now()}`,
+            name: device.hostname || device.name || `Device-${device.ip}`,
+            ip: device.ip,
+            mac: device.mac,
+            vendor: device.vendor || 'Unknown',
+            status: device.status || 'online',
+            category: device.category || 'Network Device',
+            role: device.role || 'Unknown',
+            lastSeen: new Date().toISOString(),
+            scanType: device.scanType,
+            scanTime: device.scanTime,
+            hasSSH: device.services && device.services.includes('ssh'),
+            sshPort: device.sshPort || 22,
+        }));
 
         // Merge with existing devices (avoid duplicates)
         const updatedDevices = [...devices];
@@ -505,45 +371,6 @@ export default function PerformanceDeviceManagementPage() {
                 networkPerformanceRef.current.startMonitoring();
             }
         }
-    };
-    
-    // Function to get device status with performance-based information
-    const getDeviceStatusDisplay = (device) => {
-        const statusInfo = getDeviceStatusFromStorage(device.ip);
-        const status = statusInfo.status || device.status || 'unknown';
-        const performanceData = statusInfo.performanceData;
-        
-        let statusIcon, statusText, statusColor;
-        
-        switch (status) {
-            case 'online':
-                statusIcon = <FaCheck className="text-green-400" />;
-                statusText = 'Online';
-                statusColor = 'text-green-400';
-                break;
-            case 'degraded':
-                statusIcon = <FaExclamationTriangle className="text-yellow-400" />;
-                statusText = 'Degraded';
-                statusColor = 'text-yellow-400';
-                break;
-            case 'offline':
-                statusIcon = <FaTimes className="text-red-400" />;
-                statusText = 'Offline';
-                statusColor = 'text-red-400';
-                break;
-            default:
-                statusIcon = <FaTerminal className="text-gray-400" />;
-                statusText = 'Unknown';
-                statusColor = 'text-gray-400';
-        }
-        
-        return {
-            icon: statusIcon,
-            text: statusText,
-            color: statusColor,
-            performanceData,
-            lastChecked: statusInfo.lastChecked
-        };
     };
 
     const handleCheckNow = () => {
@@ -694,7 +521,8 @@ export default function PerformanceDeviceManagementPage() {
                             <p className="mt-4">Loading devices...</p>
                         </div>
                     ) : filteredDevices.length > 0 ? (
-                        <div className="overflow-x-auto">                            <table className="w-full text-left">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-left">
                                 <thead>
                                     <tr className="border-b border-gray-700">
                                         <th className="pb-3">
@@ -716,14 +544,7 @@ export default function PerformanceDeviceManagementPage() {
                                 </thead>
                                 <tbody>
                                     {filteredDevices.map((device) => (
-                                        <tr 
-                                            key={device.id} 
-                                            className={`border-b border-gray-700 hover:bg-gray-700 transition-all duration-300 ${
-                                                recentStatusChanges.has(device.ip) 
-                                                    ? 'bg-blue-900/20 border-blue-500/50 shadow-lg' 
-                                                    : ''
-                                            }`}
-                                        >
+                                        <tr key={device.id} className="border-b border-gray-700 hover:bg-gray-700">
                                             <td className="py-4">
                                                 <input
                                                     type="checkbox"
@@ -737,46 +558,17 @@ export default function PerformanceDeviceManagementPage() {
                                                     <p className="text-white font-medium">{device.name}</p>
                                                     <p className="text-gray-400 text-sm">{device.mac}</p>
                                                 </div>
-                                            </td>                                            <td className="py-4 text-gray-300">{device.ip}</td>
+                                            </td>
+                                            <td className="py-4 text-gray-300">{device.ip}</td>
                                             <td className="py-4 text-gray-300">{device.vendor || 'Unknown'}</td>
                                             <td className="py-4">
-                                                {(() => {
-                                                    const statusDisplay = getDeviceStatusDisplay(device);
-                                                    return (                                                        <div className="flex items-center gap-2">
-                                                            <span className={`px-2 py-1 rounded-full text-xs flex items-center gap-1 ${
-                                                                statusDisplay.status === 'online' 
-                                                                    ? 'bg-green-900 text-green-300' 
-                                                                    : statusDisplay.status === 'degraded'
-                                                                    ? 'bg-yellow-900 text-yellow-300'
-                                                                    : statusDisplay.status === 'offline'
-                                                                    ? 'bg-red-900 text-red-300'
-                                                                    : 'bg-gray-900 text-gray-300'
-                                                            }`}>
-                                                                {statusDisplay.icon}
-                                                                {statusDisplay.text}
-                                                                {recentStatusChanges.has(device.ip) && (
-                                                                    <span className="inline-block w-2 h-2 bg-blue-400 rounded-full animate-pulse ml-1" title="Status recently updated"></span>                                                                )}
-                                                            </span>
-                                                            {statusDisplay.performanceData && (
-                                                                <div className="text-xs text-gray-400">
-                                                                    {statusDisplay.performanceData.latency && (
-                                                                        <span title="Latency">{statusDisplay.performanceData.latency}ms</span>
-                                                                    )}
-                                                                    {statusDisplay.performanceData.packetLoss !== undefined && (
-                                                                        <span title="Packet Loss" className="ml-1">
-                                                                            {statusDisplay.performanceData.packetLoss}% loss
-                                                                        </span>
-                                                                    )}
-                                                                    {statusDisplay.lastChecked && (
-                                                                        <div className="text-gray-500 mt-1" title="Last checked">
-                                                                            {new Date(statusDisplay.lastChecked).toLocaleTimeString()}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })()}
+                                                <span className={`px-2 py-1 rounded-full text-xs ${
+                                                    device.status === 'online' 
+                                                        ? 'bg-green-900 text-green-300' 
+                                                        : 'bg-red-900 text-red-300'
+                                                }`}>
+                                                    {device.status || 'unknown'}
+                                                </span>
                                             </td>
                                             <td className="py-4 text-gray-300">{device.role || 'Unknown'}</td>
                                             <td className="py-4">

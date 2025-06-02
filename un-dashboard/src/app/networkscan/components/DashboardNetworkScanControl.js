@@ -182,21 +182,25 @@ export default function DashboardNetworkScanControl({ devices, setDevices, custo
                 const historyData = { data, ipRange };
                 setScanHistoryData(historyData); 
                 setRawHistoryData(JSON.parse(JSON.stringify(historyData)));
-                
-                // Convert the data format for onScanComplete if provided
+                  // Convert the data format for onScanComplete if provided
                 if (onScanComplete) {
                     const flattenedDevices = [];
                     // Flatten the grouped devices structure
                     Object.entries(data).forEach(([vendor, deviceList]) => {
-                        deviceList.forEach(device => {
-                            flattenedDevices.push({
-                                ...device,
-                                vendor: vendor !== "Unknown" ? vendor : device.vendor || "",
-                                status: device.status || "online",
-                                scanType: scanType,
-                                scanTime: new Date().toISOString()
+                        // Ensure deviceList is an array before iterating
+                        if (Array.isArray(deviceList)) {
+                            deviceList.forEach(device => {
+                                flattenedDevices.push({
+                                    ...device,
+                                    vendor: vendor !== "Unknown" ? vendor : device.vendor || "",
+                                    status: device.status || "online",
+                                    scanType: scanType,
+                                    scanTime: new Date().toISOString()
+                                });
                             });
-                        });
+                        } else {
+                            console.warn(`Expected array for vendor "${vendor}" but got:`, typeof deviceList, deviceList);
+                        }
                     });
                     onScanComplete(flattenedDevices);
                 }

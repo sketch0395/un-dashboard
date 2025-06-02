@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { io } from "socket.io-client";
 import { 
     FaNetworkWired, 
@@ -18,10 +18,14 @@ import {
     FaDatabase,
     FaTimes,
     FaExpand,
-    FaCompress
+    FaCompress,
+    FaEdit,
+    FaEye
 } from "react-icons/fa";
 import NetworkScanHistory, { useScanHistory } from "../networkscan/components/networkscanhistory.js";
 import NetworkScanExportImport from "../networkscan/components/NetworkScanExportImport";
+
+const UnifiedDeviceModal = lazy(() => import("./UnifiedDeviceModal"));
 
 /**
  * NetworkControlModal - A reusable modal component for network scanning functionality
@@ -61,8 +65,7 @@ export default function NetworkControlModal({
     const [scanType, setScanType] = useState('ping');
     const [lastScanTime, setLastScanTime] = useState(null);
     const [error, setError] = useState(null);
-    
-    // UI state
+      // UI state
     const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
     const [showScanTypeInfo, setShowScanTypeInfo] = useState(false);
     const [showRawData, setShowRawData] = useState(false);
@@ -70,6 +73,10 @@ export default function NetworkControlModal({
     const [rawHistoryData, setRawHistoryData] = useState(null);
     const [showRawNetworkData, setShowRawNetworkData] = useState(false);
     const [showRawHistoryData, setShowRawHistoryData] = useState(false);
+    const [showCurrentResults, setShowCurrentResults] = useState(false);
+    
+    // Device modal state
+    const [modalDevice, setModalDevice] = useState(null);
 
     // Handle device updates
     const handleDevicesUpdate = useCallback((newDevices) => {
@@ -216,19 +223,23 @@ export default function NetworkControlModal({
                 const historyData = { data, ipRange };
                 setScanHistoryData(historyData); 
                 setRawHistoryData(JSON.parse(JSON.stringify(historyData)));
-                
-                if (onScanComplete) {
+                  if (onScanComplete) {
                     const flattenedDevices = [];
                     Object.entries(data).forEach(([vendor, deviceList]) => {
-                        deviceList.forEach(device => {
-                            flattenedDevices.push({
-                                ...device,
-                                vendor: vendor !== "Unknown" ? vendor : device.vendor || "",
-                                status: device.status || "online",
-                                scanType: scanType,
-                                scanTime: new Date().toISOString()
+                        // Ensure deviceList is an array before iterating
+                        if (Array.isArray(deviceList)) {
+                            deviceList.forEach(device => {
+                                flattenedDevices.push({
+                                    ...device,
+                                    vendor: vendor !== "Unknown" ? vendor : device.vendor || "",
+                                    status: device.status || "online",
+                                    scanType: scanType,
+                                    scanTime: new Date().toISOString()
+                                });
                             });
-                        });
+                        } else {
+                            console.warn(`Expected array for vendor "${vendor}" but got:`, typeof deviceList, deviceList);
+                        }
                     });
                     onScanComplete(flattenedDevices);
                 }
@@ -293,9 +304,7 @@ export default function NetworkControlModal({
     const handleClose = () => {
         setIsFullscreen(false);
         onClose();
-    };
-
-    const handleImport = (data) => {
+    };    const handleImport = (data) => {
         console.log("NetworkControlModal: Importing scan data:", data);
         if (data.devices) {
             handleDevicesUpdate(data.devices);
@@ -306,6 +315,49 @@ export default function NetworkControlModal({
         if (onScanComplete) {
             onScanComplete(data);
         }
+    };
+
+    // Device modal functions
+    const openDeviceModal = (device) => {
+        setModalDevice(device);
+    };
+
+    const closeDeviceModal = () => {
+        setModalDevice(null);
+    };
+
+    const saveDeviceChanges = (updatedDevice) => {
+        console.log("NetworkControlModal: Saving device changes:", updatedDevice);
+        
+        // Update devices state
+        setDevices(prevDevices => {
+            const newDevices = { ...prevDevices };
+            Object.keys(newDevices).forEach(vendor => {
+                if (Array.isArray(newDevices[vendor])) {
+                    newDevices[vendor] = newDevices[vendor].map(device => 
+                        device.ip === updatedDevice.ip ? { ...device, ...updatedDevice } : device
+                    );
+                }
+            });
+            return newDevices;
+        });
+
+        // Save to localStorage for persistence
+        const existingProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
+        existingProperties[updatedDevice.ip] = {
+            name: updatedDevice.name,
+            color: updatedDevice.color,
+            icon: updatedDevice.icon,
+            category: updatedDevice.category,
+            notes: updatedDevice.notes,
+            networkRole: updatedDevice.networkRole,
+            portCount: updatedDevice.portCount,
+            parentSwitch: updatedDevice.parentSwitch,
+            history: existingProperties[updatedDevice.ip]?.history || []
+        };
+        localStorage.setItem("customDeviceProperties", JSON.stringify(existingProperties));
+
+        closeDeviceModal();
     };
 
     // Don't render if not visible
@@ -528,9 +580,7 @@ export default function NetworkControlModal({
                                 {scanOutput}
                             </div>
                         </div>
-                    )}
-
-                    {/* Export and Import functionality */}
+                    )}                    {/* Export and Import functionality */}
                     {showExportImport && (
                         <div className="mb-4 p-3 border border-gray-700 rounded bg-gray-800">
                             <h3 className="text-sm font-medium text-gray-300 mb-2">Export/Import Network Scan Data</h3>
@@ -539,6 +589,75 @@ export default function NetworkControlModal({
                                 customNames={customNames}
                                 onImport={handleImport}
                             />
+                        </div>
+                    )}
+
+                    {/* Current Scan Results */}
+                    {devices && Object.keys(devices).length > 0 && (
+                        <div className="mb-4">
+                            <button 
+                                onClick={() => setShowCurrentResults(!showCurrentResults)} 
+                                className="flex items-center w-full justify-between bg-gray-700 hover:bg-gray-600 p-2 rounded text-sm mb-2"
+                            >
+                                <span className="flex items-center">
+                                    <FaNetworkWired className="mr-2 text-green-400" />
+                                    Current Scan Results ({Object.values(devices).flat().length} devices)
+                                </span>
+                                {showCurrentResults ? <FaChevronUp /> : <FaChevronDown />}
+                            </button>
+                            
+                            {showCurrentResults && (
+                                <div className="bg-gray-800 p-3 rounded border border-gray-700">
+                                    <div className="space-y-2">
+                                        {Object.entries(devices).map(([vendor, deviceList]) => (
+                                            <div key={vendor} className="bg-gray-900 p-2 rounded">
+                                                <h4 className="text-sm font-medium text-blue-300 mb-2">
+                                                    {vendor} ({Array.isArray(deviceList) ? deviceList.length : 0} devices)
+                                                </h4>
+                                                {Array.isArray(deviceList) && deviceList.map((device, index) => (
+                                                    <div key={`${device.ip}-${index}`} className="flex items-center justify-between bg-gray-800 p-2 rounded mb-1">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center space-x-2">
+                                                                <span className="text-white font-medium">
+                                                                    {device.name || device.hostname || device.ip}
+                                                                </span>
+                                                                {device.networkRole && (
+                                                                    <span className={`px-2 py-1 rounded text-xs font-medium ${
+                                                                        device.networkRole === 'gateway' ? 'bg-blue-600 text-blue-100' :
+                                                                        device.networkRole === 'switch' ? 'bg-green-600 text-green-100' :
+                                                                        'bg-gray-600 text-gray-100'
+                                                                    }`}>
+                                                                        {device.networkRole === 'gateway' ? 'Gateway' :
+                                                                         device.networkRole === 'switch' ? 'Switch' : 
+                                                                         device.networkRole}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="text-xs text-gray-400">
+                                                                IP: {device.ip}
+                                                                {device.mac && ` • MAC: ${device.mac}`}
+                                                                {device.vendor && ` • ${device.vendor}`}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex space-x-1">
+                                                            <button
+                                                                onClick={() => openDeviceModal(device)}
+                                                                className="bg-blue-600 hover:bg-blue-700 text-white p-1 rounded text-xs"
+                                                                title="Edit device properties and network role"
+                                                            >
+                                                                <FaEdit />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="mt-3 text-xs text-gray-400">
+                                        <p>Click the edit button to modify device properties including network role (Gateway/Switch).</p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -613,8 +732,7 @@ export default function NetworkControlModal({
                                             )}
                                         </div>
                                     </div>
-                                    
-                                    <div className="mt-3 text-xs text-gray-400">
+                                                      <div className="mt-3 text-xs text-gray-400">
                                         <p>This panel shows the raw scan data before and after processing.</p>
                                         <p>Use this for debugging or understanding the data structure.</p>
                                     </div>
@@ -624,6 +742,21 @@ export default function NetworkControlModal({
                     )}
                 </div>
             </div>
+            
+            {/* UnifiedDeviceModal for editing device properties */}
+            {modalDevice && (
+                <Suspense fallback={<div>Loading device editor...</div>}>
+                    <UnifiedDeviceModal
+                        modalDevice={modalDevice}
+                        setModalDevice={setModalDevice}
+                        onSave={saveDeviceChanges}
+                        onStartSSH={(device) => {
+                            console.log("SSH requested for device:", device);
+                            // SSH functionality can be added here if needed
+                        }}
+                    />
+                </Suspense>
+            )}
         </div>
     );
 }

@@ -992,6 +992,37 @@ const runPerformanceCheck = async (ips, dockerConfig = {}, socket) => {
                     complete: true,
                     progress: completedIps / totalIps * 100
                 });
+                
+                // Emit device status update for device management synchronization
+                const latencyResult = results.latency.find(item => item.ip === ip);
+                const uptimeResult = results.uptime.find(item => item.ip === ip);
+                
+                if (latencyResult || uptimeResult) {
+                    const deviceStatusData = {
+                        ip: ip,
+                        alive: latencyResult?.alive || false,
+                        latency: latencyResult?.latency || null,
+                        packetLoss: latencyResult?.packetLoss || 0,
+                        uptimePercentage: uptimeResult?.uptimePercentage || null,
+                        status: uptimeResult?.status || 'unknown',
+                        timestamp: new Date().toISOString(),
+                        source: 'performance_monitoring'
+                    };
+                    
+                    // Emit to all clients for device management updates
+                    socket.broadcast.emit('deviceStatusUpdate', {
+                        timestamp: new Date().toISOString(),
+                        results: [deviceStatusData]
+                    });
+                    
+                    // Also emit to this socket
+                    socket.emit('deviceStatusUpdate', {
+                        timestamp: new Date().toISOString(),
+                        results: [deviceStatusData]
+                    });
+                    
+                    console.log(`[DEVICE STATUS] Emitted status update for ${ip}: ${deviceStatusData.alive ? 'alive' : 'dead'}`);
+                }
             }
 
             console.log(`[PERF] Completed performance check for IP: ${ip} (${completedIps}/${totalIps})`);
@@ -1005,6 +1036,37 @@ const runPerformanceCheck = async (ips, dockerConfig = {}, socket) => {
                     ip,
                     error: error.message,
                     progress: completedIps / totalIps * 100
+                });
+                
+                // Emit device status update for failed checks too
+                socket.broadcast.emit('deviceStatusUpdate', {
+                    timestamp: new Date().toISOString(),
+                    results: [{
+                        ip: ip,
+                        alive: false,
+                        latency: null,
+                        packetLoss: 100,
+                        uptimePercentage: null,
+                        status: 'error',
+                        timestamp: new Date().toISOString(),
+                        source: 'performance_monitoring',
+                        error: error.message
+                    }]
+                });
+                
+                socket.emit('deviceStatusUpdate', {
+                    timestamp: new Date().toISOString(),
+                    results: [{
+                        ip: ip,
+                        alive: false,
+                        latency: null,
+                        packetLoss: 100,
+                        uptimePercentage: null,
+                        status: 'error',
+                        timestamp: new Date().toISOString(),
+                        source: 'performance_monitoring',
+                        error: error.message
+                    }]
                 });
             }
         }

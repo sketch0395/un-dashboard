@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FaNetworkWired, FaSearch, FaCog } from 'react-icons/fa';
+import { io } from 'socket.io-client';
 import NetworkControlModal from '../components/NetworkControlModal';
 import { useNetworkControlModal } from '../components/useNetworkControlModal';
+import { getDeviceStatusFromStorage, createStatusUpdateListener } from '../utils/performanceDeviceStatusSync';
 
 /**
  * Enhanced Device Management Page with Network Control Modal Integration
@@ -14,9 +16,166 @@ export default function DeviceManagementWithNetworkControl() {
     const [devices, setDevices] = useState([]);
     const [filteredDevices, setFilteredDevices] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
+    
+    // State for real-time device status updates
+    const [deviceStatuses, setDeviceStatuses] = useState({});
 
     // Network Control Modal integration
     const networkModal = useNetworkControlModal();
+    
+    // Set up socket connection for real-time device status updates
+    useEffect(() => {
+        let socket = null;
+        
+        const connectSocket = () => {
+            // Determine the server URL
+            let serverUrl = "http://10.5.1.83:4000";
+            const protocol = window.location.protocol;
+            const hostname = window.location.hostname;
+            
+            if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
+                serverUrl = `${protocol}//${hostname}:4000`;
+            }
+            
+            console.log(`[DEVICE MANAGEMENT] Connecting to ${serverUrl} for status updates`);
+            
+            socket = io(serverUrl, {
+                transports: ['polling', 'websocket'],
+                reconnectionAttempts: 5,
+                reconnectionDelay: 1000,
+                timeout: 10000
+            });
+            
+            socket.on('connect', () => {
+                console.log('[DEVICE MANAGEMENT] Connected to performance monitoring server');
+            });
+            
+            socket.on('deviceStatusUpdate', (data) => {
+                console.log('[DEVICE MANAGEMENT] Received device status update:', data);
+                
+                if (data.results && Array.isArray(data.results)) {
+                    const statusUpdates = {};
+                    data.results.forEach(result => {
+                        if (result.ip) {
+                            statusUpdates[result.ip] = {
+                                status: result.alive ? 'online' : 'offline',
+                                latency: result.latency,
+                                packetLoss: result.packetLoss,
+                                lastChecked: result.timestamp,
+                                source: result.source
+                            };
+                        }
+                    });
+                    
+                    setDeviceStatuses(prev => ({
+                        ...prev,
+                        ...statusUpdates
+                    }));
+                    
+                    // Update device list with new statuses
+                    setDevices(prevDevices => 
+                        prevDevices.map(device => {
+                            const statusUpdate = statusUpdates[device.ip];
+                            if (statusUpdate) {
+                                return {
+                                    ...device,
+                                    status: statusUpdate.status,
+                                    lastChecked: statusUpdate.lastChecked,
+                                    latency: statusUpdate.latency,
+                                    packetLoss: statusUpdate.packetLoss
+                                };
+                            }
+                            return device;
+                        })
+                    );
+                }
+            });
+            
+            socket.on('connect_error', (err) => {
+                console.error('[DEVICE MANAGEMENT] Socket connection error:', err);
+            });
+        };
+        
+        connectSocket();
+        
+        return () => {
+            if (socket) {
+                socket.disconnect();
+            }
+        };
+    }, []);
+    
+    // Set up device status update listener
+    useEffect(() => {
+        const statusUpdateListener = createStatusUpdateListener((updates) => {
+            console.log('[DEVICE MANAGEMENT] localStorage device status updates:', updates);
+            
+            const statusMap = {};
+            updates.forEach(update => {
+                statusMap[update.ip] = {
+                    status: update.newStatus,
+                    lastChecked: update.lastChecked,
+                    performanceData: update.performanceData
+                };
+            });
+            
+            setDeviceStatuses(prev => ({
+                ...prev,
+                ...statusMap
+            }));
+            
+            // Update device list
+            setDevices(prevDevices => 
+                prevDevices.map(device => {
+                    const statusUpdate = statusMap[device.ip];
+                    if (statusUpdate) {
+                        return {
+                            ...device,
+                            status: statusUpdate.status,
+                            lastChecked: statusUpdate.lastChecked
+                        };
+                    }
+                    return device;
+                })
+            );
+        });
+        
+        return statusUpdateListener;
+    }, []);
+    
+    // Load device statuses from localStorage on mount
+    useEffect(() => {
+        if (devices.length > 0) {
+            const statusMap = {};
+            devices.forEach(device => {
+                if (device.ip) {
+                    const statusInfo = getDeviceStatusFromStorage(device.ip);
+                    if (statusInfo.status !== 'unknown') {
+                        statusMap[device.ip] = statusInfo;
+                    }
+                }
+            });
+            
+            if (Object.keys(statusMap).length > 0) {
+                setDeviceStatuses(statusMap);
+                
+                // Update device list with stored statuses
+                setDevices(prevDevices => 
+                    prevDevices.map(device => {
+                        const statusInfo = statusMap[device.ip];
+                        if (statusInfo) {
+                            return {
+                                ...device,
+                                status: statusInfo.status,
+                                lastChecked: statusInfo.lastChecked
+                            };
+                        }
+                        return device;
+                    })
+                );
+            }
+        }
+    }, [devices.length]);
 
     // Handle scan completion - update the device list
     const handleNetworkScanComplete = (scanResults) => {
@@ -47,26 +206,29 @@ export default function DeviceManagementWithNetworkControl() {
     // Handle devices update from modal
     const handleDevicesUpdate = (newDevices) => {
         networkModal.handleDevicesUpdate(newDevices);
-        
-        // Also update local device list if needed
+          // Also update local device list if needed
         if (newDevices && Object.keys(newDevices).length > 0) {
             const flattenedDevices = [];
-            Object.entries(newDevices).forEach(([vendor, deviceList]) => {
-                deviceList.forEach(device => {
-                    flattenedDevices.push({
-                        id: device.ip || `${device.mac}_${Date.now()}`,
-                        name: device.hostname || `Device-${device.ip}`,
-                        ip: device.ip,
-                        mac: device.mac,
-                        vendor: vendor !== "Unknown" ? vendor : device.vendor || 'Unknown',
-                        status: device.status || 'online',
-                        category: device.category || 'Network Device',
-                        role: device.role || 'Unknown',
-                        lastSeen: new Date().toISOString(),
-                        hasSSH: device.services && device.services.includes('ssh'),
-                        sshPort: device.sshPort || 22,
+            Object.entries(newDevices).forEach(([vendor, deviceList]) => {                // Ensure deviceList is an array before iterating
+                if (Array.isArray(deviceList)) {
+                    deviceList.forEach(device => {
+                        flattenedDevices.push({
+                            id: device.ip || `${device.mac}_${Date.now()}`,
+                            name: device.hostname || `Device-${device.ip}`,
+                            ip: device.ip,
+                            mac: device.mac,
+                            vendor: vendor !== "Unknown" ? vendor : device.vendor || 'Unknown',
+                            status: device.status || 'online',
+                            category: device.category || 'Network Device',
+                            role: device.role || 'Unknown',
+                            lastSeen: new Date().toISOString(),
+                            hasSSH: device.services && device.services.includes('ssh'),
+                            sshPort: device.sshPort || 22,
+                        });
                     });
-                });
+                } else {
+                    console.warn(`Expected array for vendor "${vendor}" but got:`, typeof deviceList, deviceList);
+                }
             });
             
             setDevices(flattenedDevices);
