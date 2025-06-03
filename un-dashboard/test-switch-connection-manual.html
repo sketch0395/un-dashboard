@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual Switch Connection Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #1f2937;
+            color: #f3f4f6;
+            padding: 20px;
+            margin: 0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .test-section {
+            background: #374151;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid #4b5563;
+        }
+        .test-section h2 {
+            color: #60a5fa;
+            margin-top: 0;
+        }
+        .button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+        }
+        .button:hover {
+            background: #2563eb;
+        }
+        .button.success {
+            background: #10b981;
+        }
+        .button.danger {
+            background: #ef4444;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 4px solid;
+        }
+        .status.success {
+            background: #065f46;
+            border-color: #10b981;
+        }
+        .status.error {
+            background: #7f1d1d;
+            border-color: #ef4444;
+        }
+        .status.info {
+            background: #1e3a8a;
+            border-color: #3b82f6;
+        }
+        .output {
+            background: #111827;
+            border: 1px solid #374151;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .device-card {
+            background: #4b5563;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 10px 0;
+            border: 1px solid #6b7280;
+        }
+        .device-name {
+            font-weight: bold;
+            color: #60a5fa;
+        }
+        .device-details {
+            margin: 5px 0;
+            color: #d1d5db;
+        }
+        .connection-info {
+            background: #1f2937;
+            padding: 8px;
+            border-radius: 4px;
+            margin: 5px 0;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #d1d5db;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px;
+            background: #374151;
+            border: 1px solid #4b5563;
+            border-radius: 4px;
+            color: #f3f4f6;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Manual Switch Connection Test</h1>
+        <p>Direct test of switch connection functionality in the UN Dashboard</p>
+
+        <!-- Current State -->
+        <div class="test-section">
+            <h2>📊 Current Network State</h2>
+            <button class="button" onclick="loadCurrentState()">Load Current State</button>
+            <button class="button" onclick="clearAllData()">Clear All Data</button>
+            <div id="currentState" class="output"></div>
+        </div>
+
+        <div class="grid">
+            <!-- Left Column: Test Data Creation -->
+            <div>
+                <!-- Create Test Devices -->
+                <div class="test-section">
+                    <h2>🖥️ Create Test Devices</h2>
+                    <button class="button success" onclick="createTestDevices()">Create Test Network</button>
+                    <div id="testDeviceStatus" class="status info" style="display: none;">
+                        Test devices will be created with the following structure:
+                        <ul>
+                            <li>Switch1 (10.5.1.10) - Main Network Switch</li>
+                            <li>Switch2 (10.5.1.11) - Secondary Switch</li>
+                            <li>Device1 (10.5.1.50) - Regular device to connect</li>
+                            <li>Device2 (10.5.1.51) - Another regular device</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Manual Device Connection -->
+                <div class="test-section">
+                    <h2>🔗 Manual Device Connection</h2>
+                    <div class="form-group">
+                        <label for="deviceIp">Device IP:</label>
+                        <select id="deviceIp" onchange="updateAvailableSwitches()">
+                            <option value="">Select a device...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="switchIp">Switch to connect to:</label>
+                        <select id="switchIp">
+                            <option value="">No switch connection</option>
+                        </select>
+                    </div>
+                    <button class="button" onclick="manualConnect()">Connect Device</button>
+                    <button class="button" onclick="manualDisconnect()">Disconnect Device</button>
+                    <div id="connectionResult"></div>
+                </div>
+            </div>
+
+            <!-- Right Column: Test Results -->
+            <div>
+                <!-- Test Switch Connection -->
+                <div class="test-section">
+                    <h2>🧪 Test Switch Connection</h2>
+                    <button class="button" onclick="testSwitchConnection()">Test Connections</button>
+                    <div id="testResults" class="output"></div>
+                </div>
+
+                <!-- Live Device List -->
+                <div class="test-section">
+                    <h2>📋 Live Device List</h2>
+                    <button class="button" onclick="refreshDeviceList()">Refresh List</button>
+                    <div id="deviceList"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Debug Output -->
+        <div class="test-section">
+            <h2>🐛 Debug Output</h2>
+            <button class="button" onclick="clearDebugOutput()">Clear Output</button>
+            <div id="debugOutput" class="output"></div>
+        </div>
+    </div>
+
+    <script>
+        // Debug logging function
+        function debugLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const debugOutput = document.getElementById('debugOutput');
+            const colorMap = {
+                'info': '#60a5fa',
+                'success': '#10b981',
+                'error': '#ef4444',
+                'warning': '#f59e0b'
+            };
+            
+            debugOutput.innerHTML += `<div style="color: ${colorMap[type]};">[${timestamp}] ${message}</div>`;
+            debugOutput.scrollTop = debugOutput.scrollHeight;
+        }
+
+        // Clear debug output
+        function clearDebugOutput() {
+            document.getElementById('debugOutput').innerHTML = '';
+        }
+
+        // Load current state from localStorage
+        function loadCurrentState() {
+            try {
+                const customProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                const stateDiv = document.getElementById('currentState');
+                
+                if (Object.keys(customProps).length === 0) {
+                    stateDiv.innerHTML = '<div class="status info">No devices found in localStorage</div>';
+                    return;
+                }
+
+                let output = `<h3>Found ${Object.keys(customProps).length} devices:</h3>`;
+                
+                Object.entries(customProps).forEach(([ip, props]) => {
+                    output += `
+                        <div class="device-card">
+                            <div class="device-name">${props.name || ip}</div>
+                            <div class="device-details">IP: ${ip}</div>
+                            <div class="device-details">Type: ${props.networkRole || 'Unknown'}</div>
+                            <div class="connection-info">
+                                <strong>Connections:</strong><br>
+                                Parent Switch: ${props.parentSwitch || 'None'}<br>
+                                Parent Gateway: ${props.parentGateway || 'None'}<br>
+                                Connected Switches: ${props.connectedSwitches ? props.connectedSwitches.join(', ') : 'None'}<br>
+                                Connected Gateways: ${props.connectedGateways ? props.connectedGateways.join(', ') : 'None'}
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                stateDiv.innerHTML = output;
+                updateDeviceDropdowns();
+                debugLog('Current state loaded successfully', 'success');
+            } catch (error) {
+                debugLog(`Error loading current state: ${error.message}`, 'error');
+            }
+        }
+
+        // Clear all data
+        function clearAllData() {
+            if (confirm('Are you sure you want to clear all device data?')) {
+                localStorage.removeItem("customDeviceProperties");
+                loadCurrentState();
+                updateDeviceDropdowns();
+                debugLog('All data cleared', 'warning');
+            }
+        }
+
+        // Create test devices
+        function createTestDevices() {
+            try {
+                const testDevices = {
+                    "10.5.1.10": {
+                        name: "Main-Switch",
+                        networkRole: "Switch",
+                        category: "Switch",
+                        notes: [],
+                        parentGateway: null,
+                        parentSwitch: null,
+                        connectedGateways: [],
+                        connectedSwitches: [],
+                        isMainGateway: false,
+                        history: []
+                    },
+                    "10.5.1.11": {
+                        name: "Secondary-Switch",
+                        networkRole: "Switch", 
+                        category: "Switch",
+                        notes: [],
+                        parentGateway: null,
+                        parentSwitch: null,
+                        connectedGateways: [],
+                        connectedSwitches: [],
+                        isMainGateway: false,
+                        history: []
+                    },
+                    "10.5.1.50": {
+                        name: "Test-Device-1",
+                        networkRole: "Workstation",
+                        category: "Workstation", 
+                        notes: [],
+                        parentGateway: null,
+                        parentSwitch: null,
+                        connectedGateways: null,
+                        connectedSwitches: null,
+                        isMainGateway: false,
+                        history: []
+                    },
+                    "10.5.1.51": {
+                        name: "Test-Device-2",
+                        networkRole: "Production Server",
+                        category: "Production Server",
+                        notes: [],
+                        parentGateway: null,
+                        parentSwitch: null,
+                        connectedGateways: null,
+                        connectedSwitches: null,
+                        isMainGateway: false,
+                        history: []
+                    }
+                };
+
+                localStorage.setItem("customDeviceProperties", JSON.stringify(testDevices));
+                document.getElementById('testDeviceStatus').style.display = 'block';
+                loadCurrentState();
+                debugLog('Test devices created successfully', 'success');
+            } catch (error) {
+                debugLog(`Error creating test devices: ${error.message}`, 'error');
+            }
+        }
+
+        // Update device dropdowns
+        function updateDeviceDropdowns() {
+            try {
+                const customProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                const deviceSelect = document.getElementById('deviceIp');
+                const switchSelect = document.getElementById('switchIp');
+
+                // Clear existing options
+                deviceSelect.innerHTML = '<option value="">Select a device...</option>';
+                switchSelect.innerHTML = '<option value="">No switch connection</option>';
+
+                // Populate device dropdown with regular devices (non-switches)
+                Object.entries(customProps).forEach(([ip, props]) => {
+                    if (props.networkRole !== 'Switch' && props.networkRole !== 'switch') {
+                        const option = document.createElement('option');
+                        option.value = ip;
+                        option.textContent = `${props.name || ip} (${ip}) - ${props.networkRole || 'Unknown'}`;
+                        deviceSelect.appendChild(option);
+                    }
+                });
+
+                // Populate switch dropdown
+                Object.entries(customProps).forEach(([ip, props]) => {
+                    if (props.networkRole === 'Switch' || props.networkRole === 'switch') {
+                        const option = document.createElement('option');
+                        option.value = ip;
+                        option.textContent = `${props.name || ip} (${ip}) - Switch`;
+                        switchSelect.appendChild(option);
+                    }
+                });
+
+                debugLog('Device dropdowns updated', 'info');
+            } catch (error) {
+                debugLog(`Error updating dropdowns: ${error.message}`, 'error');
+            }
+        }
+
+        // Update available switches when device is selected
+        function updateAvailableSwitches() {
+            const deviceIp = document.getElementById('deviceIp').value;
+            if (!deviceIp) return;
+
+            try {
+                const customProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                const device = customProps[deviceIp];
+                
+                if (device && device.parentSwitch) {
+                    document.getElementById('switchIp').value = device.parentSwitch;
+                    debugLog(`Device ${deviceIp} is currently connected to switch ${device.parentSwitch}`, 'info');
+                } else {
+                    document.getElementById('switchIp').value = "";
+                    debugLog(`Device ${deviceIp} is not connected to any switch`, 'info');
+                }
+            } catch (error) {
+                debugLog(`Error checking device connections: ${error.message}`, 'error');
+            }
+        }
+
+        // Manual connect device to switch
+        function manualConnect() {
+            const deviceIp = document.getElementById('deviceIp').value;
+            const switchIp = document.getElementById('switchIp').value;
+
+            if (!deviceIp) {
+                debugLog('Please select a device first', 'error');
+                return;
+            }
+
+            try {
+                const customProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                
+                if (!customProps[deviceIp]) {
+                    debugLog(`Device ${deviceIp} not found`, 'error');
+                    return;
+                }
+
+                // Update device's parent switch
+                customProps[deviceIp].parentSwitch = switchIp || null;
+                customProps[deviceIp].parentGateway = null; // Clear gateway when connecting to switch
+
+                // Add history entry
+                const historyEntry = {
+                    timestamp: new Date().toISOString(),
+                    changes: {
+                        parentSwitch: switchIp || null
+                    }
+                };
+                
+                if (!customProps[deviceIp].history) {
+                    customProps[deviceIp].history = [];
+                }
+                customProps[deviceIp].history.unshift(historyEntry);
+
+                // Save to localStorage
+                localStorage.setItem("customDeviceProperties", JSON.stringify(customProps));
+
+                const message = switchIp ? 
+                    `Connected device ${deviceIp} to switch ${switchIp}` : 
+                    `Disconnected device ${deviceIp} from switch`;
+                
+                document.getElementById('connectionResult').innerHTML = 
+                    `<div class="status success">${message}</div>`;
+                
+                debugLog(message, 'success');
+                loadCurrentState();
+                updateAvailableSwitches();
+            } catch (error) {
+                debugLog(`Error connecting device: ${error.message}`, 'error');
+            }
+        }
+
+        // Manual disconnect device
+        function manualDisconnect() {
+            const deviceIp = document.getElementById('deviceIp').value;
+            
+            if (!deviceIp) {
+                debugLog('Please select a device first', 'error');
+                return;
+            }
+
+            document.getElementById('switchIp').value = "";
+            manualConnect();
+        }
+
+        // Test switch connections
+        function testSwitchConnection() {
+            try {
+                const customProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                let testResults = '<h3>Switch Connection Test Results:</h3>';
+                let passCount = 0;
+                let failCount = 0;
+
+                // Test 1: Check if switches exist
+                const switches = Object.entries(customProps).filter(([ip, props]) => 
+                    props.networkRole === 'Switch' || props.networkRole === 'switch'
+                );
+                
+                if (switches.length > 0) {
+                    testResults += `<div class="status success">✓ Found ${switches.length} switch(es)</div>`;
+                    passCount++;
+                } else {
+                    testResults += `<div class="status error">✗ No switches found</div>`;
+                    failCount++;
+                }
+
+                // Test 2: Check device-to-switch connections
+                const connectedDevices = Object.entries(customProps).filter(([ip, props]) => 
+                    props.parentSwitch && props.parentSwitch !== ""
+                );
+
+                if (connectedDevices.length > 0) {
+                    testResults += `<div class="status success">✓ Found ${connectedDevices.length} device(s) connected to switches</div>`;
+                    passCount++;
+                    
+                    connectedDevices.forEach(([ip, props]) => {
+                        const switchExists = customProps[props.parentSwitch];
+                        if (switchExists) {
+                            testResults += `<div class="status success">  ✓ ${props.name || ip} → ${switchExists.name || props.parentSwitch} (Valid)</div>`;
+                        } else {
+                            testResults += `<div class="status error">  ✗ ${props.name || ip} → ${props.parentSwitch} (Switch not found)</div>`;
+                            failCount++;
+                        }
+                    });
+                } else {
+                    testResults += `<div class="status info">ℹ No devices are connected to switches</div>`;
+                }
+
+                // Test 3: Check for orphaned switches
+                switches.forEach(([ip, props]) => {
+                    const connectedToThis = Object.values(customProps).filter(p => p.parentSwitch === ip);
+                    if (connectedToThis.length === 0) {
+                        testResults += `<div class="status info">ℹ Switch ${props.name || ip} has no connected devices</div>`;
+                    }
+                });
+
+                // Summary
+                testResults += `<h3>Summary:</h3>`;
+                testResults += `<div class="status ${failCount === 0 ? 'success' : 'error'}">`;
+                testResults += `Tests Passed: ${passCount}, Tests Failed: ${failCount}`;
+                testResults += `</div>`;
+
+                document.getElementById('testResults').innerHTML = testResults;
+                debugLog(`Test completed: ${passCount} passed, ${failCount} failed`, failCount === 0 ? 'success' : 'error');
+            } catch (error) {
+                debugLog(`Error running tests: ${error.message}`, 'error');
+            }
+        }
+
+        // Refresh device list
+        function refreshDeviceList() {
+            try {
+                const customProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                let listHTML = '';
+
+                if (Object.keys(customProps).length === 0) {
+                    listHTML = '<div class="status info">No devices found</div>';
+                } else {
+                    Object.entries(customProps).forEach(([ip, props]) => {
+                        const connectionInfo = [];
+                        if (props.parentSwitch) connectionInfo.push(`Switch: ${props.parentSwitch}`);
+                        if (props.parentGateway) connectionInfo.push(`Gateway: ${props.parentGateway}`);
+                        
+                        listHTML += `
+                            <div class="device-card">
+                                <div class="device-name">${props.name || ip}</div>
+                                <div class="device-details">IP: ${ip} | Type: ${props.networkRole || 'Unknown'}</div>
+                                <div class="device-details">Connections: ${connectionInfo.length > 0 ? connectionInfo.join(', ') : 'None'}</div>
+                            </div>
+                        `;
+                    });
+                }
+
+                document.getElementById('deviceList').innerHTML = listHTML;
+                debugLog('Device list refreshed', 'success');
+            } catch (error) {
+                debugLog(`Error refreshing device list: ${error.message}`, 'error');
+            }
+        }
+
+        // Initialize the page
+        window.onload = function() {
+            debugLog('Manual Switch Connection Test initialized', 'info');
+            loadCurrentState();
+            document.getElementById('testDeviceStatus').style.display = 'block';
+        };
+    </script>
+</body>
+</html>

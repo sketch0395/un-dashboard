@@ -13,7 +13,10 @@ import { useScanHistory } from './networkscanhistory';
 const NetworkScanExportImport = ({ 
     devices, 
     customNames,
-    onImport 
+    onImport,
+    // New props for selected scans export
+    selectedScansData = null,
+    showSelectedExport = false
 }) => {
     const { saveScanHistory } = useScanHistory();
     const [exportFormat, setExportFormat] = useState('json');
@@ -22,10 +25,31 @@ const NetworkScanExportImport = ({
     const [importStatus, setImportStatus] = useState(null);
     const [isImporting, setIsImporting] = useState(false);
     const fileInputRef = useRef(null);
-      // Function to handle exporting data
+
+    // Determine which data to use for export
+    const getExportData = () => {
+        if (showSelectedExport && selectedScansData) {
+            return {
+                devices: selectedScansData.devices,
+                customNames: selectedScansData.customNames,
+                isSelectedScans: true,
+                scanCount: selectedScansData.scanCount || 1
+            };
+        }
+        return {
+            devices: devices,
+            customNames: customNames,
+            isSelectedScans: false,
+            scanCount: 1
+        };
+    };
+
+    // Function to handle exporting data
     const handleExport = () => {
-        if (!devices || Object.keys(devices).length === 0) {
-            alert("No scan data to export.");
+        const exportData = getExportData();
+        
+        if (!exportData.devices || Object.keys(exportData.devices).length === 0) {
+            alert(exportData.isSelectedScans ? "No selected scan data to export." : "No scan data to export.");
             return;
         }
         
@@ -33,24 +57,38 @@ const NetworkScanExportImport = ({
         let filename;
         let mimeType;
         
-        // Get scan name from first device's scanSource if available
+        // Get scan name from data
         let scanName = 'network-scan';
-        const flattenedDevices = Array.isArray(devices) ? devices : Object.values(devices).flat();
-        if (flattenedDevices.length > 0 && flattenedDevices[0].scanSource?.name) {
-            // Clean the scan name for use in a filename
-            scanName = flattenedDevices[0].scanSource.name
-                .replace(/:/g, '-')
-                .replace(/[\\\/\*\?\"\<\>\|]/g, '') // Remove invalid filename chars
-                .trim();
+        if (exportData.isSelectedScans) {
+            scanName = `selected-scans-${exportData.scanCount}`;
+        } else {
+            const flattenedDevices = Array.isArray(exportData.devices) ? exportData.devices : Object.values(exportData.devices).flat();
+            if (flattenedDevices.length > 0 && flattenedDevices[0].scanSource?.name) {
+                // Clean the scan name for use in a filename
+                scanName = flattenedDevices[0].scanSource.name
+                    .replace(/:/g, '-')
+                    .replace(/[\\\/\*\?\"\<\>\|]/g, '') // Remove invalid filename chars
+                    .trim();
+            }
         }
         
         const dateStr = new Date().toISOString().split('T')[0];
-          if (exportFormat === 'csv') {
-            content = convertToCSV(devices, customNames);
+
+        if (exportFormat === 'csv') {
+            content = convertToCSV(exportData.devices, exportData.customNames);
             filename = `${scanName}-${dateStr}.csv`;
             mimeType = 'text/csv';
         } else {
-            const dataToExport = prepareForJsonExport(devices, customNames);
+            const dataToExport = prepareForJsonExport(exportData.devices, exportData.customNames);
+            // Add metadata for selected scans export
+            if (exportData.isSelectedScans) {
+                dataToExport.metadata = {
+                    ...dataToExport.metadata,
+                    exportType: 'selected-scans',
+                    scanCount: exportData.scanCount,
+                    exportDate: new Date().toISOString()
+                };
+            }
             content = JSON.stringify(dataToExport, null, 2);
             filename = `${scanName}-${dateStr}.json`;
             mimeType = 'application/json';
@@ -73,7 +111,7 @@ const NetworkScanExportImport = ({
             URL.revokeObjectURL(url);
         }, 0);
     };
-    
+
     // Function to trigger file input click
     const triggerFileInput = () => {
         fileInputRef.current.click();
@@ -149,16 +187,16 @@ const NetworkScanExportImport = ({
                             },
                             body: JSON.stringify(result),
                         });
-                        
-                        if (!response.ok) {
+                          if (!response.ok) {
                             const errorData = await response.json();
                             throw new Error(errorData.error || 'Failed to import data via API');
                         }
                         
                         const responseData = await response.json();
                         
-                        // Save to scan history
-                        saveScanHistory(result.devices, ipRange);
+                        // NOTE: Don't save to scan history here for API imports
+                        // The server will emit saveToScanHistory event which will be handled by DashboardNetworkScanControl
+                        console.log("API import successful, server will handle scan history saving");
                         
                         setImportStatus(`Successfully imported ${deviceCount} devices and added to history.`);
                         
@@ -209,12 +247,14 @@ const NetworkScanExportImport = ({
                                 device.parentSwitch = customProps.parentSwitch;
                                 device.portCount = customProps.portCount;
                             }
-                        });
-                    });
+                        });                    });
                     
-                    // Save to scan history with detected IP range
+                    // Save to scan history with detected IP range (with small delay to avoid conflicts)
                     const historyIpRange = result.metadata?.ipRange || ipRange;
-                    saveScanHistory(enrichedDevices, historyIpRange);
+                    console.log("Client-side import: saving to scan history with deduplication protection");
+                    setTimeout(() => {
+                        saveScanHistory(enrichedDevices, historyIpRange);
+                    }, 100); // Small delay to avoid race conditions
                       // Notify parent component
                     onImport({
                         ...result,
@@ -269,8 +309,7 @@ const NetworkScanExportImport = ({
         <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
                 {/* Export dropdown */}
-                <div className="relative">
-                    <button
+                <div className="relative">                    <button
                         onClick={() => !isImporting && setShowDropdown(!showDropdown)}
                         disabled={isImporting}
                         className={`flex items-center gap-1 px-3 py-1.5 rounded text-white text-sm transition-colors ${
@@ -280,7 +319,7 @@ const NetworkScanExportImport = ({
                         }`}
                     >
                         <FaFileExport className="mr-1" />
-                        Export Scan
+                        {showSelectedExport ? 'Export Selected Scans' : 'Export Scan'}
                     </button>
                     
                     {showDropdown && !isImporting && (
@@ -306,22 +345,23 @@ const NetworkScanExportImport = ({
                                 <FaFileCsv className="mr-2" /> Export as CSV
                             </button>
                         </div>
-                    )}
-                </div>
+                    )}                </div>
                 
-                {/* Import button */}
-                <button
-                    onClick={triggerFileInput}
-                    disabled={isImporting}
-                    className={`flex items-center gap-1 px-3 py-1.5 rounded text-white text-sm transition-colors ${
-                        isImporting 
-                            ? 'bg-green-800 opacity-70 cursor-not-allowed' 
-                            : 'bg-green-600 hover:bg-green-700'
-                    }`}
-                >
-                    <FaFileImport className="mr-1" />
-                    Import Scan
-                </button>
+                {/* Import button - only show if not in selected export mode */}
+                {!showSelectedExport && (
+                    <button
+                        onClick={triggerFileInput}
+                        disabled={isImporting}
+                        className={`flex items-center gap-1 px-3 py-1.5 rounded text-white text-sm transition-colors ${
+                            isImporting 
+                                ? 'bg-green-800 opacity-70 cursor-not-allowed' 
+                                : 'bg-green-600 hover:bg-green-700'
+                        }`}
+                    >
+                        <FaFileImport className="mr-1" />
+                        Import Scan
+                    </button>
+                )}
                 <input
                     ref={fileInputRef}
                     type="file"

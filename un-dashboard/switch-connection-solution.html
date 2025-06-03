@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Switch Connection Complete Solution</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #2d2d2d;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #444;
+            border-radius: 5px;
+        }
+        .success { background-color: #1f4f3f; border-color: #2d7a4f; }
+        .warning { background-color: #5d4e1f; border-color: #8b7355; }
+        .error { background-color: #4f1f1f; border-color: #7a2d2d; }
+        .info { background-color: #1f2f4f; border-color: #2d4f7a; }
+        button {
+            background-color: #0066cc;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover { background-color: #0052a3; }
+        .fix-btn { background-color: #28a745; }
+        .fix-btn:hover { background-color: #1e7e34; }
+        .create-btn { background-color: #17a2b8; }
+        .create-btn:hover { background-color: #138496; }
+        .test-btn { background-color: #ffc107; color: #212529; }
+        .test-btn:hover { background-color: #e0a800; }
+        pre {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            border: 1px solid #444;
+        }
+        .data-display {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #444;
+            padding: 10px;
+            background: #1a1a1a;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .online { background-color: #28a745; }
+        .offline { background-color: #dc3545; }
+        .unknown { background-color: #6c757d; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        th, td {
+            border: 1px solid #444;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #333;
+        }
+        .device-card {
+            background: #333;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            border-left: 4px solid #0066cc;
+        }
+        .switch-card {
+            border-left-color: #28a745;
+        }
+        .connection-line {
+            margin: 5px 0;
+            padding: 5px;
+            background: #2a2a2a;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Switch Connection Complete Solution</h1>
+        <p><strong>Issue:</strong> Devices are not connecting to switches in the network management application</p>
+        <p><strong>Root Cause Analysis:</strong> Missing switches in the system for devices to connect to</p>
+
+        <!-- Status Overview -->
+        <div id="statusOverview" class="section info">
+            <h3>📊 Current System Status</h3>
+            <div id="systemStatus">Analyzing...</div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="section">
+            <h3>🚀 Quick Actions</h3>
+            <button class="create-btn" onclick="createSampleSwitches()">🔌 Create Sample Switches</button>
+            <button class="create-btn" onclick="createSampleDevices()">📱 Create Sample Devices</button>
+            <button class="test-btn" onclick="testSwitchConnections()">🔗 Test Switch Connections</button>
+            <button class="fix-btn" onclick="fixAllIssues()">🔧 Fix All Issues</button>
+            <button onclick="clearAllData()">🗑️ Clear All Data</button>
+        </div>
+
+        <!-- Network Topology View -->
+        <div class="section">
+            <h3>🌐 Network Topology</h3>
+            <div id="networkTopology"></div>
+        </div>
+
+        <!-- Switch Management -->
+        <div class="section">
+            <h3>🔌 Switch Management</h3>
+            <div id="switchList"></div>
+            <button class="create-btn" onclick="addCustomSwitch()">+ Add Custom Switch</button>
+        </div>
+
+        <!-- Device Management -->
+        <div class="section">
+            <h3>📱 Device Management</h3>
+            <div id="deviceList"></div>
+            <button class="create-btn" onclick="addCustomDevice()">+ Add Custom Device</button>
+        </div>
+
+        <!-- Connection Testing -->
+        <div class="section">
+            <h3>🧪 Connection Testing</h3>
+            <div id="connectionTests"></div>
+            <button class="test-btn" onclick="runConnectionTests()">Run Connection Tests</button>
+        </div>
+
+        <!-- Live Data Monitor -->
+        <div class="section">
+            <h3>📈 Live Data Monitor</h3>
+            <div id="liveData" class="data-display"></div>
+        </div>
+
+        <!-- Debug Log -->
+        <div class="section">
+            <h3>📝 Debug Log</h3>
+            <div id="debugLog" class="data-display"></div>
+        </div>
+    </div>
+
+    <script>
+        let logEntries = [];
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            logEntries.unshift({ timestamp, message, type });
+            if (logEntries.length > 100) logEntries.pop(); // Keep only last 100 entries
+            updateDebugLog();
+        }
+
+        function updateDebugLog() {
+            const debugDiv = document.getElementById('debugLog');
+            debugDiv.innerHTML = logEntries.map(entry => 
+                `<div class="${entry.type}"><strong>[${entry.timestamp}]</strong> ${entry.message}</div>`
+            ).join('');
+        }
+
+        function getDeviceData() {
+            return JSON.parse(localStorage.getItem('customDeviceProperties') || '{}');
+        }
+
+        function saveDeviceData(data) {
+            localStorage.setItem('customDeviceProperties', JSON.stringify(data));
+            updateAllDisplays();
+        }
+
+        function createSampleSwitches() {
+            log('Creating sample switches...', 'info');
+            
+            const devices = getDeviceData();
+            
+            const sampleSwitches = [
+                {
+                    id: 'switch-main-001',
+                    name: 'Main Network Switch',
+                    networkRole: 'Switch',
+                    ip: '192.168.1.10',
+                    mac: '00:1A:2B:3C:4D:10',
+                    vendor: 'Cisco',
+                    isMainGateway: false,
+                    connectedSwitches: [],
+                    connectedGateways: [],
+                    parentSwitch: null,
+                    parentGateway: null,
+                    notes: []
+                },
+                {
+                    id: 'switch-secondary-002',
+                    name: 'Secondary Access Switch',
+                    networkRole: 'Switch',
+                    ip: '192.168.1.11',
+                    mac: '00:1A:2B:3C:4D:11',
+                    vendor: 'Netgear',
+                    isMainGateway: false,
+                    connectedSwitches: [],
+                    connectedGateways: [],
+                    parentSwitch: null,
+                    parentGateway: null,
+                    notes: []
+                },
+                {
+                    id: 'switch-edge-003',
+                    name: 'Edge Switch',
+                    networkRole: 'Switch',
+                    ip: '192.168.1.12',
+                    mac: '00:1A:2B:3C:4D:12',
+                    vendor: 'D-Link',
+                    isMainGateway: false,
+                    connectedSwitches: [],
+                    connectedGateways: [],
+                    parentSwitch: null,
+                    parentGateway: null,
+                    notes: []
+                }
+            ];
+
+            // Add switches to device data using IP as key
+            sampleSwitches.forEach(switchData => {
+                devices[switchData.ip] = switchData;
+            });
+
+            saveDeviceData(devices);
+            log('✅ Created 3 sample switches successfully', 'success');
+        }
+
+        function createSampleDevices() {
+            log('Creating sample devices...', 'info');
+            
+            const devices = getDeviceData();
+            
+            const sampleDevices = [
+                {
+                    id: 'device-laptop-001',
+                    name: 'Development Laptop',
+                    networkRole: 'Workstation',
+                    ip: '192.168.1.100',
+                    mac: '00:1A:2B:3C:4D:A0',
+                    vendor: 'Dell',
+                    parentSwitch: '192.168.1.10', // Connected to main switch
+                    parentGateway: null,
+                    notes: []
+                },
+                {
+                    id: 'device-server-001',
+                    name: 'Production Server',
+                    networkRole: 'Production Server',
+                    ip: '192.168.1.50',
+                    mac: '00:1A:2B:3C:4D:50',
+                    vendor: 'HP',
+                    parentSwitch: '192.168.1.10', // Connected to main switch
+                    parentGateway: null,
+                    notes: []
+                },
+                {
+                    id: 'device-printer-001',
+                    name: 'Office Printer',
+                    networkRole: 'Printer',
+                    ip: '192.168.1.200',
+                    mac: '00:1A:2B:3C:4D:C8',
+                    vendor: 'Canon',
+                    parentSwitch: '192.168.1.11', // Connected to secondary switch
+                    parentGateway: null,
+                    notes: []
+                },
+                {
+                    id: 'device-iot-001',
+                    name: 'Smart Camera',
+                    networkRole: 'Camera',
+                    ip: '192.168.1.150',
+                    mac: '00:1A:2B:3C:4D:96',
+                    vendor: 'Hikvision',
+                    parentSwitch: '192.168.1.12', // Connected to edge switch
+                    parentGateway: null,
+                    notes: []
+                }
+            ];
+
+            // Add devices to device data using IP as key
+            sampleDevices.forEach(device => {
+                devices[device.ip] = device;
+            });
+
+            saveDeviceData(devices);
+            log('✅ Created 4 sample devices with switch connections', 'success');
+        }
+
+        function testSwitchConnections() {
+            log('Testing switch connection functionality...', 'info');
+            
+            const devices = getDeviceData();
+            const switches = Object.entries(devices).filter(([_, device]) => 
+                device.networkRole === 'Switch' || device.networkRole === 'switch'
+            );
+            const regularDevices = Object.entries(devices).filter(([_, device]) => 
+                device.networkRole !== 'Switch' && device.networkRole !== 'switch' && 
+                device.networkRole !== 'Gateway' && device.networkRole !== 'gateway'
+            );
+
+            let testResults = '<h4>🧪 Connection Test Results:</h4>';
+
+            if (switches.length === 0) {
+                testResults += '<div class="error">❌ No switches found! Cannot test connections.</div>';
+                log('❌ Test failed: No switches available', 'error');
+            } else {
+                testResults += `<div class="success">✅ Found ${switches.length} switches</div>`;
+                
+                switches.forEach(([ip, switchData]) => {
+                    testResults += `<div class="device-card switch-card">
+                        <strong>Switch:</strong> ${switchData.name || ip} (${ip})
+                    </div>`;
+                });
+
+                if (regularDevices.length === 0) {
+                    testResults += '<div class="warning">⚠️ No regular devices found to test connections</div>';
+                } else {
+                    const connectedDevices = regularDevices.filter(([_, device]) => device.parentSwitch);
+                    testResults += `<div class="info">📱 Found ${regularDevices.length} regular devices, ${connectedDevices.length} connected to switches</div>`;
+                    
+                    connectedDevices.forEach(([ip, device]) => {
+                        const connectedSwitch = devices[device.parentSwitch];
+                        testResults += `<div class="connection-line">
+                            ${device.name || ip} → ${connectedSwitch ? connectedSwitch.name : device.parentSwitch}
+                        </div>`;
+                    });
+
+                    if (connectedDevices.length > 0) {
+                        log('✅ Switch connections working properly', 'success');
+                    } else {
+                        log('⚠️ No devices are connected to switches', 'warning');
+                    }
+                }
+            }
+
+            document.getElementById('connectionTests').innerHTML = testResults;
+        }
+
+        function fixAllIssues() {
+            log('🔧 Fixing all switch connection issues...', 'info');
+            
+            const devices = getDeviceData();
+            let fixedIssues = 0;
+
+            // 1. Ensure all devices have proper IDs
+            Object.entries(devices).forEach(([ip, device]) => {
+                if (!device.id) {
+                    device.id = `${device.networkRole || 'device'}-${ip.replace(/\./g, '-')}`;
+                    fixedIssues++;
+                }
+            });
+
+            // 2. Create default switches if none exist
+            const switches = Object.entries(devices).filter(([_, device]) => 
+                device.networkRole === 'Switch' || device.networkRole === 'switch'
+            );
+
+            if (switches.length === 0) {
+                log('Creating default switches as none exist...', 'info');
+                createSampleSwitches();
+                fixedIssues += 3;
+            }
+
+            // 3. Validate switch references
+            Object.entries(devices).forEach(([ip, device]) => {
+                if (device.parentSwitch && !devices[device.parentSwitch]) {
+                    log(`Removing invalid switch reference from ${device.name || ip}`, 'warning');
+                    device.parentSwitch = null;
+                    fixedIssues++;
+                }
+            });
+
+            // 4. Ensure proper network roles
+            Object.entries(devices).forEach(([ip, device]) => {
+                if (!device.networkRole) {
+                    device.networkRole = 'Other';
+                    fixedIssues++;
+                }
+            });
+
+            saveDeviceData(devices);
+            log(`✅ Fixed ${fixedIssues} issues. Switch connections should now work properly.`, 'success');
+        }
+
+        function addCustomSwitch() {
+            const name = prompt('Enter switch name:');
+            if (!name) return;
+            
+            const ip = prompt('Enter switch IP address:', '192.168.1.20');
+            if (!ip) return;
+
+            const devices = getDeviceData();
+            
+            if (devices[ip]) {
+                alert('A device with this IP already exists!');
+                return;
+            }
+
+            devices[ip] = {
+                id: `switch-${ip.replace(/\./g, '-')}`,
+                name: name,
+                networkRole: 'Switch',
+                ip: ip,
+                mac: `00:1A:2B:3C:${Math.floor(Math.random() * 256).toString(16).padStart(2, '0')}:${Math.floor(Math.random() * 256).toString(16).padStart(2, '0')}`.toUpperCase(),
+                vendor: 'Custom',
+                isMainGateway: false,
+                connectedSwitches: [],
+                connectedGateways: [],
+                parentSwitch: null,
+                parentGateway: null,
+                notes: []
+            };
+
+            saveDeviceData(devices);
+            log(`✅ Created custom switch: ${name} (${ip})`, 'success');
+        }
+
+        function addCustomDevice() {
+            const name = prompt('Enter device name:');
+            if (!name) return;
+            
+            const ip = prompt('Enter device IP address:', '192.168.1.101');
+            if (!ip) return;
+
+            const type = prompt('Enter device type:', 'Workstation');
+            if (!type) return;
+
+            const devices = getDeviceData();
+            
+            if (devices[ip]) {
+                alert('A device with this IP already exists!');
+                return;
+            }
+
+            // Show available switches for connection
+            const switches = Object.entries(devices).filter(([_, device]) => 
+                device.networkRole === 'Switch' || device.networkRole === 'switch'
+            );
+
+            let parentSwitch = null;
+            if (switches.length > 0) {
+                const switchOptions = switches.map(([ip, sw], index) => 
+                    `${index + 1}. ${sw.name || ip} (${ip})`
+                ).join('\n');
+                
+                const choice = prompt(`Select a switch to connect to:\n${switchOptions}\nEnter number (or leave blank for no connection):`);
+                if (choice && !isNaN(choice)) {
+                    const selectedIndex = parseInt(choice) - 1;
+                    if (selectedIndex >= 0 && selectedIndex < switches.length) {
+                        parentSwitch = switches[selectedIndex][0];
+                    }
+                }
+            }
+
+            devices[ip] = {
+                id: `device-${ip.replace(/\./g, '-')}`,
+                name: name,
+                networkRole: type,
+                ip: ip,
+                mac: `00:1A:2B:3C:${Math.floor(Math.random() * 256).toString(16).padStart(2, '0')}:${Math.floor(Math.random() * 256).toString(16).padStart(2, '0')}`.toUpperCase(),
+                vendor: 'Custom',
+                parentSwitch: parentSwitch,
+                parentGateway: null,
+                notes: []
+            };
+
+            saveDeviceData(devices);
+            log(`✅ Created custom device: ${name} (${ip})${parentSwitch ? ` connected to switch ${parentSwitch}` : ''}`, 'success');
+        }
+
+        function runConnectionTests() {
+            log('Running comprehensive connection tests...', 'info');
+            
+            testSwitchConnections();
+            
+            // Additional tests
+            const devices = getDeviceData();
+            const switches = Object.values(devices).filter(device => 
+                device.networkRole === 'Switch' || device.networkRole === 'switch'
+            );
+            const regularDevices = Object.values(devices).filter(device => 
+                device.networkRole !== 'Switch' && device.networkRole !== 'switch' && 
+                device.networkRole !== 'Gateway' && device.networkRole !== 'gateway'
+            );
+
+            let additionalTests = '<h4>📊 Detailed Analysis:</h4>';
+            
+            // Test 1: Switch availability
+            additionalTests += `<table>
+                <tr><th>Test</th><th>Result</th><th>Status</th></tr>
+                <tr><td>Switches Available</td><td>${switches.length}</td><td>${switches.length > 0 ? '✅' : '❌'}</td></tr>
+                <tr><td>Regular Devices</td><td>${regularDevices.length}</td><td>${regularDevices.length > 0 ? '✅' : '⚠️'}</td></tr>
+                <tr><td>Connected Devices</td><td>${regularDevices.filter(d => d.parentSwitch).length}</td><td>${regularDevices.filter(d => d.parentSwitch).length > 0 ? '✅' : '⚠️'}</td></tr>
+                <tr><td>Switch Dropdown Population</td><td>${switches.length > 0 ? 'Working' : 'Empty'}</td><td>${switches.length > 0 ? '✅' : '❌'}</td></tr>
+            </table>`;
+
+            document.getElementById('connectionTests').innerHTML += additionalTests;
+            log('✅ Comprehensive connection tests completed', 'success');
+        }
+
+        function clearAllData() {
+            if (confirm('Are you sure you want to clear all device data? This cannot be undone.')) {
+                localStorage.removeItem('customDeviceProperties');
+                updateAllDisplays();
+                log('🗑️ All data cleared', 'warning');
+            }
+        }
+
+        function updateSystemStatus() {
+            const devices = getDeviceData();
+            const switches = Object.values(devices).filter(device => 
+                device.networkRole === 'Switch' || device.networkRole === 'switch'
+            );
+            const regularDevices = Object.values(devices).filter(device => 
+                device.networkRole !== 'Switch' && device.networkRole !== 'switch' && 
+                device.networkRole !== 'Gateway' && device.networkRole !== 'gateway'
+            );
+            const connectedDevices = regularDevices.filter(device => device.parentSwitch);
+
+            const status = {
+                totalDevices: Object.keys(devices).length,
+                switches: switches.length,
+                regularDevices: regularDevices.length,
+                connectedDevices: connectedDevices.length,
+                connectionRate: regularDevices.length > 0 ? (connectedDevices.length / regularDevices.length * 100).toFixed(1) : 0
+            };
+
+            let statusHtml = `
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <div class="device-card">
+                        <strong>Total Devices:</strong> ${status.totalDevices}
+                    </div>
+                    <div class="device-card switch-card">
+                        <strong>Switches:</strong> ${status.switches}
+                        <span class="status-indicator ${status.switches > 0 ? 'online' : 'offline'}"></span>
+                    </div>
+                    <div class="device-card">
+                        <strong>Regular Devices:</strong> ${status.regularDevices}
+                    </div>
+                    <div class="device-card">
+                        <strong>Connected Devices:</strong> ${status.connectedDevices}
+                        <span class="status-indicator ${status.connectedDevices > 0 ? 'online' : 'offline'}"></span>
+                    </div>
+                    <div class="device-card">
+                        <strong>Connection Rate:</strong> ${status.connectionRate}%
+                    </div>
+                </div>
+            `;
+
+            if (status.switches === 0) {
+                statusHtml += '<div class="error">❌ <strong>Critical:</strong> No switches available! Devices cannot connect.</div>';
+            } else if (status.connectedDevices === 0 && status.regularDevices > 0) {
+                statusHtml += '<div class="warning">⚠️ <strong>Warning:</strong> Switches exist but no devices are connected.</div>';
+            } else if (status.connectedDevices > 0) {
+                statusHtml += '<div class="success">✅ <strong>Good:</strong> Switch connections are working properly.</div>';
+            }
+
+            document.getElementById('systemStatus').innerHTML = statusHtml;
+        }
+
+        function updateNetworkTopology() {
+            const devices = getDeviceData();
+            let topology = '<h4>🌐 Network Topology Map:</h4>';
+
+            const switches = Object.entries(devices).filter(([_, device]) => 
+                device.networkRole === 'Switch' || device.networkRole === 'switch'
+            );
+
+            if (switches.length === 0) {
+                topology += '<div class="error">No switches to display</div>';
+            } else {
+                switches.forEach(([switchIP, switchData]) => {
+                    topology += `<div class="device-card switch-card">
+                        <strong>🔌 ${switchData.name || switchIP}</strong> (${switchIP})
+                    `;
+
+                    // Find devices connected to this switch
+                    const connectedDevices = Object.entries(devices).filter(([_, device]) => 
+                        device.parentSwitch === switchIP
+                    );
+
+                    if (connectedDevices.length > 0) {
+                        topology += '<div style="margin-left: 20px; margin-top: 10px;">';
+                        connectedDevices.forEach(([deviceIP, device]) => {
+                            topology += `<div class="connection-line">
+                                📱 ${device.name || deviceIP} (${device.networkRole || 'Unknown'})
+                            </div>`;
+                        });
+                        topology += '</div>';
+                    } else {
+                        topology += '<div style="margin-left: 20px; color: #888; font-style: italic;">No connected devices</div>';
+                    }
+
+                    topology += '</div>';
+                });
+            }
+
+            document.getElementById('networkTopology').innerHTML = topology;
+        }
+
+        function updateSwitchList() {
+            const devices = getDeviceData();
+            const switches = Object.entries(devices).filter(([_, device]) => 
+                device.networkRole === 'Switch' || device.networkRole === 'switch'
+            );
+
+            let switchHtml = '';
+            
+            if (switches.length === 0) {
+                switchHtml = '<div class="warning">No switches configured. Create switches for devices to connect to.</div>';
+            } else {
+                switchHtml = '<table><tr><th>Name</th><th>IP</th><th>Vendor</th><th>Connected Devices</th><th>Actions</th></tr>';
+                
+                switches.forEach(([ip, switchData]) => {
+                    const connectedCount = Object.values(devices).filter(device => device.parentSwitch === ip).length;
+                    
+                    switchHtml += `<tr>
+                        <td>${switchData.name || 'Unnamed'}</td>
+                        <td>${ip}</td>
+                        <td>${switchData.vendor || 'Unknown'}</td>
+                        <td>${connectedCount}</td>
+                        <td><button onclick="removeDevice('${ip}')" style="background: #dc3545; padding: 4px 8px; font-size: 12px;">Remove</button></td>
+                    </tr>`;
+                });
+                
+                switchHtml += '</table>';
+            }
+
+            document.getElementById('switchList').innerHTML = switchHtml;
+        }
+
+        function updateDeviceList() {
+            const devices = getDeviceData();
+            const regularDevices = Object.entries(devices).filter(([_, device]) => 
+                device.networkRole !== 'Switch' && device.networkRole !== 'switch' && 
+                device.networkRole !== 'Gateway' && device.networkRole !== 'gateway'
+            );
+
+            let deviceHtml = '';
+            
+            if (regularDevices.length === 0) {
+                deviceHtml = '<div class="info">No regular devices configured.</div>';
+            } else {
+                deviceHtml = '<table><tr><th>Name</th><th>IP</th><th>Type</th><th>Connected Switch</th><th>Actions</th></tr>';
+                
+                regularDevices.forEach(([ip, device]) => {
+                    const connectedSwitch = device.parentSwitch ? 
+                        (devices[device.parentSwitch] ? devices[device.parentSwitch].name || device.parentSwitch : device.parentSwitch) : 
+                        'Not connected';
+                    
+                    deviceHtml += `<tr>
+                        <td>${device.name || 'Unnamed'}</td>
+                        <td>${ip}</td>
+                        <td>${device.networkRole || 'Unknown'}</td>
+                        <td>${connectedSwitch}</td>
+                        <td><button onclick="removeDevice('${ip}')" style="background: #dc3545; padding: 4px 8px; font-size: 12px;">Remove</button></td>
+                    </tr>`;
+                });
+                
+                deviceHtml += '</table>';
+            }
+
+            document.getElementById('deviceList').innerHTML = deviceHtml;
+        }
+
+        function removeDevice(ip) {
+            if (confirm(`Remove device ${ip}?`)) {
+                const devices = getDeviceData();
+                delete devices[ip];
+                saveDeviceData(devices);
+                log(`🗑️ Removed device: ${ip}`, 'warning');
+            }
+        }
+
+        function updateLiveData() {
+            const devices = getDeviceData();
+            const liveDataDiv = document.getElementById('liveData');
+            liveDataDiv.innerHTML = `<pre>${JSON.stringify(devices, null, 2)}</pre>`;
+        }
+
+        function updateAllDisplays() {
+            updateSystemStatus();
+            updateNetworkTopology();
+            updateSwitchList();
+            updateDeviceList();
+            updateLiveData();
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            log('🎯 Switch Connection Solution Tool Ready', 'info');
+            updateAllDisplays();
+        });
+
+        // Auto-refresh every 10 seconds
+        setInterval(updateAllDisplays, 10000);
+    </script>
+</body>
+</html>

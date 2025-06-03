@@ -359,8 +359,27 @@ export const parseJSONImport = (jsonData) => {
                         isMainGateway: device.isMainGateway || false,
                         parentGateway: device.parentGateway || null,
                         parentSwitch: device.parentSwitch || null,
-                        portCount: device.portCount || null
+                        portCount: device.portCount || null,
+                        history: device.history || [] // CRITICAL: Preserve device history data
                     };
+                }
+            });
+        }
+        
+        // IMPORTANT: Even if customNames exists, ensure history is preserved from devices
+        // This handles cases where the exported data has history in both places
+        if (Object.keys(customNamesData).length > 0) {
+            const flattenedDevices = Array.isArray(jsonData.devices) 
+                ? jsonData.devices 
+                : Object.values(validDevices).flat();
+                
+            flattenedDevices.forEach(device => {
+                if (device.ip && customNamesData[device.ip] && device.history) {
+                    // Merge history from device if it exists and is more complete
+                    if (!customNamesData[device.ip].history || 
+                        (Array.isArray(device.history) && device.history.length > 0)) {
+                        customNamesData[device.ip].history = device.history;
+                    }
                 }
             });
         }

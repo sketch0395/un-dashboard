@@ -10,6 +10,7 @@ import { FixedSizeList as List } from "react-window";
 const UnifiedDeviceModal = lazy(() => import("../../components/UnifiedDeviceModal"));
 const SSHTerminal = lazy(() => import("../../components/sshterminal"));
 const MemoizedDeviceList = lazy(() => import("../../components/MemoizedDeviceList"));
+const NetworkScanExportImport = lazy(() => import("./NetworkScanExportImport"));
 
 const ScanHistoryContext = createContext();
 
@@ -23,17 +24,43 @@ export const ScanHistoryProvider = ({ children }) => {
 
     useEffect(() => {
         localStorage.setItem("scanHistory", JSON.stringify(scanHistory));
-    }, [scanHistory]);
-
-    const saveScanHistory = (data, ipRange) => {
-        const newEntry = {
-            id: uuidv4(),
-            timestamp: format(new Date(), "yyyy-MM-dd HH:mm:ss"),
-            ipRange,
-            devices: Object.values(data).flat().length,
-            data,
-        };
-        setScanHistory((prev) => [...prev, newEntry]);
+    }, [scanHistory]);    const saveScanHistory = (data, ipRange) => {
+        const deviceCount = Object.values(data).flat().length;
+        const timestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+        
+        // Check for duplicates within the last 5 minutes to prevent duplication
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+        
+        setScanHistory((prev) => {
+            // Check if we already have a very similar scan recently
+            const isDuplicate = prev.some(entry => {
+                const entryTime = new Date(entry.timestamp);
+                const timeDifference = Math.abs(new Date() - entryTime);
+                
+                return (
+                    timeDifference < 5 * 60 * 1000 && // Within 5 minutes
+                    entry.devices === deviceCount && // Same number of devices
+                    entry.ipRange === ipRange && // Same IP range
+                    JSON.stringify(entry.data) === JSON.stringify(data) // Same data
+                );
+            });
+            
+            if (isDuplicate) {
+                console.log("Duplicate scan detected and prevented:", { deviceCount, ipRange, timestamp });
+                return prev; // Don't add duplicate
+            }
+            
+            const newEntry = {
+                id: uuidv4(),
+                timestamp,
+                ipRange,
+                devices: deviceCount,
+                data,
+            };
+            
+            console.log("Adding new scan to history:", { id: newEntry.id, deviceCount, ipRange, timestamp });
+            return [...prev, newEntry];
+        });
     };
 
     const deleteScan = (index) => {
@@ -163,7 +190,7 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     const handleAddZones = () => {
         console.log("Adding zones from selected scans with custom names");
         
-        // First, make sure we have the latest customNames data from localStorage
+        // First, make sure we have the latest customProperties data from localStorage
         const latestCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
         
         // Get the selected scan entries
@@ -488,6 +515,88 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                 customNames: updatedCustomNames
             });
         }
+    };    const getSelectedScansData = () => {
+        if (selectedScans.length === 0) return null;
+        
+        try {
+            // Get the latest custom properties from localStorage
+            const latestCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
+            
+            // Get the selected scan entries
+            const selectedZones = selectedScans.map((index) => scanHistory[index]).filter(Boolean); // Filter out any null/undefined entries
+            
+            if (selectedZones.length === 0) {
+                console.warn("No valid scan entries found for selected indices");
+                return null;
+            }
+            
+            // Create a combined array of devices from selected scans
+            let combinedDevices = [];
+            
+            // Process each selected zone/scan
+            selectedZones.forEach((zone, zoneIndex) => {
+                // Get all devices from this scan
+                const zoneDevices = Object.values(zone.data || {}).flat();
+                
+                // Create enhanced devices with proper custom properties and scan source info
+                const enhancedDevices = zoneDevices.map(device => {
+                    // Start with the original device
+                    const enhancedDevice = { ...device };
+                    
+                    // Apply custom properties from the latest localStorage data if they exist
+                    if (device.ip && latestCustomProperties[device.ip]) {
+                        const customProps = latestCustomProperties[device.ip];                        // Apply all custom properties including history
+                        enhancedDevice.name = customProps.name || enhancedDevice.name;
+                        enhancedDevice.color = customProps.color || enhancedDevice.color;
+                        enhancedDevice.icon = customProps.icon || enhancedDevice.icon;
+                        enhancedDevice.category = customProps.category || enhancedDevice.category;
+                        enhancedDevice.notes = customProps.notes || enhancedDevice.notes;
+                        
+                        // Apply network hierarchy properties - CRITICAL for export
+                        if (customProps.networkRole !== undefined) enhancedDevice.networkRole = customProps.networkRole;
+                        if (customProps.isMainGateway !== undefined) enhancedDevice.isMainGateway = customProps.isMainGateway;
+                        if (customProps.parentGateway !== undefined) enhancedDevice.parentGateway = customProps.parentGateway;
+                        if (customProps.parentSwitch !== undefined) enhancedDevice.parentSwitch = customProps.parentSwitch;
+                        if (customProps.portCount !== undefined) enhancedDevice.portCount = customProps.portCount;
+                        
+                        // Make sure we preserve history entries
+                        enhancedDevice.history = customProps.history || [];
+                    }
+                    
+                    // Add scan source information (important for grouping in the export)
+                    enhancedDevice.scanSource = {
+                        id: zone.id || `scan-${zoneIndex}`,
+                        name: zone.name || `Scan ${zoneIndex + 1}`,
+                        index: zoneIndex,
+                        timestamp: zone.timestamp
+                    };
+                    
+                    return enhancedDevice;
+                });
+                
+                // Add these enhanced devices to the combined array
+                combinedDevices = [...combinedDevices, ...enhancedDevices];
+            });
+            
+            // Convert to grouped format expected by export functions
+            const groupedDevices = {};
+            combinedDevices.forEach(device => {
+                const vendor = device.vendor || 'Unknown';
+                if (!groupedDevices[vendor]) {
+                    groupedDevices[vendor] = [];
+                }
+                groupedDevices[vendor].push(device);
+            });
+            
+            return {
+                devices: groupedDevices,
+                customNames: latestCustomProperties,
+                scanCount: selectedScans.length
+            };
+        } catch (error) {
+            console.error("Error preparing selected scans data for export:", error);
+            return null;
+        }
     };
 
     return (
@@ -641,15 +750,35 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                             );
                         })}
                 </div>
-            )}
-            {selectedScans.length >= 2 && (
-                <button
-                    onClick={handleAddZones}
-                    className="mt-4 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-                >
-                    Add Selected to Topology as Zones
-                </button>
-            )}            <Suspense fallback={<div>Loading modal...</div>}>
+            )}            {selectedScans.length >= 1 && (
+                <div className="mt-4 flex flex-col gap-3">
+                    {/* Export Selected Scans */}
+                    <div className="p-3 border border-gray-700 rounded bg-gray-800">
+                        <h4 className="text-sm font-medium text-gray-300 mb-2">
+                            Export Selected Scans ({selectedScans.length} selected)
+                        </h4>
+                        <Suspense fallback={<div className="text-gray-400 text-sm">Loading export options...</div>}>
+                            <NetworkScanExportImport 
+                                devices={null} // Not used in selected mode
+                                customNames={null} // Not used in selected mode
+                                selectedScansData={getSelectedScansData()}
+                                showSelectedExport={true}
+                                onImport={() => {}} // Disable import for selected scans view
+                            />
+                        </Suspense>
+                    </div>
+                    
+                    {/* Add to Topology (only show for 2+ selections) */}
+                    {selectedScans.length >= 2 && (
+                        <button
+                            onClick={handleAddZones}
+                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+                        >
+                            Add Selected to Topology as Zones
+                        </button>
+                    )}
+                </div>
+            )}<Suspense fallback={<div>Loading modal...</div>}>
                 <UnifiedDeviceModal
                     modalDevice={modalDevice}
                     setModalDevice={setModalDevice}

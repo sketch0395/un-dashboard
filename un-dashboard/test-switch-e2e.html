@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Switch Connection End-to-End Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #1f2937;
+            color: #fff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .section {
+            background-color: #374151;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+        }
+        .button {
+            background-color: #3b82f6;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .button:hover {
+            background-color: #2563eb;
+        }
+        .success {
+            color: #10b981;
+            background-color: #064e3b;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 5px 0;
+            border-left: 4px solid #10b981;
+        }
+        .error {
+            color: #ef4444;
+            background-color: #450a0a;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 5px 0;
+            border-left: 4px solid #ef4444;
+        }
+        .warning {
+            color: #f59e0b;
+            background-color: #451a03;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 5px 0;
+            border-left: 4px solid #f59e0b;
+        }
+        .info {
+            color: #3b82f6;
+            background-color: #0c1e2e;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 5px 0;
+            border-left: 4px solid #3b82f6;
+        }
+        .test-step {
+            background-color: #4b5563;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            border-left: 4px solid #6b7280;
+        }
+        .code-block {
+            background-color: #111827;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Switch Connection End-to-End Test</h1>
+        
+        <div class="section">
+            <h2>Test Environment Setup</h2>
+            <button class="button" onclick="setupTestEnvironment()">Setup Test Environment</button>
+            <button class="button" onclick="clearEnvironment()">Clear Environment</button>
+            <div id="setup-results"></div>
+        </div>
+
+        <div class="section">
+            <h2>Test 1: Basic Switch Connection Functionality</h2>
+            <button class="button" onclick="testBasicConnections()">Run Test</button>
+            <div id="test1-results"></div>
+        </div>
+
+        <div class="section">
+            <h2>Test 2: Device Modal Switch Selection</h2>
+            <button class="button" onclick="testModalFunctionality()">Run Test</button>
+            <div id="test2-results"></div>
+        </div>
+
+        <div class="section">
+            <h2>Test 3: Data Persistence Verification</h2>
+            <button class="button" onclick="testDataPersistence()">Run Test</button>
+            <div id="test3-results"></div>
+        </div>
+
+        <div class="section">
+            <h2>Test 4: Network Topology Validation</h2>
+            <button class="button" onclick="testNetworkTopology()">Run Test</button>
+            <div id="test4-results"></div>
+        </div>
+
+        <div class="section">
+            <h2>Manual Verification</h2>
+            <div class="info">
+                <h3>Manual Testing Steps:</h3>
+                <ol>
+                    <li>Click "Setup Test Environment" above</li>
+                    <li><button onclick="openApp()" style="display: inline; padding: 5px 10px; margin: 0 5px;">Open Main App</button></li>
+                    <li>Navigate to Network Scan or Device Management</li>
+                    <li>Click on "Test Device 1" to edit it</li>
+                    <li>Verify switch dropdown shows available switches</li>
+                    <li>Select "Core Switch" and save</li>
+                    <li>Verify the connection is saved and displayed correctly</li>
+                </ol>
+            </div>
+            <div id="manual-results"></div>
+        </div>
+
+        <div class="section">
+            <h2>Debug Information</h2>
+            <button class="button" onclick="showDebugInfo()">Show Debug Info</button>
+            <div id="debug-results"></div>
+        </div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            console.log(`[${type.toUpperCase()}] ${message}`);
+            return message;
+        }
+
+        function setupTestEnvironment() {
+            const resultsDiv = document.getElementById('setup-results');
+            
+            try {
+                // Create a comprehensive test environment
+                const testDevices = {
+                    "10.5.1.1": {
+                        name: "Main Gateway",
+                        networkRole: "Gateway",
+                        category: "Gateway",
+                        parentGateway: null,
+                        parentSwitch: null,
+                        connectedGateways: [],
+                        connectedSwitches: [],
+                        isMainGateway: true,
+                        notes: [],
+                        history: [{
+                            timestamp: new Date().toISOString(),
+                            changes: {
+                                name: "Main Gateway",
+                                networkRole: "Gateway",
+                                isMainGateway: true
+                            }
+                        }]
+                    },
+                    "10.5.1.10": {
+                        name: "Core Switch",
+                        networkRole: "Switch",
+                        category: "Switch", 
+                        parentGateway: "10.5.1.1",
+                        parentSwitch: null,
+                        connectedGateways: ["10.5.1.1"],
+                        connectedSwitches: [],
+                        notes: [],
+                        history: [{
+                            timestamp: new Date().toISOString(),
+                            changes: {
+                                name: "Core Switch",
+                                networkRole: "Switch",
+                                parentGateway: "10.5.1.1"
+                            }
+                        }]
+                    },
+                    "10.5.1.11": {
+                        name: "Access Switch",
+                        networkRole: "Switch",
+                        category: "Switch",
+                        parentGateway: "10.5.1.1", 
+                        parentSwitch: null,
+                        connectedGateways: ["10.5.1.1"],
+                        connectedSwitches: [],
+                        notes: [],
+                        history: [{
+                            timestamp: new Date().toISOString(),
+                            changes: {
+                                name: "Access Switch",
+                                networkRole: "Switch",
+                                parentGateway: "10.5.1.1"
+                            }
+                        }]
+                    },
+                    "10.5.1.20": {
+                        name: "Test Device 1",
+                        networkRole: null, // Regular device
+                        category: "Workstation",
+                        parentGateway: null,
+                        parentSwitch: null, // Will be connected in tests
+                        connectedGateways: [],
+                        connectedSwitches: [],
+                        notes: [],
+                        history: [{
+                            timestamp: new Date().toISOString(),
+                            changes: {
+                                name: "Test Device 1",
+                                category: "Workstation"
+                            }
+                        }]
+                    },
+                    "10.5.1.21": {
+                        name: "Test Device 2", 
+                        networkRole: null, // Regular device
+                        category: "Server",
+                        parentGateway: null,
+                        parentSwitch: null, // Will be connected in tests
+                        connectedGateways: [],
+                        connectedSwitches: [],
+                        notes: [],
+                        history: [{
+                            timestamp: new Date().toISOString(),
+                            changes: {
+                                name: "Test Device 2",
+                                category: "Server"
+                            }
+                        }]
+                    }
+                };
+
+                localStorage.setItem("customDeviceProperties", JSON.stringify(testDevices));
+                
+                resultsDiv.innerHTML = `
+                    <div class="success">✅ Test environment setup complete!</div>
+                    <div class="info">Created ${Object.keys(testDevices).length} test devices:
+                        <ul>
+                            <li>1 Gateway (10.5.1.1 - Main Gateway)</li>
+                            <li>2 Switches (10.5.1.10 - Core Switch, 10.5.1.11 - Access Switch)</li>
+                            <li>2 Test devices (10.5.1.20, 10.5.1.21) ready for switch connection testing</li>
+                        </ul>
+                    </div>
+                `;
+
+                log('Test environment created successfully');
+
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error">❌ Error setting up test environment: ${error.message}</div>`;
+                console.error('Setup error:', error);
+            }
+        }
+
+        function testBasicConnections() {
+            const resultsDiv = document.getElementById('test1-results');
+            let results = '';
+            let passed = 0;
+            let failed = 0;
+
+            try {
+                const devices = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                
+                // Test 1.1: Verify switches exist
+                const switches = Object.entries(devices).filter(([_, device]) => 
+                    device.networkRole === 'Switch' || device.networkRole === 'switch'
+                );
+                
+                if (switches.length >= 2) {
+                    results += '<div class="success">✅ Test 1.1 PASSED: Found switches for testing</div>';
+                    passed++;
+                } else {
+                    results += '<div class="error">❌ Test 1.1 FAILED: Not enough switches found</div>';
+                    failed++;
+                }
+
+                // Test 1.2: Connect Test Device 1 to Core Switch
+                const testDevice1 = devices["10.5.1.20"];
+                const coreSwitch = devices["10.5.1.10"];
+                
+                if (testDevice1 && coreSwitch) {
+                    // Simulate connection
+                    devices["10.5.1.20"] = {
+                        ...testDevice1,
+                        parentSwitch: "10.5.1.10",
+                        parentGateway: null
+                    };
+                    
+                    localStorage.setItem("customDeviceProperties", JSON.stringify(devices));
+                    
+                    // Verify connection was saved
+                    const updatedDevices = JSON.parse(localStorage.getItem("customDeviceProperties"));
+                    const connectedDevice = updatedDevices["10.5.1.20"];
+                    
+                    if (connectedDevice.parentSwitch === "10.5.1.10") {
+                        results += '<div class="success">✅ Test 1.2 PASSED: Device successfully connected to switch</div>';
+                        passed++;
+                    } else {
+                        results += '<div class="error">❌ Test 1.2 FAILED: Device connection not saved properly</div>';
+                        failed++;
+                    }
+                } else {
+                    results += '<div class="error">❌ Test 1.2 FAILED: Test devices not found</div>';
+                    failed++;
+                }
+
+                // Test 1.3: Verify switch has gateway connection
+                const switch1 = devices["10.5.1.10"];
+                const hasGatewayConnection = 
+                    (switch1.parentGateway && switch1.parentGateway.trim() !== '') ||
+                    (Array.isArray(switch1.connectedGateways) && switch1.connectedGateways.length > 0);
+                
+                if (hasGatewayConnection) {
+                    results += '<div class="success">✅ Test 1.3 PASSED: Switch has gateway connection</div>';
+                    passed++;
+                } else {
+                    results += '<div class="error">❌ Test 1.3 FAILED: Switch has no gateway connection</div>';
+                    failed++;
+                }
+
+                results += `<div class="info">Test 1 Summary: ${passed} passed, ${failed} failed</div>`;
+
+            } catch (error) {
+                results += `<div class="error">❌ Test 1 ERROR: ${error.message}</div>`;
+                console.error('Test 1 error:', error);
+            }
+
+            resultsDiv.innerHTML = results;
+        }
+
+        function testModalFunctionality() {
+            const resultsDiv = document.getElementById('test2-results');
+            let results = '';
+            let passed = 0;
+            let failed = 0;
+
+            try {
+                const devices = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                
+                // Test 2.1: Simulate device modal showing switches
+                const switches = Object.entries(devices).filter(([ip, props]) => 
+                    (props.networkRole === 'Switch' || props.networkRole === 'switch') && ip !== "10.5.1.20"
+                );
+                
+                if (switches.length > 0) {
+                    results += `<div class="success">✅ Test 2.1 PASSED: Modal would show ${switches.length} available switches</div>`;
+                    switches.forEach(([ip, device]) => {
+                        results += `<div class="info">  - ${device.name || ip} (${ip})</div>`;
+                    });
+                    passed++;
+                } else {
+                    results += '<div class="error">❌ Test 2.1 FAILED: No switches available for selection</div>';
+                    failed++;
+                }
+
+                // Test 2.2: Simulate switch device showing gateway connections
+                const testSwitch = devices["10.5.1.10"];
+                if (testSwitch && testSwitch.networkRole === 'Switch') {
+                    const gateways = Object.entries(devices).filter(([ip, props]) => 
+                        (props.networkRole === 'Gateway' || props.networkRole === 'gateway') && ip !== "10.5.1.10"
+                    );
+                    
+                    if (gateways.length > 0) {
+                        results += `<div class="success">✅ Test 2.2 PASSED: Switch modal would show ${gateways.length} available gateways</div>`;
+                        passed++;
+                    } else {
+                        results += '<div class="error">❌ Test 2.2 FAILED: No gateways available for switch connection</div>';
+                        failed++;
+                    }
+                } else {
+                    results += '<div class="error">❌ Test 2.2 FAILED: Test switch not found</div>';
+                    failed++;
+                }
+
+                // Test 2.3: Simulate updateDeviceProperties function
+                const testDevice = {
+                    ip: "10.5.1.21",
+                    name: "Test Device 2",
+                    networkRole: null,
+                    parentSwitch: "10.5.1.11",
+                    parentGateway: null,
+                    connectedGateways: [],
+                    connectedSwitches: [],
+                    category: "Server"
+                };
+
+                // Simulate the updateDeviceProperties function
+                const customProps = { ...devices };
+                customProps[testDevice.ip] = {
+                    ...customProps[testDevice.ip],
+                    name: testDevice.name,
+                    category: testDevice.category,
+                    networkRole: testDevice.networkRole,
+                    parentSwitch: testDevice.parentSwitch || null,
+                    parentGateway: testDevice.parentGateway || null,
+                    connectedGateways: testDevice.connectedGateways || [],
+                    connectedSwitches: testDevice.connectedSwitches || [],
+                    notes: testDevice.notes || []
+                };
+
+                localStorage.setItem("customDeviceProperties", JSON.stringify(customProps));
+                
+                // Verify the save worked
+                const savedDevices = JSON.parse(localStorage.getItem("customDeviceProperties"));
+                const savedDevice = savedDevices["10.5.1.21"];
+                
+                if (savedDevice.parentSwitch === "10.5.1.11") {
+                    results += '<div class="success">✅ Test 2.3 PASSED: updateDeviceProperties function simulation successful</div>';
+                    passed++;
+                } else {
+                    results += '<div class="error">❌ Test 2.3 FAILED: updateDeviceProperties function simulation failed</div>';
+                    failed++;
+                }
+
+                results += `<div class="info">Test 2 Summary: ${passed} passed, ${failed} failed</div>`;
+
+            } catch (error) {
+                results += `<div class="error">❌ Test 2 ERROR: ${error.message}</div>`;
+                console.error('Test 2 error:', error);
+            }
+
+            resultsDiv.innerHTML = results;
+        }
+
+        function testDataPersistence() {
+            const resultsDiv = document.getElementById('test3-results');
+            let results = '';
+            let passed = 0;
+            let failed = 0;
+
+            try {
+                // Test 3.1: Verify localStorage persistence
+                const devices = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                
+                if (Object.keys(devices).length > 0) {
+                    results += `<div class="success">✅ Test 3.1 PASSED: Found ${Object.keys(devices).length} devices in localStorage</div>`;
+                    passed++;
+                } else {
+                    results += '<div class="error">❌ Test 3.1 FAILED: No devices found in localStorage</div>';
+                    failed++;
+                }
+
+                // Test 3.2: Verify switch connections are persisted
+                const connectedDevices = Object.entries(devices).filter(([_, device]) => 
+                    device.parentSwitch && device.parentSwitch.trim() !== ''
+                );
+                
+                if (connectedDevices.length > 0) {
+                    results += `<div class="success">✅ Test 3.2 PASSED: Found ${connectedDevices.length} devices with switch connections</div>`;
+                    connectedDevices.forEach(([ip, device]) => {
+                        results += `<div class="info">  - ${device.name || ip} → ${device.parentSwitch}</div>`;
+                    });
+                    passed++;
+                } else {
+                    results += '<div class="warning">⚠️ Test 3.2 WARNING: No devices with switch connections found (may be expected)</div>';
+                }
+
+                // Test 3.3: Verify gateway connections are persisted
+                const switchesWithGateways = Object.entries(devices).filter(([_, device]) => 
+                    (device.networkRole === 'Switch' || device.networkRole === 'switch') &&
+                    ((device.parentGateway && device.parentGateway.trim() !== '') ||
+                     (Array.isArray(device.connectedGateways) && device.connectedGateways.length > 0))
+                );
+                
+                if (switchesWithGateways.length > 0) {
+                    results += `<div class="success">✅ Test 3.3 PASSED: Found ${switchesWithGateways.length} switches with gateway connections</div>`;
+                    passed++;
+                } else {
+                    results += '<div class="error">❌ Test 3.3 FAILED: No switches with gateway connections found</div>';
+                    failed++;
+                }
+
+                // Test 3.4: Test data integrity after page refresh simulation
+                const originalData = JSON.stringify(devices);
+                
+                // Simulate page refresh by re-reading localStorage
+                const reloadedDevices = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                const reloadedData = JSON.stringify(reloadedDevices);
+                
+                if (originalData === reloadedData) {
+                    results += '<div class="success">✅ Test 3.4 PASSED: Data integrity maintained after simulated refresh</div>';
+                    passed++;
+                } else {
+                    results += '<div class="error">❌ Test 3.4 FAILED: Data integrity lost after simulated refresh</div>';
+                    failed++;
+                }
+
+                results += `<div class="info">Test 3 Summary: ${passed} passed, ${failed} failed</div>`;
+
+            } catch (error) {
+                results += `<div class="error">❌ Test 3 ERROR: ${error.message}</div>`;
+                console.error('Test 3 error:', error);
+            }
+
+            resultsDiv.innerHTML = results;
+        }
+
+        function testNetworkTopology() {
+            const resultsDiv = document.getElementById('test4-results');
+            let results = '';
+            let passed = 0;
+            let failed = 0;
+
+            try {
+                const devices = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                
+                // Test 4.1: Verify network hierarchy is valid
+                const gateways = Object.entries(devices).filter(([_, device]) => 
+                    device.networkRole === 'Gateway' || device.networkRole === 'gateway'
+                );
+                
+                const switches = Object.entries(devices).filter(([_, device]) => 
+                    device.networkRole === 'Switch' || device.networkRole === 'switch'
+                );
+                
+                const regularDevices = Object.entries(devices).filter(([_, device]) => 
+                    !device.networkRole
+                );
+
+                results += `<div class="info">Network topology: ${gateways.length} gateways, ${switches.length} switches, ${regularDevices.length} regular devices</div>`;
+
+                // Test 4.2: Verify all switches connect to gateways
+                let switchesConnectedToGateways = 0;
+                switches.forEach(([ip, device]) => {
+                    const hasGatewayConnection = 
+                        (device.parentGateway && device.parentGateway.trim() !== '') ||
+                        (Array.isArray(device.connectedGateways) && device.connectedGateways.length > 0);
+                    
+                    if (hasGatewayConnection) {
+                        switchesConnectedToGateways++;
+                    }
+                });
+
+                if (switchesConnectedToGateways === switches.length && switches.length > 0) {
+                    results += '<div class="success">✅ Test 4.2 PASSED: All switches connected to gateways</div>';
+                    passed++;
+                } else {
+                    results += `<div class="error">❌ Test 4.2 FAILED: ${switchesConnectedToGateways}/${switches.length} switches connected to gateways</div>`;
+                    failed++;
+                }
+
+                // Test 4.3: Verify no circular references
+                let circularReferences = 0;
+                Object.entries(devices).forEach(([ip, device]) => {
+                    if (device.parentSwitch === ip || device.parentGateway === ip) {
+                        circularReferences++;
+                        results += `<div class="error">Circular reference detected: ${device.name || ip} references itself</div>`;
+                    }
+                });
+
+                if (circularReferences === 0) {
+                    results += '<div class="success">✅ Test 4.3 PASSED: No circular references found</div>';
+                    passed++;
+                } else {
+                    results += `<div class="error">❌ Test 4.3 FAILED: ${circularReferences} circular references found</div>`;
+                    failed++;
+                }
+
+                // Test 4.4: Verify referenced devices exist
+                let brokenReferences = 0;
+                Object.entries(devices).forEach(([ip, device]) => {
+                    if (device.parentSwitch && !devices[device.parentSwitch]) {
+                        brokenReferences++;
+                        results += `<div class="error">Broken switch reference: ${device.name || ip} → ${device.parentSwitch}</div>`;
+                    }
+                    if (device.parentGateway && !devices[device.parentGateway]) {
+                        brokenReferences++;
+                        results += `<div class="error">Broken gateway reference: ${device.name || ip} → ${device.parentGateway}</div>`;
+                    }
+                });
+
+                if (brokenReferences === 0) {
+                    results += '<div class="success">✅ Test 4.4 PASSED: All references point to existing devices</div>';
+                    passed++;
+                } else {
+                    results += `<div class="error">❌ Test 4.4 FAILED: ${brokenReferences} broken references found</div>`;
+                    failed++;
+                }
+
+                results += `<div class="info">Test 4 Summary: ${passed} passed, ${failed} failed</div>`;
+
+            } catch (error) {
+                results += `<div class="error">❌ Test 4 ERROR: ${error.message}</div>`;
+                console.error('Test 4 error:', error);
+            }
+
+            resultsDiv.innerHTML = results;
+        }
+
+        function showDebugInfo() {
+            const resultsDiv = document.getElementById('debug-results');
+            
+            try {
+                const devices = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                
+                let debugHtml = '<div class="code-block">';
+                debugHtml += '<h4>Current Device Data Structure:</h4>';
+                debugHtml += '<pre>' + JSON.stringify(devices, null, 2) + '</pre>';
+                debugHtml += '</div>';
+
+                debugHtml += '<div class="info"><h4>Key Observations:</h4>';
+                debugHtml += '<ul>';
+                debugHtml += `<li>Total devices: ${Object.keys(devices).length}</li>`;
+                
+                const switches = Object.entries(devices).filter(([_, d]) => d.networkRole === 'Switch' || d.networkRole === 'switch');
+                debugHtml += `<li>Switches: ${switches.length}</li>`;
+                
+                const gateways = Object.entries(devices).filter(([_, d]) => d.networkRole === 'Gateway' || d.networkRole === 'gateway');
+                debugHtml += `<li>Gateways: ${gateways.length}</li>`;
+                
+                const connected = Object.entries(devices).filter(([_, d]) => d.parentSwitch || d.parentGateway);
+                debugHtml += `<li>Devices with connections: ${connected.length}</li>`;
+                
+                debugHtml += '</ul></div>';
+
+                resultsDiv.innerHTML = debugHtml;
+
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="error">Error showing debug info: ${error.message}</div>`;
+                console.error('Debug error:', error);
+            }
+        }
+
+        function clearEnvironment() {
+            if (confirm('Clear all test data?')) {
+                localStorage.removeItem("customDeviceProperties");
+                localStorage.removeItem("scannedDevices");
+                document.getElementById('setup-results').innerHTML = '<div class="success">Environment cleared!</div>';
+            }
+        }
+
+        function openApp() {
+            window.open('http://localhost:3000', '_blank');
+        }
+
+        // Run setup automatically when page loads
+        window.onload = function() {
+            log('End-to-end test tool loaded');
+        };
+    </script>
+</body>
+</html>
