@@ -3,6 +3,9 @@ import "./globals.css";
 import Navbar from "./components/navbar";
 import { ScanHistoryProvider } from "./networkscan/components/networkscanhistory";
 import PageLayout from "./components/PageLayout";
+import { AuthProvider } from "./contexts/AuthContext";
+import AuthWrapper from "./components/auth/AuthWrapper";
+import LogoutHandler from "./components/LogoutHandler";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -24,13 +27,17 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <Navbar />
-        <ScanHistoryProvider>
-          <PageLayout>
-            {children}
-          </PageLayout>
-        </ScanHistoryProvider>
+      >        <AuthProvider>
+          <LogoutHandler />
+          <AuthWrapper>
+            <Navbar />
+            <ScanHistoryProvider>
+              <PageLayout>
+                {children}
+              </PageLayout>
+            </ScanHistoryProvider>
+          </AuthWrapper>
+        </AuthProvider>
       </body>
     </html>
   );

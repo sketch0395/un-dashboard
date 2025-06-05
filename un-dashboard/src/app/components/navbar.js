@@ -1,10 +1,14 @@
 "use client";
 
 import React, { useEffect, useState, memo } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { useAuth } from "../contexts/AuthContext";
+import UserMenu from "./auth/UserMenu";
 
 const Navbar = memo(() => {
     const router = useRouter();
+    const pathname = usePathname();
+    const { isAuthenticated } = useAuth();
     const [hostInfo, setHostInfo] = useState({
         hostname: "Loading...",
         platform: "Loading...",
@@ -14,8 +18,15 @@ const Navbar = memo(() => {
         totalMemory: "Loading...",
         freeMemory: "Loading...",
         uptime: "Loading...",
-    });
-    const [error, setError] = useState(null);
+    });    const [error, setError] = useState(null);
+
+    // Helper function to format uptime
+    const formatUptime = (seconds) => {
+        const days = Math.floor(seconds / (24 * 3600));
+        const hours = Math.floor((seconds % (24 * 3600)) / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        return `${days}d ${hours}h ${minutes}m`;
+    };
 
     useEffect(() => {
         const fetchHostInfo = async () => {
@@ -48,12 +59,11 @@ const Navbar = memo(() => {
         fetchHostInfo();
     }, []);
 
-    const formatUptime = (seconds) => {
-        const days = Math.floor(seconds / (24 * 3600));
-        const hours = Math.floor((seconds % (24 * 3600)) / 3600);
-        const minutes = Math.floor((seconds % 3600) / 60);
-        return `${days}d ${hours}h ${minutes}m`;
-    };
+    // Don't show navbar on auth pages
+    const authRoutes = ['/auth/login', '/auth/register'];
+    if (authRoutes.includes(pathname)) {
+        return null;
+    }
 
     if (hostInfo.hostname === "Loading...") {
         return <div>Loading host information...</div>;
@@ -83,33 +93,37 @@ const Navbar = memo(() => {
                         <p>Free Memory: {hostInfo.freeMemory}</p>
                         <p>Total Memory: {hostInfo.totalMemory}</p>
                     </>
+                )}            </div>            
+            <div className="flex items-center space-x-4">
+                {isAuthenticated && (
+                    <>
+                        <button
+                            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200"
+                            onClick={() => router.push("/")}
+                        >
+                            Home
+                        </button>
+                        <button
+                            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200"
+                            onClick={() => router.push("/docker")}
+                        >
+                            Docker
+                        </button>
+                        <button
+                            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200"
+                            onClick={() => router.push("/networkscan")}
+                        >
+                            Network Scan
+                        </button>
+                        <button
+                            className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded transition duration-200"
+                            onClick={() => router.push("/performance")}
+                        >
+                            Performance
+                        </button>
+                        <UserMenu />
+                    </>
                 )}
-            </div>            <div className="flex space-x-4">
-                <button
-                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-                    onClick={() => router.push("/")}
-                >
-                    Home
-                </button>
-                <button
-                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-                    onClick={() => router.push("/docker")}
-                >
-                    Docker
-                </button>
-                <button
-                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-                    onClick={() => router.push("/networkscan")}
-                >
-                    Network Scan
-                </button>
-
-                <button
-                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-                    onClick={() => router.push("/performance")}
-                >
-                    Performance
-                </button>
             </div>        </nav>
     );
 });

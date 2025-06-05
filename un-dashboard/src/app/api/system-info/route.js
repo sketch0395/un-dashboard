@@ -1,4 +1,4 @@
-import UAParser from "ua-parser-js";
+import { UAParser } from "ua-parser-js";
 import os from "os";
 import { NextResponse } from 'next/server';
 import { exec } from 'child_process';
