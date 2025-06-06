@@ -2,10 +2,11 @@
 
 import { useState, lazy, Suspense, useEffect, useRef } from "react";
 import TopologyMap from "./networktopology";
+import SharedScansBrowser from "./SharedScansBrowser";
 import UnifiedDeviceModal from "../../components/UnifiedDeviceModal";
 import NetworkControlModal from "../../components/NetworkControlModal";
 import { useNetworkControlModal } from "../../components/useNetworkControlModal";
-import { FaNetworkWired, FaCog, FaBug, FaExpand, FaCompress } from "react-icons/fa";
+import { FaNetworkWired, FaCog, FaBug, FaExpand, FaCompress, FaShare } from "react-icons/fa";
 import { format } from "date-fns";
 import { debugNetworkRelationships, fixSwitchParentGateway } from "../../utils/networkRelationshipDebug";
 
@@ -17,8 +18,10 @@ export default function NetworkDashboard() {
     const [devices, setDevices] = useState({});
     const [vendorColors, setVendorColors] = useState({});
     const [customNames, setCustomNames] = useState({});
-    const [modalDevice, setModalDevice] = useState(null);
-    const [flattenedDevices, setFlattenedDevices] = useState([]);
+    const [modalDevice, setModalDevice] = useState(null);    const [flattenedDevices, setFlattenedDevices] = useState([]);
+    
+    // Tab navigation state
+    const [activeTab, setActiveTab] = useState('topology');
     
     // Add state for SSH modal and connection
     const [sshModalVisible, setSSHModalVisible] = useState(false);
@@ -312,92 +315,138 @@ export default function NetworkDashboard() {
         }
         
         return allDevices;
-    };    return (
-        <div className="flex flex-col bg-gray-900 text-white h-screen w-screen overflow-hidden">
-            {/* Top Control Bar */}
-            <div className="bg-gray-800 p-4 border-b border-gray-700">
-                <div className="flex justify-between items-center">                    <div className="flex items-center space-x-4">
-                        <h2 className="text-xl font-semibold">Network Topology</h2>
-                        <div className="flex items-center space-x-4 text-sm text-gray-400">
-                            <span>{flattenedDevices.length} devices</span>
-                            {Object.keys(devices).length > 0 && (
-                                <span>{Object.keys(devices).length} vendors</span>
-                            )}
-                            {Object.keys(customNames).length > 0 && (
-                                <span>{Object.keys(customNames).length} custom names</span>
-                            )}
-                        </div>
-                    </div>
-                    
-                    <div className="flex items-center space-x-3">
-                        {/* Network Control Button */}
-                        <button
-                            onClick={networkModal.openModal}
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center transition-colors"
-                        >
-                            <FaNetworkWired className="mr-2" />
-                            Network Control
-                        </button>
-                        
-                        {/* Debug Tools */}
-                        <button 
-                            className="bg-gray-700 p-2 rounded hover:bg-gray-600"
-                            title="Debug Network Relationships"
-                            onClick={() => {
-                                debugNetworkRelationships();
-                                if (topologyMapRef.current) {
-                                    topologyMapRef.current.refresh();
-                                }
-                            }}
-                        >
-                            <FaBug />
-                        </button>
-                        
-                        {/* Fix Switch Connections */}
-                        <button 
-                            className="bg-yellow-700 p-2 rounded hover:bg-yellow-600"
-                            title="Fix Switch-Gateway Connections"
-                            onClick={() => {
-                                if (fixGatewaySwitchConnections()) {
-                                    alert("Fixed switch-gateway connections. Topology map will refresh.");
-                                } else {
-                                    alert("No switch-gateway connection issues to fix or no gateways available.");
-                                }
-                            }}
-                        >
-                            <FaCog />
-                        </button>
-                        
-                        {/* Fullscreen Toggle */}
-                        <button
-                            onClick={() => setIsTopologyFullscreen(!isTopologyFullscreen)}
-                            className="bg-gray-700 p-2 rounded hover:bg-gray-600"
-                            title={isTopologyFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
-                        >
-                            {isTopologyFullscreen ? <FaCompress /> : <FaExpand />}
-                        </button>
-                    </div>
+    };    return (        <div className="flex flex-col bg-gray-900 text-white h-screen w-screen overflow-hidden">
+            {/* Tab Navigation */}
+            <div className="bg-gray-800 border-b border-gray-700">
+                <div className="flex space-x-0">
+                    <button
+                        onClick={() => setActiveTab('topology')}
+                        className={`px-6 py-4 font-medium transition-colors border-b-2 ${
+                            activeTab === 'topology'
+                                ? 'border-blue-500 text-blue-400 bg-gray-700'
+                                : 'border-transparent text-gray-400 hover:text-white hover:bg-gray-700'
+                        }`}
+                    >
+                        <FaNetworkWired className="inline mr-2" />
+                        Network Topology
+                    </button>
+                    <button                        onClick={() => setActiveTab('sharedScans')}
+                        className={`px-6 py-4 font-medium transition-colors border-b-2 ${
+                            activeTab === 'sharedScans'
+                                ? 'border-blue-500 text-blue-400 bg-gray-700'
+                                : 'border-transparent text-gray-400 hover:text-white hover:bg-gray-700'
+                        }`}
+                    >
+                        <FaShare className="inline mr-2" />
+                        Shared Scans
+                    </button>
                 </div>
             </div>
 
-            {/* Main Content - Topology Map */}
-            <div className={`flex-1 p-4 overflow-hidden ${isTopologyFullscreen ? 'absolute inset-0 z-40 bg-gray-900' : ''}`}>
-                <div 
-                    ref={contentRef}
-                    className="w-full h-full bg-gray-800 rounded-lg overflow-hidden"
-                >
-                    <TopologyMap
-                        ref={topologyMapRef}
-                        devices={devices}
-                        vendorColors={vendorColors}
-                        customNames={customNames}
-                        setCustomNames={setCustomNames}
-                        openSSHModal={handleOpenSSH}
-                        contentDimensions={contentDimensions}
-                        setModalDevice={setModalDevice}
+            {/* Top Control Bar - Only show for topology tab */}
+            {activeTab === 'topology' && (
+                <div className="bg-gray-800 p-4 border-b border-gray-700">
+                    <div className="flex justify-between items-center">
+                        <div className="flex items-center space-x-4">
+                            <h2 className="text-xl font-semibold">Network Topology</h2>
+                            <div className="flex items-center space-x-4 text-sm text-gray-400">
+                                <span>{flattenedDevices.length} devices</span>
+                                {Object.keys(devices).length > 0 && (
+                                    <span>{Object.keys(devices).length} vendors</span>
+                                )}
+                                {Object.keys(customNames).length > 0 && (
+                                    <span>{Object.keys(customNames).length} custom names</span>
+                                )}
+                            </div>
+                        </div>
+                        
+                        <div className="flex items-center space-x-3">
+                            {/* Network Control Button */}
+                            <button
+                                onClick={networkModal.openModal}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded flex items-center transition-colors"
+                            >
+                                <FaNetworkWired className="mr-2" />
+                                Network Control
+                            </button>
+                            
+                            {/* Debug Tools */}
+                            <button 
+                                className="bg-gray-700 p-2 rounded hover:bg-gray-600"
+                                title="Debug Network Relationships"
+                                onClick={() => {
+                                    debugNetworkRelationships();
+                                    if (topologyMapRef.current) {
+                                        topologyMapRef.current.refresh();
+                                    }
+                                }}
+                            >
+                                <FaBug />
+                            </button>
+                            
+                            {/* Fix Switch Connections */}
+                            <button 
+                                className="bg-yellow-700 p-2 rounded hover:bg-yellow-600"
+                                title="Fix Switch-Gateway Connections"
+                                onClick={() => {
+                                    if (fixGatewaySwitchConnections()) {
+                                        alert("Fixed switch-gateway connections. Topology map will refresh.");
+                                    } else {
+                                        alert("No switch-gateway connection issues to fix or no gateways available.");
+                                    }
+                                }}
+                            >
+                                <FaCog />
+                            </button>
+                            
+                            {/* Fullscreen Toggle */}
+                            <button
+                                onClick={() => setIsTopologyFullscreen(!isTopologyFullscreen)}
+                                className="bg-gray-700 p-2 rounded hover:bg-gray-600"
+                                title={isTopologyFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+                            >
+                                {isTopologyFullscreen ? <FaCompress /> : <FaExpand />}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Main Content */}
+            {activeTab === 'topology' ? (
+                <div className={`flex-1 p-4 overflow-hidden ${isTopologyFullscreen ? 'absolute inset-0 z-40 bg-gray-900' : ''}`}>
+                    <div 
+                        ref={contentRef}
+                        className="w-full h-full bg-gray-800 rounded-lg overflow-hidden"
+                    >
+                        <TopologyMap
+                            ref={topologyMapRef}
+                            devices={devices}
+                            vendorColors={vendorColors}
+                            customNames={customNames}
+                            setCustomNames={setCustomNames}
+                            openSSHModal={handleOpenSSH}
+                            contentDimensions={contentDimensions}
+                            setModalDevice={setModalDevice}
+                        />
+                    </div>
+                </div>
+            ) : (                <div className="flex-1 overflow-hidden">
+                    <SharedScansBrowser 
+                        onImportSuccess={(scanData) => {
+                            // Import the shared scan data
+                            if (scanData && scanData.scanData && scanData.scanData.devices) {
+                                // Set devices data from the shared scan
+                                setDevices(scanData.scanData.devices);
+                                // Switch to topology view to see imported scan
+                                setActiveTab('topology');
+                            }
+                        }}
                     />
                 </div>
-            </div>{/* Device Modal */}
+            )}
+
+            {/* Device Modal */}
             <UnifiedDeviceModal
                 modalDevice={modalDevice}
                 setModalDevice={setModalDevice}

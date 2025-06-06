@@ -1,7 +1,7 @@
 "use client";
 
 import React, { lazy, Suspense, useState, useEffect, memo } from "react";
-import { FaChevronDown, FaChevronUp, FaTrash, FaEdit, FaEllipsisV, FaTerminal } from "react-icons/fa";
+import { FaChevronDown, FaChevronUp, FaTrash, FaEdit, FaEllipsisV, FaTerminal, FaShare } from "react-icons/fa";
 import { format } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 import { createContext, useContext } from "react";
@@ -11,6 +11,7 @@ const UnifiedDeviceModal = lazy(() => import("../../components/UnifiedDeviceModa
 const SSHTerminal = lazy(() => import("../../components/sshterminal"));
 const MemoizedDeviceList = lazy(() => import("../../components/MemoizedDeviceList"));
 const NetworkScanExportImport = lazy(() => import("./NetworkScanExportImport"));
+const NetworkScanSharingModal = lazy(() => import("./NetworkScanSharingModal"));
 
 const ScanHistoryContext = createContext();
 
@@ -148,12 +149,14 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     const [sshModalVisible, setSSHModalVisible] = useState(false);
     const [sshTarget, setSSHTarget] = useState(null);
     const [sshUsername, setSSHUsername] = useState("");
-    const [sshPassword, setSSHPassword] = useState("");
-    const [showTerminal, setShowTerminal] = useState(false);
+    const [sshPassword, setSSHPassword] = useState("");    const [showTerminal, setShowTerminal] = useState(false);
     // Add a state variable to persist custom device properties
     const [persistentCustomNames, setPersistentCustomNames] = useState({});
     // Add state for confirmation modal
     const [showConfirmClear, setShowConfirmClear] = useState(false);
+    // Add state for sharing modal
+    const [sharingModalVisible, setSharingModalVisible] = useState(false);
+    const [scanToShare, setScanToShare] = useState(null);
     
     // Load any previously saved custom device properties from localStorage
     useEffect(() => {
@@ -269,12 +272,31 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     const closeModal = () => {
         setModalDevice(null);
     };
-    
-    const openSSHModal = (device) => {
+      const openSSHModal = (device) => {
         setSSHTarget(device);
         setSSHUsername(""); // Reset username
         setSSHPassword(""); // Reset password
         setSSHModalVisible(true);
+    };
+
+    const openSharingModal = (scanEntry, index) => {
+        setScanToShare({
+            ...scanEntry,
+            id: `scan-${index}-${Date.now()}`,
+            index: index
+        });
+        setSharingModalVisible(true);
+        setMenuOpenIndex(null); // Close the action menu
+    };
+
+    const closeSharingModal = () => {
+        setSharingModalVisible(false);
+        setScanToShare(null);
+    };
+
+    const handleShareSuccess = (sharedScanData) => {
+        console.log('Scan shared successfully:', sharedScanData);
+        // You could add a toast notification here or update UI state
     };
 
     const visualizeOnTopology = (entry) => {
@@ -690,8 +712,7 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                                     className="text-gray-400 hover:text-white"
                                                 >
                                                     <FaEllipsisV />
-                                                </button>
-                                                {menuOpenIndex === originalIndex && (
+                                                </button>                                                {menuOpenIndex === originalIndex && (
                                                     <div className="absolute right-0 mt-2 bg-gray-800 text-white rounded shadow-lg z-10">
                                                         <button
                                                             onClick={() => startRenaming(originalIndex)}
@@ -699,6 +720,13 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                                         >
                                                             <FaEdit className="inline mr-2" />
                                                             Rename
+                                                        </button>
+                                                        <button
+                                                            onClick={() => openSharingModal(entry, originalIndex)}
+                                                            className="block px-4 py-2 text-sm hover:bg-gray-700 w-full text-left text-blue-400"
+                                                        >
+                                                            <FaShare className="inline mr-2" />
+                                                            Share
                                                         </button>
                                                         <button
                                                             onClick={() => deleteScan(originalIndex)}
@@ -870,10 +898,21 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                 className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
                             >
                                 Clear All History
-                            </button>
-                        </div>
+                            </button>                        </div>
                     </div>
                 </div>
+            )}
+
+            {/* Sharing Modal */}
+            {sharingModalVisible && scanToShare && (
+                <Suspense fallback={<div>Loading sharing modal...</div>}>
+                    <NetworkScanSharingModal
+                        isOpen={sharingModalVisible}
+                        onClose={closeSharingModal}
+                        scanData={scanToShare}
+                        onShareSuccess={handleShareSuccess}
+                    />
+                </Suspense>
             )}
         </div>
     );

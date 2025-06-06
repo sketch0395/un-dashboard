@@ -42,8 +42,7 @@ export default function AdminLayout({ children }) {
             <div>
               <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
               <p className="text-gray-300">Manage users and system settings</p>
-            </div>
-            <nav className="flex space-x-4">
+            </div>            <nav className="flex space-x-4">
               <button
                 onClick={() => router.push('/admin')}
                 className="text-blue-400 hover:text-blue-300 font-medium transition-colors"              >
@@ -54,6 +53,12 @@ export default function AdminLayout({ children }) {
                 className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
               >
                 Users
+              </button>
+              <button
+                onClick={() => router.push('/admin/shared-scans')}
+                className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
+              >
+                Shared Scans
               </button>
               <button
                 onClick={() => router.push('/admin/audit-logs')}
