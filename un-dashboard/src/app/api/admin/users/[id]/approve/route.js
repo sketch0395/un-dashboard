@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { connectToDatabase } from '../../../../../../../lib/db';
+import dbConnection from '../../../../../../../lib/db';
 import User from '../../../../../../../models/User';
 import { AuthService } from '../../../../../../../middleware/auth';
 import AuditLogger from '../../../../../../../services/auditLogger';
@@ -32,7 +32,7 @@ export async function POST(request, { params }) {
             );
         }
 
-        await connectToDatabase();
+        await dbConnection.connectMongoDB();
 
         // Find the user
         const user = await User.findById(id);

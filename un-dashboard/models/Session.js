@@ -56,7 +56,7 @@ const sessionSchema = new mongoose.Schema({
 
 // Indexes
 sessionSchema.index({ userId: 1, isActive: 1 });
-sessionSchema.index({ expiresAt: 1 });
+// Note: expiresAt already has TTL index defined in schema, so no need to duplicate it
 sessionSchema.index({ lastActivity: 1 });
 
 // Method to extend session

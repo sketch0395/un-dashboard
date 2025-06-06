@@ -179,20 +179,21 @@ export default function PerformanceDeviceManagementPage() {
             try {
                 const customProps = JSON.parse(savedCustomProperties);
                 setCustomNames(customProps);
-                
-                const enhancedDevices = uniqueDevices.map(device => {
+                  const enhancedDevices = uniqueDevices.map(device => {
                     if (device.ip && customProps[device.ip]) {
                         return {
                             ...device,
                             name: customProps[device.ip].name || device.name || device.hostname || `Device-${device.ip}`,
                             category: customProps[device.ip].category || device.category,
                             role: customProps[device.ip].networkRole || device.role,
-                            notes: customProps[device.ip].notes || device.notes
+                            notes: customProps[device.ip].notes || device.notes,
+                            history: customProps[device.ip].history || []
                         };
                     }
                     return {
                         ...device,
-                        name: device.name || device.hostname || `Device-${device.ip}`
+                        name: device.name || device.hostname || `Device-${device.ip}`,
+                        history: []
                     };
                 });
                 

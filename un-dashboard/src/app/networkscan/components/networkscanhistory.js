@@ -21,13 +21,41 @@ export const ScanHistoryProvider = ({ children }) => {
     useEffect(() => {
         const savedHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
         setScanHistory(savedHistory);
-    }, []);
-
-    useEffect(() => {
+    }, []);    useEffect(() => {
+        console.log(`Saving ${scanHistory.length} scan history entries to localStorage`);
         localStorage.setItem("scanHistory", JSON.stringify(scanHistory));
+        console.log("Scan history saved to localStorage");
     }, [scanHistory]);    const saveScanHistory = (data, ipRange) => {
-        const deviceCount = Object.values(data).flat().length;
+        console.log(`saveScanHistory called with ipRange: ${ipRange}`, { dataKeys: Object.keys(data) });
+        
+        // Check data structure and calculate device count properly
+        let deviceCount = 0;
+        if (typeof data === 'object' && data !== null) {
+            try {
+                // Properly handle different data formats
+                if (Array.isArray(data)) {
+                    deviceCount = data.length;
+                    console.log(`Data is an array with ${deviceCount} devices`);
+                } else {
+                    // If it's an object with vendor keys (the typical format)
+                    Object.entries(data).forEach(([vendor, devices]) => {
+                        if (Array.isArray(devices)) {
+                            deviceCount += devices.length;
+                            console.log(`Vendor ${vendor} has ${devices.length} devices`);
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error("Error calculating device count:", e);
+                deviceCount = 0;
+            }
+        } else {
+            console.error("Invalid data format received:", typeof data);
+            return; // Exit early for invalid data
+        }
+        
         const timestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
+        console.log(`Preparing to save scan with ${deviceCount} devices from ${ipRange} at ${timestamp}`);
         
         // Check for duplicates within the last 5 minutes to prevent duplication
         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
@@ -38,12 +66,24 @@ export const ScanHistoryProvider = ({ children }) => {
                 const entryTime = new Date(entry.timestamp);
                 const timeDifference = Math.abs(new Date() - entryTime);
                 
-                return (
-                    timeDifference < 5 * 60 * 1000 && // Within 5 minutes
-                    entry.devices === deviceCount && // Same number of devices
-                    entry.ipRange === ipRange && // Same IP range
-                    JSON.stringify(entry.data) === JSON.stringify(data) // Same data
-                );
+                const sameDeviceCount = entry.devices === deviceCount;
+                const sameIpRange = entry.ipRange === ipRange;
+                const sameData = JSON.stringify(entry.data) === JSON.stringify(data);
+                
+                const isDup = timeDifference < 5 * 60 * 1000 && 
+                             sameDeviceCount && 
+                             sameIpRange && 
+                             sameData;
+                             
+                if (isDup) {
+                    console.log("Potential duplicate detected:", { 
+                        timeDifference: Math.round(timeDifference/1000) + "s", 
+                        sameDeviceCount, 
+                        sameIpRange
+                    });
+                }
+                
+                return isDup;
             });
             
             if (isDuplicate) {

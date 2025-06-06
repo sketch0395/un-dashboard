@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { connectToDatabase } from '../../../../../../lib/db';
+import dbConnection from '../../../../../../lib/db';
 import User from '../../../../../../models/User';
 import { AuthService } from '../../../../../../middleware/auth';
 
@@ -32,7 +32,7 @@ export async function POST(request) {
             );
         }
 
-        await connectToDatabase();
+        await dbConnection.connectMongoDB();
 
         // Find all users to be rejected
         const users = await User.find({

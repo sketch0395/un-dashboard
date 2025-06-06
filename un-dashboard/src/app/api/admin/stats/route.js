@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { connectToDatabase } from '../../../../../lib/db';
+import dbConnection from '../../../../../lib/db';
 import User from '../../../../../models/User';
 import { AuthService } from '../../../../../middleware/auth';
 
@@ -15,7 +15,7 @@ export async function GET(request) {
       return NextResponse.json({ message: 'Access denied' }, { status: 403 });
     }
 
-    await connectToDatabase();// Get statistics
+    await dbConnection.connectMongoDB();// Get statistics
     const totalUsers = await User.countDocuments();
     const activeUsers = await User.countDocuments({ isActive: true });
     const pendingUsers = await User.countDocuments({ isActive: false });

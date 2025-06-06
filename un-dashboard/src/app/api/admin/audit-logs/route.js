@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { connectToDatabase } from '../../../../../lib/db';
+import dbConnection from '../../../../../lib/db';
 import AuditLog from '../../../../../models/AuditLog';
 import { AuthService } from '../../../../../middleware/auth';
 
@@ -22,7 +22,7 @@ export async function GET(request) {
             );
         }
 
-        await connectToDatabase();
+        await dbConnection.connectMongoDB();
 
         // Get query parameters
         const { searchParams } = new URL(request.url);

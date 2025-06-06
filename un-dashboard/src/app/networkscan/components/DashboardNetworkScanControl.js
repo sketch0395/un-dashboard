@@ -206,19 +206,42 @@ export default function DashboardNetworkScanControl({ devices, setDevices, custo
                 }
             }
         });
-        
-        // Listen for saveToScanHistory events from the server
+          // Listen for saveToScanHistory events from the server
         socket.on("saveToScanHistory", (data) => {
             if (data && data.devices) {
                 try {
                     console.log("Received saveToScanHistory event:", data);
                     const ipRange = data.ipRange || "API Import";
+                    
+                    // Enhanced debugging
+                    console.log(`About to save scan history with ${Object.keys(data.devices).length} vendor groups`);
+                    let deviceCount = 0;
+                    Object.values(data.devices).forEach(group => {
+                        if (Array.isArray(group)) {
+                            deviceCount += group.length;
+                        }
+                    });
+                    console.log(`Total devices to save: ${deviceCount}`);
+                    
+                    // Ensure we're using the correct function from context
+                    if (typeof saveScanHistory !== 'function') {
+                        console.error("saveScanHistory is not a function!", { 
+                            type: typeof saveScanHistory, 
+                            value: saveScanHistory 
+                        });
+                        return;
+                    }
+                    
+                    // Call the function from context
                     saveScanHistory(data.devices, ipRange);
+                    console.log("Scan history saved successfully");
                 } catch (error) {
                     console.error("Error saving to scan history:", error);
                 }
+            } else {
+                console.warn("Received saveToScanHistory event without device data:", data);
             }
-        });        // Remove duplicate connect_error handler that was causing issues
+        });// Remove duplicate connect_error handler that was causing issues
 
         return () => {
             console.log('Cleaning up Socket.IO connection');

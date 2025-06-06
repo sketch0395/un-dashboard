@@ -1,16 +1,30 @@
-import { connectDB } from '../../../../../lib/db';
-import SharedScan from '../../../../../models/SharedScan';
-import ScanCollaboration from '../../../../../models/ScanCollaboration';
-import { authMiddleware } from '../../../../../middleware/auth';
-import { auditLogger } from '../../../../../services/auditLogger';
+import dbConnection from '../../../../../../lib/db';
+import SharedScan from '../../../../../../models/SharedScan';
+import ScanCollaboration from '../../../../../../models/ScanCollaboration';
+import { AuthService } from '../../../../../../middleware/auth';
+import AuditLogger from '../../../../../../services/auditLogger';
 import { NextResponse } from 'next/server';
 
 export async function GET(request, { params }) {
   try {
-    await connectDB();
+    await dbConnection.connectMongoDB();
     
-    // Apply authentication middleware
-    const authResult = await authMiddleware(request);
+    // Extract token from cookies or headers
+    const token = request.cookies.get('auth-token')?.value || 
+                 request.headers.get('authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
+    }
+    
+    // Create mock request object for AuthService
+    const mockReq = {
+      cookies: { get: (name) => name === 'auth-token' ? { value: token } : null },
+      headers: { get: (name) => request.headers.get(name) }
+    };
+    
+    // Apply authentication
+    const authResult = await AuthService.verifyAuth(mockReq);
     if (!authResult.success) {
       return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
     }
@@ -56,10 +70,24 @@ export async function GET(request, { params }) {
 
 export async function PUT(request, { params }) {
   try {
-    await connectDB();
+    await dbConnection.connectMongoDB();
     
-    // Apply authentication middleware
-    const authResult = await authMiddleware(request);
+    // Extract token from cookies or headers
+    const token = request.cookies.get('auth-token')?.value || 
+                 request.headers.get('authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
+    }
+    
+    // Create mock request object for AuthService
+    const mockReq = {
+      cookies: { get: (name) => name === 'auth-token' ? { value: token } : null },
+      headers: { get: (name) => request.headers.get(name) }
+    };
+    
+    // Apply authentication
+    const authResult = await AuthService.verifyAuth(mockReq);
     if (!authResult.success) {
       return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
     }
@@ -91,12 +119,18 @@ export async function PUT(request, { params }) {
     if (body.isTemplate !== undefined) updateFields.isTemplate = body.isTemplate;
     
     const updatedScan = await SharedScan.findByIdAndUpdate(id, updateFields, { new: true });
-    
-    // Log the update
-    await auditLogger.log(user._id, 'SCAN_UPDATED', {
-      sharedScanId: id,
-      scanName: updatedScan.name,
-      changes: Object.keys(updateFields)
+      // Log the update
+    await AuditLogger.log({
+      action: 'SCAN_UPDATED',
+      description: `User updated shared scan: ${updatedScan.name}`,
+      userId: user._id,
+      ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+      userAgent: request.headers.get('user-agent') || 'unknown',
+      details: {
+        sharedScanId: id,
+        scanName: updatedScan.name,
+        changes: Object.keys(updateFields)
+      }
     });
     
     // Record modification action
@@ -123,10 +157,24 @@ export async function PUT(request, { params }) {
 
 export async function DELETE(request, { params }) {
   try {
-    await connectDB();
+    await dbConnection.connectMongoDB();
     
-    // Apply authentication middleware
-    const authResult = await authMiddleware(request);
+    // Extract token from cookies or headers
+    const token = request.cookies.get('auth-token')?.value || 
+                 request.headers.get('authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
+    }
+    
+    // Create mock request object for AuthService
+    const mockReq = {
+      cookies: { get: (name) => name === 'auth-token' ? { value: token } : null },
+      headers: { get: (name) => request.headers.get(name) }
+    };
+    
+    // Apply authentication
+    const authResult = await AuthService.verifyAuth(mockReq);
     if (!authResult.success) {
       return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
     }
@@ -151,11 +199,17 @@ export async function DELETE(request, { params }) {
     
     // Delete associated collaboration records
     await ScanCollaboration.deleteMany({ sharedScanId: id });
-    
-    // Log the deletion
-    await auditLogger.log(user._id, 'SCAN_DELETED', {
-      sharedScanId: id,
-      scanName: sharedScan.name
+      // Log the deletion
+    await AuditLogger.log({
+      action: 'SCAN_DELETED',
+      description: `User deleted shared scan: ${sharedScan.name}`,
+      userId: user._id,
+      ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+      userAgent: request.headers.get('user-agent') || 'unknown',
+      details: {
+        sharedScanId: id,
+        scanName: sharedScan.name
+      }
     });
     
     return NextResponse.json({

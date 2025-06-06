@@ -86,22 +86,21 @@ export default function NetworkScanSharingModal({
         },
         tags: formData.tags,
         category: formData.category,
-        isTemplate: formData.isTemplate
-      };      const response = await fetch('/api/shared-scans', {
+        isTemplate: formData.isTemplate      };      const response = await fetch('/api/scans/shared', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify(shareData)
-      });
-
-      const result = await response.json();      if (result.success) {
+      });      const result = await response.json();      if (result.success) {
         onShareSuccess?.(result.data);
         onClose();
         showToast('Scan shared successfully!', 'success');
       } else {
-        showToast('Failed to share scan: ' + result.message, 'error');
+        const errorMessage = result.message || 'Unknown error occurred';
+        console.error('Share scan error:', result);
+        showToast('Failed to share scan: ' + errorMessage, 'error');
       }
     } catch (error) {
       console.error('Error sharing scan:', error);

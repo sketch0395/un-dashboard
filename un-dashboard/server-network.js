@@ -404,26 +404,25 @@ const handleDockerScan = async (range, socket, scanOptions = {}) => {
           socket.emit('networkScanStatus', { 
             status: 'Setting up scan...', 
             output: `Using jonlabelle/network-tools container for network scanning` 
-        });        // FAST SCAN: More efficient scan parameters that only checks common ports
-        // This scan is much faster because it only scans specific ports rather than all 65,535 ports
-        // ENHANCED: Added better host discovery to only show active hosts
-        const nmapCmd = [
-            'nmap',
-            // '--host-timeout=30s',              // Don't spend too long on unresponsive hosts
-            // '-PR',                             // ARP discovery (best for local networks)
-            // '-sS',                             // SYN scan which is better for MAC detection
-            // '-sV',                             // Service version detection (lighter than -A)
-            // '-O',                              // OS detection flag
-            // '--osscan-limit',                  // Limit OS detection to promising targets
-            '-A',                             // Aggressive scan for detailed information
-            '-v',                              // Verbose output
-            '-T4',                             // Faster timing template
-            '--max-os-tries=1',                // Limit OS tries for faster scan of large range
-            '--max-retries=1',                 // Limit retries for faster scan
-            '-p', '22,80,443,3000,4000',       // Common ports including SSH and web servers
-            '--script=ssh-auth-methods,ssh-hostkey', // Keep SSH scripts for auth methods detection
-            sanitizedRange
-        ];
+        });        // FAST SCAN: Using minimal parameters for very fast scans when scanType is 'ping'
+        // This scan is much faster because it uses -F (fast scan - scan fewer ports than the default scan)
+        const nmapCmd = scanOptions.scanType === 'ping'
+            ? [
+                'nmap',
+                '-T4',                             // Faster timing template
+                '-F',                              // Fast mode - scan fewer ports than the default scan
+                sanitizedRange
+              ]
+            : [
+                'nmap',
+                '-A',                              // Aggressive scan for detailed information
+                '-v',                              // Verbose output
+                '-T4',                             // Faster timing template
+                '--max-os-tries=1',                // Limit OS tries for faster scan of large range
+                '--max-retries=1',                 // Limit retries for faster scan
+                '-p', '22,80,443,3000,4000',       // Common ports including SSH and web servers
+                '--script=ssh-auth-methods,ssh-hostkey', // Keep SSH scripts for auth methods detection
+                sanitizedRange              ];
         
         console.log(`[DOCKER] NMAP command: ${nmapCmd.join(' ')}`);
         
@@ -490,8 +489,7 @@ const handleDockerScan = async (range, socket, scanOptions = {}) => {
             devices.push(...group);
         });
         const sshDevices = devices.filter(device => device.sshAvailable);
-        
-        // Store scan results in history
+          // Store scan results in history
         saveScanResultsToHistory(devices);
         
         // Log found SSH devices
@@ -506,6 +504,13 @@ const handleDockerScan = async (range, socket, scanOptions = {}) => {
                 output: 'No SSH-enabled devices were detected on the network'
             });
         }
+        
+        // Emit event to save to scan history on client side
+        socket.emit('saveToScanHistory', {
+            devices: groupedDevices,
+            ipRange: sanitizedRange,
+            timestamp: new Date().toISOString()
+        });
         
         // Send results to client
         socket.emit('networkData', groupedDevices);
@@ -573,23 +578,33 @@ const handleHostScan = (range, socket, scanOptions = {}) => {
         socket.emit('networkScanStatus', { 
             status: 'Scanning active hosts...',
             output: 'Performing accurate scan with enhanced host discovery'
-        });        // FAST SCAN: Host-based scan using optimized parameters for speed
-        // This scan is faster as it uses ARP scan for local network discovery and only scans specific ports
-        // ENHANCED: Improved host discovery to only show active hosts
-        const nmapProcess = spawn('nmap', [
-            '-PR',                              // ARP scan for MAC address discovery (best for local networks)
-            '--reason',                         // Show why hosts are marked as up/down
-            '-sS',                              // SYN scan
-            '-sV',                              // Service version detection
-            '-O',                               // OS detection
-            '--osscan-limit',                   // Only do OS detection on promising targets
-            '--script=ssh-auth-methods,ssh-hostkey', // SSH detection scripts
-            '-T4',                              // Faster timing template
-            '--max-retries=2',                  // Minimize retries for better performance
-            '--host-timeout=30s',               // Don't spend too long on each host
-            '-p', scanOptions.ports || DEFAULT_PORTS, // Use configured ports, usually includes 22
-            sanitizedRange
-        ]);
+        });        // Determine scan parameters based on scan type
+        // For ping scan type, use minimal parameters for very fast scans
+        // For OS scan type, use more comprehensive parameters
+        const nmapArgs = scanOptions.scanType === 'ping'
+            ? [
+                // Fast ping scan parameters - minimal and quick
+                '-T4',                              // Faster timing template
+                '-F',                               // Fast mode - scan fewer ports than the default scan
+                sanitizedRange
+              ]
+            : [
+                // OS detection scan parameters - more comprehensive
+                '-PR',                              // ARP scan for MAC address discovery (best for local networks)
+                '--reason',                         // Show why hosts are marked as up/down
+                '-sS',                              // SYN scan
+                '-sV',                              // Service version detection
+                '-O',                               // OS detection
+                '--osscan-limit',                   // Only do OS detection on promising targets
+                '--script=ssh-auth-methods,ssh-hostkey', // SSH detection scripts
+                '-T4',                              // Faster timing template
+                '--max-retries=2',                  // Minimize retries for better performance
+                '--host-timeout=30s',               // Don't spend too long on each host
+                '-p', scanOptions.ports || DEFAULT_PORTS, // Use configured ports, usually includes 22
+                sanitizedRange
+              ];
+              
+        const nmapProcess = spawn('nmap', nmapArgs);
 
         let outputData = '';
 
@@ -620,8 +635,15 @@ const handleHostScan = (range, socket, scanOptions = {}) => {
                     devices.push(...group);
                 });
                 
-                // Store scan results in history
+        // Store scan results in history
                 saveScanResultsToHistory(devices);
+                
+                // Also emit an event to save to scan history on client side
+                socket.emit('saveToScanHistory', {
+                    devices: groupedDevices,
+                    ipRange: sanitizedRange,
+                    timestamp: new Date().toISOString()
+                });
                 
                 socket.emit('networkData', groupedDevices);
                 socket.emit('networkScanStatus', { status: 'Scan complete' });
@@ -1515,8 +1537,7 @@ const runNmapInDockerContainer = async (range, options = {}, timeout = 600000) =
     try {
         const sanitizedRange = sanitizeInput(range);
         console.log(`[DOCKER] Running NMAP scan directly for range: ${sanitizedRange}`);
-        
-        // Set default options
+          // Set default options
         const nmapOptions = {
             ports: DEFAULT_PORTS,
             serviceDetection: true,
@@ -1524,34 +1545,48 @@ const runNmapInDockerContainer = async (range, options = {}, timeout = 600000) =
             ...options
         };
         
-        // Build NMAP command with enhanced SSH detection but without -Pn
-        let nmapCmd = ['nmap'];
+        let nmapCmd;
         
-        // Don't use -Pn by default - this will first check if hosts are up before scanning
-        // Only add if explicitly requested in options
-        if (options.skipHostDiscovery) {
-            nmapCmd.push('-Pn'); 
+        // Check if it's a ping scan type to use simplified parameters
+        if (nmapOptions.scanType === 'ping') {
+            // For ping scan, use minimal parameters for very fast scans
+            nmapCmd = [
+                'nmap',
+                '-T4',                             // Faster timing template
+                '-F',                              // Fast mode - scan fewer ports than the default scan
+                sanitizedRange
+            ];
+            console.log('[DOCKER] Using fast ping scan parameters: -T4 -F');
+        } else {
+            // For OS or other scan types, use more comprehensive parameters
+            nmapCmd = ['nmap'];
+            
+            // Don't use -Pn by default - this will first check if hosts are up before scanning
+            // Only add if explicitly requested in options
+            if (options.skipHostDiscovery) {
+                nmapCmd.push('-Pn'); 
+            }
+            
+            if (nmapOptions.serviceDetection) {
+                nmapCmd.push('-sV'); // Service version detection (crucial for SSH detection)
+            }
+            
+            nmapCmd.push('-sS'); // SYN scan, faster
+            
+            if (nmapOptions.osDetection) {
+                nmapCmd.push('-O'); // OS detection
+            }
+            
+            // Add scripts specifically for SSH detection
+            nmapCmd.push('--script=ssh-auth-methods,ssh-hostkey');
+            
+            // Improved timing and scan settings
+            nmapCmd.push('-T4'); // Faster timing template
+            nmapCmd.push('--max-retries=2'); // Limit retries for better performance
+            nmapCmd.push('--host-timeout=30s'); // Limit per-host timeout
+            nmapCmd.push('-p', nmapOptions.ports);
+            nmapCmd.push(sanitizedRange);
         }
-        
-        if (nmapOptions.serviceDetection) {
-            nmapCmd.push('-sV'); // Service version detection (crucial for SSH detection)
-        }
-        
-        nmapCmd.push('-sS'); // SYN scan, faster
-        
-        if (nmapOptions.osDetection) {
-            nmapCmd.push('-O'); // OS detection
-        }
-        
-        // Add scripts specifically for SSH detection
-        nmapCmd.push('--script=ssh-auth-methods,ssh-hostkey');
-        
-        // Improved timing and scan settings
-        nmapCmd.push('-T4'); // Faster timing template
-        nmapCmd.push('--max-retries=2'); // Limit retries for better performance
-        nmapCmd.push('--host-timeout=30s'); // Limit per-host timeout
-        nmapCmd.push('-p', nmapOptions.ports);
-        nmapCmd.push(sanitizedRange);
         
         console.log(`[DOCKER] Enhanced NMAP command: ${nmapCmd.join(' ')}`);
         
@@ -1730,13 +1765,13 @@ io.on('connection', (socket) => {
             }
 
             console.log(`[SCAN] Starting network scan with type: ${scanType || 'default'}`);
-            
-            // Configure scan options based on scan type
+              // Configure scan options based on scan type
             const scanOptions = {
                 ports: DEFAULT_PORTS,
                 serviceDetection: true,
                 osDetection: false,
-                skipHostDiscovery: false
+                skipHostDiscovery: false,
+                scanType: scanType || 'ping' // Add scan type to options
             };
             
             // Adjust scan options based on scan type
@@ -1745,7 +1780,7 @@ io.on('connection', (socket) => {
                 scanOptions.osDetection = true;
             } else {
                 console.log('[SCAN] Using basic ping scan type');
-                // Use default options for basic scan
+                // Use simplified options for fast ping scans
             }
 
             if (useDocker) {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { connectToDatabase } from '../../../../../../lib/db';
+import dbConnection from '../../../../../../lib/db';
 import User from '../../../../../../models/User';
 import { AuthService } from '../../../../../../middleware/auth';
 
@@ -22,7 +22,7 @@ export async function GET(request) {
             );
         }
 
-        await connectToDatabase();
+        await dbConnection.connectMongoDB();
 
         // Get query parameters for pagination and search
         const { searchParams } = new URL(request.url);

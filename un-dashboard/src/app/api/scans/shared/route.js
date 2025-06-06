@@ -1,23 +1,34 @@
-import { connectDB } from '../../../../lib/db';
-import SharedScan from '../../../../models/SharedScan';
-import ScanCollaboration from '../../../../models/ScanCollaboration';
-import User from '../../../../models/User';
-import { authMiddleware } from '../../../../middleware/auth';
-import { auditLogger } from '../../../../services/auditLogger';
+import dbConnection from '../../../../../lib/db';
+import SharedScan from '../../../../../models/SharedScan';
+import ScanCollaboration from '../../../../../models/ScanCollaboration';
+import User from '../../../../../models/User';
+import { AuthService } from '../../../../../middleware/auth';
+import AuditLogger from '../../../../../services/auditLogger';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request) {
   try {
-    await connectDB();
+    await dbConnection.connectMongoDB();
     
-    // Apply authentication middleware
-    const authResult = await authMiddleware(request);
-    if (!authResult.success) {
+    // Get token from cookies or authorization header
+    const token = request.cookies.get('auth-token')?.value || 
+                  request.headers.get('authorization')?.replace('Bearer ', '');
+
+    if (!token) {
       return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
     }
+
+    // Create mock request object for AuthService
+    const mockReq = {
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    };
+
+    // Verify authentication
+    const authData = await AuthService.verifyAuth(mockReq);
     
-    const user = authResult.user;
-    return handleGetSharedScans(request, user);
+    return handleGetSharedScans(request, authData.user);
   } catch (error) {
     console.error('Shared scans API error:', error);
     return NextResponse.json({ success: false, message: 'Internal server error' }, { status: 500 });
@@ -26,16 +37,27 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    await connectDB();
+    await dbConnection.connectMongoDB();
     
-    // Apply authentication middleware
-    const authResult = await authMiddleware(request);
-    if (!authResult.success) {
+    // Get token from cookies or authorization header
+    const token = request.cookies.get('auth-token')?.value || 
+                  request.headers.get('authorization')?.replace('Bearer ', '');
+
+    if (!token) {
       return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
     }
+
+    // Create mock request object for AuthService
+    const mockReq = {
+      headers: {
+        authorization: `Bearer ${token}`
+      }
+    };
+
+    // Verify authentication
+    const authData = await AuthService.verifyAuth(mockReq);
     
-    const user = authResult.user;
-    return handleShareScan(request, user);
+    return handleShareScan(request, authData.user);
   } catch (error) {
     console.error('Shared scans API error:', error);
     return NextResponse.json({ success: false, message: 'Internal server error' }, { status: 500 });
@@ -140,13 +162,26 @@ async function handleShareScan(request, user) {
       category,
       isTemplate
     } = body;
-    
-    // Validate required fields
+      // Validate required fields
     if (!name || !originalScanId || !scanData) {
       return NextResponse.json({ 
         success: false, 
         message: 'Name, original scan ID, and scan data are required' 
       }, { status: 400 });
+    }
+    
+    // Normalize metadata scanType to match enum values
+    const normalizedMetadata = { ...metadata };
+    if (normalizedMetadata && normalizedMetadata.scanType) {
+      // Map network scan type to valid enum value
+      if (normalizedMetadata.scanType === 'network') {
+        normalizedMetadata.scanType = 'full'; // Network scans are typically comprehensive
+      }
+      // Ensure scanType is valid, default to 'custom' if not recognized
+      const validScanTypes = ['ping', 'os', 'full', 'custom'];
+      if (!validScanTypes.includes(normalizedMetadata.scanType)) {
+        normalizedMetadata.scanType = 'custom';
+      }
     }
     
     // Create new shared scan
@@ -156,7 +191,7 @@ async function handleShareScan(request, user) {
       originalScanId,
       ownerId: user._id,
       scanData,
-      metadata: metadata || {},
+      metadata: normalizedMetadata || {},
       sharing: {
         visibility: sharing?.visibility || 'private',
         allowedUsers: sharing?.allowedUsers || [],
@@ -173,12 +208,18 @@ async function handleShareScan(request, user) {
     });
     
     await sharedScan.save();
-    
-    // Log the sharing action
-    await auditLogger.log(user._id, 'SCAN_SHARED', {
-      sharedScanId: sharedScan._id,
-      scanName: name,
-      visibility: sharing?.visibility || 'private'
+      // Log the sharing action
+    await AuditLogger.log({
+      action: 'SCAN_SHARED',
+      description: `User shared scan: ${name}`,
+      userId: user._id,
+      ipAddress: request.headers.get('x-forwarded-for') || 'unknown',
+      userAgent: request.headers.get('user-agent') || 'unknown',
+      details: {
+        sharedScanId: sharedScan._id,
+        scanName: name,
+        visibility: sharing?.visibility || 'private'
+      }
     });
     
     // Record collaboration action
@@ -196,8 +237,7 @@ async function handleShareScan(request, user) {
       success: true,
       message: 'Scan shared successfully',
       data: sharedScan
-    }, { status: 201 });
-  } catch (error) {
+    }, { status: 201 });  } catch (error) {
     console.error('Error sharing scan:', error);
     return NextResponse.json({ success: false, message: 'Failed to share scan' }, { status: 500 });
   }

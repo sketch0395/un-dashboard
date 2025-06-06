@@ -1,15 +1,29 @@
-import { connectDB } from '../../../../../../lib/db';
-import SharedScan from '../../../../../../models/SharedScan';
-import ScanCollaboration from '../../../../../../models/ScanCollaboration';
-import { authMiddleware } from '../../../../../../middleware/auth';
+import dbConnection from '../../../../../../../lib/db';
+import SharedScan from '../../../../../../../models/SharedScan';
+import ScanCollaboration from '../../../../../../../models/ScanCollaboration';
+import { AuthService } from '../../../../../../../middleware/auth';
 import { NextResponse } from 'next/server';
 
 export async function POST(request, { params }) {
   try {
-    await connectDB();
+    await dbConnection.connectMongoDB();
     
-    // Apply authentication middleware
-    const authResult = await authMiddleware(request);
+    // Extract token from cookies or headers
+    const token = request.cookies.get('auth-token')?.value || 
+                 request.headers.get('authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
+    }
+    
+    // Create mock request object for AuthService
+    const mockReq = {
+      cookies: { get: (name) => name === 'auth-token' ? { value: token } : null },
+      headers: { get: (name) => request.headers.get(name) }
+    };
+    
+    // Apply authentication
+    const authResult = await AuthService.verifyAuth(mockReq);
     if (!authResult.success) {
       return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
     }

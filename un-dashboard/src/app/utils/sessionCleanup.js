@@ -1,5 +1,7 @@
 // Session cleanup service with automatic and manual cleanup capabilities
 import dbConnection from '../../../lib/db';
+import Session from '../../../models/Session';
+import AuditLogger from '../../../services/auditLogger';
 import { performanceOptimizer } from './performanceOptimizer';
 
 class SessionCleanupService {
@@ -56,9 +58,8 @@ class SessionCleanupService {
       const startTime = Date.now();
       
       await dbConnection.connectMongoDB();
-      
-      // Find expired sessions
-      const expiredSessions = await UserSession.find({
+        // Find expired sessions
+      const expiredSessions = await Session.find({
         expiresAt: { $lt: new Date() }
       });
 
@@ -69,10 +70,8 @@ class SessionCleanupService {
         await AuditLogger.logEvent('SYSTEM', 'session_cleanup_started', 'system', {
           expiredSessionCount: expiredSessions.length,
           details: 'Automatic session cleanup initiated'
-        });
-
-        // Delete expired sessions
-        const deleteResult = await UserSession.deleteMany({
+        });        // Delete expired sessions
+        const deleteResult = await Session.deleteMany({
           expiresAt: { $lt: new Date() }
         });
 
@@ -146,10 +145,8 @@ class SessionCleanupService {
       // If no specific filters, only clean expired sessions
       if (Object.keys(query).length === 0) {
         query.expiresAt = { $lt: new Date() };
-      }
-
-      const sessionsToDelete = await UserSession.find(query);
-      const deleteResult = await UserSession.deleteMany(query);
+      }      const sessionsToDelete = await Session.find(query);
+      const deleteResult = await Session.deleteMany(query);
 
       // Log manual cleanup
       await AuditLogger.logEvent('ADMIN', 'manual_session_cleanup', 'system', {
@@ -247,7 +244,7 @@ class SessionCleanupService {
         query.sessionId = { $ne: currentSessionId };
       }
 
-      const deleteResult = await UserSession.deleteMany(query);
+      const deleteResult = await Session.deleteMany(query);
 
       await AuditLogger.logEvent('USER', 'user_sessions_cleanup', userId, {
         cleanedCount: deleteResult.deletedCount,

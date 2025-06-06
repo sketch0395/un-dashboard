@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Scan History Persistence</title>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <h1>Test Scan History Persistence</h1>
+    <button id="testScan">Test Scan</button>
+    <button id="checkHistory">Check History</button>
+    <button id="clearHistory">Clear History</button>
+    <div id="output"></div>
+
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(message) {
+            output.innerHTML += '<p>' + message + '</p>';
+            console.log(message);
+        }
+        
+        // Test localStorage directly
+        document.getElementById('checkHistory').onclick = function() {
+            const history = localStorage.getItem('networkScanHistory');
+            log('Current localStorage networkScanHistory: ' + (history || 'null'));
+            if (history) {
+                try {
+                    const parsed = JSON.parse(history);
+                    log('Parsed history length: ' + parsed.length);
+                    if (parsed.length > 0) {
+                        log('Last scan: ' + JSON.stringify(parsed[parsed.length - 1], null, 2));
+                    }
+                } catch (e) {
+                    log('Error parsing history: ' + e.message);
+                }
+            }
+        };
+        
+        // Clear history
+        document.getElementById('clearHistory').onclick = function() {
+            localStorage.removeItem('networkScanHistory');
+            log('History cleared');
+        };
+        
+        // Test scan simulation
+        document.getElementById('testScan').onclick = function() {
+            log('Simulating scan data save...');
+            
+            // Simulate the same data structure that would come from server
+            const testScanData = {
+                "Test Vendor": [
+                    {
+                        ip: '192.168.1.1',
+                        mac: '00:11:22:33:44:55',
+                        hostname: 'router.local',
+                        vendor: 'Test Vendor',
+                        ports: [{ port: 80, state: 'open', service: 'http' }]
+                    }
+                ],
+                "Another Vendor": [
+                    {
+                        ip: '192.168.1.100',
+                        mac: '00:11:22:33:44:66',
+                        hostname: 'desktop.local',
+                        vendor: 'Another Vendor',
+                        ports: [{ port: 22, state: 'open', service: 'ssh' }]
+                    }
+                ]
+            };
+            
+            // Try to get the saveScanHistory function from the parent window context
+            if (window.parent && window.parent.saveScanHistory) {
+                window.parent.saveScanHistory(testScanData, '192.168.1.0/24');
+                log('Called saveScanHistory from parent context');
+            } else {
+                // Manual localStorage save for testing
+                try {
+                    const currentHistory = JSON.parse(localStorage.getItem('networkScanHistory') || '[]');
+                    
+                    const scanRecord = {
+                        timestamp: new Date().toISOString(),
+                        ipRange: '192.168.1.0/24',
+                        devices: testScanData,
+                        deviceCount: Object.values(testScanData).reduce((count, devices) => count + devices.length, 0)
+                    };
+                    
+                    currentHistory.push(scanRecord);
+                    localStorage.setItem('networkScanHistory', JSON.stringify(currentHistory));
+                    log('Manually saved scan to localStorage');
+                } catch (e) {
+                    log('Error saving to localStorage: ' + e.message);
+                }
+            }
+        };
+        
+        // Test Socket.IO connection
+        try {
+            const socket = io('http://localhost:4000');
+            socket.on('connect', () => {
+                log('Socket.IO connected successfully');
+            });
+            socket.on('connect_error', (err) => {
+                log('Socket.IO connection error: ' + err.message);
+            });
+        } catch (e) {
+            log('Error creating socket connection: ' + e.message);
+        }
+    </script>
+</body>
+</html>
