@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { FaChevronDown, FaPlay, FaStop, FaSync, FaDocker, FaFilter } from "react-icons/fa";
 import PerformanceControls from "./components/PerformanceControls";
+import { useScanHistory } from '../networkscan/components/networkscanhistory';
 
 // Use dynamic import with no SSR to avoid the "Component is not a function" error
 const NetworkPerformance = dynamic(
@@ -17,11 +18,13 @@ export default function PerformancePage() {
     const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
     
+    // Use scan history context instead of local state
+    const { scanHistory } = useScanHistory();
+    
     // Added state for scan selection
     const [scans, setScans] = useState([]);
     const [selectedScan, setSelectedScan] = useState('all');
     const [filteredDevices, setFilteredDevices] = useState([]);
-    const [scanHistory, setScanHistory] = useState([]);
     
     // Monitoring control states
     const [isMonitoring, setIsMonitoring] = useState(false);
@@ -35,17 +38,14 @@ export default function PerformancePage() {
     const [activeChartTab, setActiveChartTab] = useState('latency');
     
     // Reference to NetworkPerformance component
-    const networkPerformanceRef = useRef(null);
-
-    useEffect(() => {
-        // Load scan history from localStorage
-        const savedHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
-        setScanHistory(savedHistory);
+    const networkPerformanceRef = useRef(null);    useEffect(() => {
+        // Use scan history from context instead of localStorage
+        console.log('[PERFORMANCE PAGE-NEW] Loading devices from scan history context:', scanHistory.length, 'entries');
         
         // Extract scans from history
-        const scansFromHistory = savedHistory.map(entry => ({
+        const scansFromHistory = scanHistory.map(entry => ({
             id: entry.id || `scan-${Math.random().toString(36).substring(2, 9)}`,
-            name: entry.name || `Scan ${savedHistory.indexOf(entry) + 1}`,
+            name: entry.name || `Scan ${scanHistory.indexOf(entry) + 1}`,
             timestamp: entry.timestamp || new Date().toISOString(),
             deviceCount: entry.devices || 0
         }));
@@ -77,10 +77,9 @@ export default function PerformancePage() {
             } catch (error) {
                 console.error("Error parsing saved devices:", error);
             }
-        }
-        
+        }        
         // Also process devices from scan history entries
-        savedHistory.forEach(entry => {
+        scanHistory.forEach(entry => {
             if (entry.data) {
                 const entryDevices = Object.values(entry.data).flat();
                 const devicesWithScanId = entryDevices.map(device => ({
@@ -140,9 +139,8 @@ export default function PerformancePage() {
                 console.error("Error parsing custom properties:", error);
             }
         }
-        
-        setIsLoading(false);
-    }, []);
+          setIsLoading(false);
+    }, [scanHistory]); // Add scanHistory as dependency
     
     // Filter devices when selected scan changes
     useEffect(() => {

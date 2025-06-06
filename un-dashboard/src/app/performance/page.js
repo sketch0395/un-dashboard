@@ -31,6 +31,7 @@ import {
     createStatusUpdateListener 
 } from "../utils/performanceDeviceStatusSync";
 import { io } from 'socket.io-client';
+import { useScanHistory } from '../networkscan/components/networkscanhistory';
 
 // Use dynamic import with no SSR to avoid the "Component is not a function" error
 const NetworkPerformance = dynamic(
@@ -38,10 +39,18 @@ const NetworkPerformance = dynamic(
   { ssr: false }
 );
 
+const ScanHistorySyncStatus = dynamic(
+  () => import("../components/ScanHistorySyncStatus"),
+  { ssr: false }
+);
+
 export default function PerformanceDeviceManagementPage() {
     const [devices, setDevices] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const router = useRouter();
+    
+    // Use scan history context instead of local state
+    const { scanHistory } = useScanHistory();
     
     // Device Management States
     const [filteredDevices, setFilteredDevices] = useState([]);
@@ -55,7 +64,6 @@ export default function PerformanceDeviceManagementPage() {
     // Scan selection and history
     const [scans, setScans] = useState([]);
     const [selectedScan, setSelectedScan] = useState('all');
-    const [scanHistory, setScanHistory] = useState([]);
     
     // Monitoring control states
     const [isMonitoring, setIsMonitoring] = useState(false);
@@ -75,11 +83,9 @@ export default function PerformanceDeviceManagementPage() {
     const networkPerformanceRef = useRef(null);
 
     // Network Control Modal integration
-    const networkModal = useNetworkControlModal();
-
-    useEffect(() => {
+    const networkModal = useNetworkControlModal();    useEffect(() => {
         loadDevicesAndScans();
-    }, []);
+    }, [scanHistory]); // Add scanHistory as dependency
 
     // Filter devices based on search and filters
     useEffect(() => {
@@ -219,17 +225,14 @@ export default function PerformanceDeviceManagementPage() {
                 socket.disconnect();
             }
         };
-    }, []);
-
-    const loadDevicesAndScans = () => {
-        // Load scan history from localStorage
-        const savedHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
-        setScanHistory(savedHistory);
+    }, []);    const loadDevicesAndScans = () => {
+        // Use scan history from context instead of localStorage
+        console.log('[PERFORMANCE PAGE] Loading devices from scan history context:', scanHistory.length, 'entries');
         
         // Extract scans from history
-        const scansFromHistory = savedHistory.map(entry => ({
+        const scansFromHistory = scanHistory.map(entry => ({
             id: entry.id || `scan-${Math.random().toString(36).substring(2, 9)}`,
-            name: entry.name || `Scan ${savedHistory.indexOf(entry) + 1}`,
+            name: entry.name || `Scan ${scanHistory.indexOf(entry) + 1}`,
             timestamp: entry.timestamp || new Date().toISOString(),
             deviceCount: entry.devices || 0
         }));
@@ -265,10 +268,9 @@ export default function PerformanceDeviceManagementPage() {
             } catch (error) {
                 console.error("Error parsing saved devices:", error);
             }
-        }
-        
+        }        
         // Also process devices from scan history entries
-        savedHistory.forEach(entry => {
+        scanHistory.forEach(entry => {
             if (entry.data) {
                 const entryDevices = Object.values(entry.data).flat();
                 const devicesWithScanId = entryDevices.map(device => ({
@@ -560,10 +562,11 @@ export default function PerformanceDeviceManagementPage() {
     };
 
     const sortedScans = scans.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-    const uniqueVendors = [...new Set(devices.map(d => d.vendor).filter(Boolean))];
-
-    return (
+    const uniqueVendors = [...new Set(devices.map(d => d.vendor).filter(Boolean))];    return (
         <>
+            {/* Sync Status - shows only when there are sync issues or pending items */}
+            <ScanHistorySyncStatus showFullControls={false} />
+            
             <div className="flex justify-between items-center mb-6">
                 <h1 className="text-3xl font-bold">Performance & Device Management</h1>
                 <div className="flex space-x-4">

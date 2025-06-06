@@ -6,27 +6,223 @@ import { format } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 import { createContext, useContext } from "react";
 import { FixedSizeList as List } from "react-window";
+import { useAuth } from "../../contexts/AuthContext";
 
 const UnifiedDeviceModal = lazy(() => import("../../components/UnifiedDeviceModal"));
 const SSHTerminal = lazy(() => import("../../components/sshterminal"));
 const MemoizedDeviceList = lazy(() => import("../../components/MemoizedDeviceList"));
 const NetworkScanExportImport = lazy(() => import("./NetworkScanExportImport"));
 const NetworkScanSharingModal = lazy(() => import("./NetworkScanSharingModal"));
+const ScanHistorySyncStatus = lazy(() => import("../../components/ScanHistorySyncStatus"));
 
 const ScanHistoryContext = createContext();
 
 export const ScanHistoryProvider = ({ children }) => {
+    const { user, isAuthenticated } = useAuth();
     const [scanHistory, setScanHistory] = useState([]);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
+    const [syncError, setSyncError] = useState(null);
+    const [lastSyncTime, setLastSyncTime] = useState(null);
 
+    // Get user-specific localStorage key
+    const getScanHistoryKey = () => {
+        if (isAuthenticated && user && user._id) {
+            return `scanHistory_${user._id}`;
+        }
+        return "scanHistory"; // fallback for unauthenticated users
+    };
+
+    // Load scan history with database-first approach
+    const loadScanHistory = async () => {
+        if (!isAuthenticated || !user) {
+            setScanHistory([]);
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            // Try to load from database first
+            const response = await fetch('/api/scan-history', {
+                method: 'GET',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const dbHistory = data.scanHistory || [];
+                
+                // Convert database format to component format
+                const convertedHistory = dbHistory.map(dbEntry => ({
+                    id: dbEntry.scanId,
+                    timestamp: format(new Date(dbEntry.createdAt), "yyyy-MM-dd HH:mm:ss"),
+                    ipRange: dbEntry.ipRange,
+                    devices: dbEntry.deviceCount,
+                    data: dbEntry.scanData || {},
+                    name: dbEntry.name,
+                    settings: dbEntry.settings,
+                    metadata: dbEntry.metadata,
+                    _dbId: dbEntry._id, // Keep database ID for updates
+                    isFromDatabase: true
+                }));
+
+                setScanHistory(convertedHistory);
+                setLastSyncTime(new Date());
+                console.log(`Loaded ${convertedHistory.length} scans from database for user ${user._id}`);
+
+                // Update localStorage as cache
+                const storageKey = getScanHistoryKey();
+                localStorage.setItem(storageKey, JSON.stringify(convertedHistory));
+                
+            } else {
+                throw new Error(`Database fetch failed: ${response.status}`);
+            }
+        } catch (error) {
+            console.warn('Failed to load from database, falling back to localStorage:', error);
+            setSyncError('Failed to sync with database');
+            
+            // Fallback to localStorage
+            const storageKey = getScanHistoryKey();
+            let savedHistory = JSON.parse(localStorage.getItem(storageKey)) || [];
+            
+            // Migration: If user-specific storage is empty, check for global scan history
+            if (savedHistory.length === 0) {
+                const globalHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
+                if (globalHistory.length > 0) {
+                    console.log(`Migrating ${globalHistory.length} global scan entries to user ${user._id}`);
+                    savedHistory = globalHistory;
+                    localStorage.setItem(storageKey, JSON.stringify(savedHistory));
+                }
+            }
+              setScanHistory(savedHistory);
+            console.log(`Loaded ${savedHistory.length} scans from localStorage for user ${user._id}`);
+            
+            // Clear sync error since localStorage fallback was successful
+            setSyncError(null);
+        }
+        
+        setIsLoading(false);
+    };
+
+    // Save scan to database with localStorage fallback
+    const saveScanToDatabase = async (scanEntry) => {
+        try {
+            // Debug authentication state before making request
+            console.log('Authentication Debug Info:');
+            console.log('- User authenticated:', isAuthenticated);
+            console.log('- User object:', user);
+            console.log('- Available cookies:', document.cookie);
+            
+            // Check if we have the required authentication token
+            const authToken = document.cookie
+                .split('; ')
+                .find(row => row.startsWith('auth-token='))
+                ?.split('=')[1];
+            const sessionId = document.cookie
+                .split('; ')
+                .find(row => row.startsWith('session-id='))
+                ?.split('=')[1];
+                
+            console.log('- Auth token present:', !!authToken);
+            console.log('- Session ID present:', !!sessionId);
+            
+            if (!isAuthenticated || !user) {
+                console.warn('User not authenticated, skipping database save');
+                return false;
+            }
+
+            const dbPayload = {
+                scanId: scanEntry.id,
+                name: scanEntry.name || `Network Scan ${format(new Date(scanEntry.timestamp), 'MMM dd, yyyy HH:mm')}`,
+                ipRange: scanEntry.ipRange,
+                deviceCount: scanEntry.devices ? scanEntry.devices.length : 0,
+                scanData: {
+                    devices: scanEntry.devices || [],
+                    portScanResults: scanEntry.portScanResults || [],
+                    networkInfo: scanEntry.networkInfo || {}
+                },
+                metadata: {
+                    timestamp: scanEntry.timestamp,
+                    scanDuration: scanEntry.scanDuration || 0,
+                    userAgent: navigator.userAgent
+                },
+                settings: scanEntry.settings || {
+                    isPrivate: true,
+                    isFavorite: false,
+                    tags: [],
+                    notes: ''
+                }
+            };
+
+            console.log('Making POST request to /api/scan-history...');
+            const response = await fetch('/api/scan-history', {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(dbPayload)
+            });
+
+            console.log('Response status:', response.status);
+            console.log('Response headers:', [...response.headers.entries()]);
+
+            if (response.ok) {
+                const savedScan = await response.json();
+                console.log(`Successfully saved scan ${scanEntry.id} to database`);
+                setSyncError(null);
+                setLastSyncTime(new Date());
+                return true;
+            } else if (response.status === 409) {
+                console.log(`Scan ${scanEntry.id} already exists in database`);
+                return true; // Already exists, not an error
+            } else {
+                // Get error details from response
+                let errorDetails = `${response.status}`;
+                try {
+                    const errorBody = await response.json();
+                    errorDetails += `: ${errorBody.error || 'Unknown error'}`;
+                } catch (e) {
+                    // If we can't parse the error body, just use the status
+                }
+                console.error('Database save failed with details:', errorDetails);
+                throw new Error(`Database save failed: ${errorDetails}`);
+            }
+        } catch (error) {
+            console.error('Failed to save scan to database:', error);
+            setSyncError('Failed to sync with database');
+            
+            // Clear sync error after a delay since data is safely stored in localStorage
+            setTimeout(() => {
+                setSyncError(null);
+            }, 3000); // Clear error after 3 seconds
+            
+            return false;
+        }
+    };
+
+    // Initialize scan history on auth state change
     useEffect(() => {
-        const savedHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
-        setScanHistory(savedHistory);
-    }, []);    useEffect(() => {
-        console.log(`Saving ${scanHistory.length} scan history entries to localStorage`);
-        localStorage.setItem("scanHistory", JSON.stringify(scanHistory));
-        console.log("Scan history saved to localStorage");
-    }, [scanHistory]);    const saveScanHistory = (data, ipRange) => {
-        console.log(`saveScanHistory called with ipRange: ${ipRange}`, { dataKeys: Object.keys(data) });
+        loadScanHistory();
+    }, [isAuthenticated, user]);
+
+    // Auto-save to localStorage whenever scan history changes
+    useEffect(() => {
+        if (isAuthenticated && user && scanHistory.length > 0) {
+            const storageKey = getScanHistoryKey();
+            localStorage.setItem(storageKey, JSON.stringify(scanHistory));
+        }
+    }, [scanHistory, isAuthenticated, user]);    const saveScanHistory = async (data, ipRange) => {
+        // Only save if user is authenticated
+        if (!isAuthenticated || !user) {
+            console.log("Cannot save scan history: user not authenticated");
+            return;
+        }
+
+        console.log(`saveScanHistory called for user ${user._id} with ipRange: ${ipRange}`, { dataKeys: Object.keys(data) });
         
         // Check data structure and calculate device count properly
         let deviceCount = 0;
@@ -97,31 +293,215 @@ export const ScanHistoryProvider = ({ children }) => {
                 ipRange,
                 devices: deviceCount,
                 data,
+                isFromDatabase: false // Mark as new entry
             };
             
             console.log("Adding new scan to history:", { id: newEntry.id, deviceCount, ipRange, timestamp });
+            
+            // Automatically attempt to save to database
+            setTimeout(async () => {
+                const success = await saveScanToDatabase(newEntry);
+                if (success) {
+                    // Update the entry to mark it as synced
+                    setScanHistory(current => 
+                        current.map(entry => 
+                            entry.id === newEntry.id 
+                                ? { ...entry, isFromDatabase: true }
+                                : entry
+                        )
+                    );
+                }
+            }, 100); // Small delay to ensure state update completes first
+            
             return [...prev, newEntry];
         });
-    };
-
-    const deleteScan = (index) => {
+    };    const deleteScan = async (index) => {
+        const scanToDelete = scanHistory[index];
+        
         setScanHistory((prev) => prev.filter((_, i) => i !== index));
-    };
-
-    const updateScanName = (index, newName) => {
+        
+        // If scan was from database, also delete from database
+        if (scanToDelete && scanToDelete.isFromDatabase && isAuthenticated && user) {
+            try {
+                const response = await fetch('/api/scan-history', {
+                    method: 'DELETE',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ scanIds: [scanToDelete.id] })
+                });
+                
+                if (response.ok) {
+                    console.log(`Successfully deleted scan ${scanToDelete.id} from database`);
+                    setSyncError(null);
+                } else {
+                    console.error('Failed to delete scan from database:', response.status);
+                    setSyncError('Failed to delete from database');
+                }
+            } catch (error) {
+                console.error('Error deleting scan from database:', error);
+                setSyncError('Failed to delete from database');
+            }
+        }
+    };    const updateScanName = async (index, newName) => {
+        const scanToUpdate = scanHistory[index];
+        
         setScanHistory((prev) => {
             const updated = [...prev];
             updated[index].name = newName;
             return updated;
         });
-    };
-    
-    // Add a function to clear all scan history
-    const clearHistory = () => {
+        
+        // If scan is from database, also update in database
+        if (scanToUpdate && scanToUpdate.isFromDatabase && isAuthenticated && user) {
+            try {
+                const response = await fetch(`/api/scan-history/${scanToUpdate.id}`, {
+                    method: 'PUT',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ name: newName })
+                });
+                
+                if (response.ok) {
+                    console.log(`Successfully updated scan name in database: ${newName}`);
+                    setSyncError(null);
+                } else {
+                    console.error('Failed to update scan name in database:', response.status);
+                    setSyncError('Failed to update name in database');
+                }
+            } catch (error) {
+                console.error('Error updating scan name in database:', error);
+                setSyncError('Failed to update name in database');
+            }
+        }
+    };// Add a function to clear all scan history
+    const clearHistory = async () => {
+        if (isAuthenticated && user) {
+            // Get all scan IDs that are from database
+            const dbScanIds = scanHistory
+                .filter(scan => scan.isFromDatabase)
+                .map(scan => scan.id);
+            
+            // Delete from database if there are any database scans
+            if (dbScanIds.length > 0) {
+                try {
+                    const response = await fetch('/api/scan-history', {
+                        method: 'DELETE',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ scanIds: dbScanIds })
+                    });
+                    
+                    if (response.ok) {
+                        console.log(`Successfully deleted ${dbScanIds.length} scans from database`);
+                        setSyncError(null);
+                    } else {
+                        console.error('Failed to delete scans from database:', response.status);
+                        setSyncError('Failed to clear database');
+                    }
+                } catch (error) {
+                    console.error('Error deleting scans from database:', error);
+                    setSyncError('Failed to clear database');
+                }
+            }
+            
+            // Clear localStorage
+            const storageKey = getScanHistoryKey();
+            localStorage.removeItem(storageKey);
+            console.log(`Cleared scan history for user ${user._id}`);
+        } else {
+            localStorage.removeItem("scanHistory"); // fallback cleanup
+        }
+        
+        // Clear local state
         setScanHistory([]);
-        localStorage.removeItem("scanHistory");
-    };    // Add a function to update device data in scan history
-    const updateDeviceInHistory = (deviceIP, updatedDeviceData) => {
+    };
+
+    // Manual sync function - push all localStorage scans to database
+    const syncToDatabase = async () => {
+        if (!isAuthenticated || !user) {
+            console.log("Cannot sync: user not authenticated");
+            return false;
+        }
+        
+        setIsSyncing(true);
+        setSyncError(null);
+        
+        try {
+            // Get scans that are not yet in database
+            const unsynced = scanHistory.filter(scan => !scan.isFromDatabase);
+            
+            if (unsynced.length === 0) {
+                console.log("All scans are already synced");
+                setIsSyncing(false);
+                return true;
+            }
+            
+            console.log(`Syncing ${unsynced.length} unsynced scans to database...`);
+            
+            let successCount = 0;
+            for (const scan of unsynced) {
+                const success = await saveScanToDatabase(scan);
+                if (success) {
+                    successCount++;
+                }
+            }
+            
+            if (successCount > 0) {
+                // Update synced scans to mark them as from database
+                setScanHistory(current => 
+                    current.map(scan => 
+                        unsynced.includes(scan) 
+                            ? { ...scan, isFromDatabase: true }
+                            : scan
+                    )
+                );
+                setLastSyncTime(new Date());
+                console.log(`Successfully synced ${successCount}/${unsynced.length} scans`);
+            }
+            
+            setIsSyncing(false);
+            return successCount === unsynced.length;
+            
+        } catch (error) {
+            console.error('Error during sync:', error);
+            setSyncError('Sync failed');
+            setIsSyncing(false);
+            return false;
+        }
+    };
+
+    // Refresh from database
+    const refreshFromDatabase = async () => {
+        if (!isAuthenticated || !user) {
+            return false;
+        }
+        
+        setIsLoading(true);
+        await loadScanHistory();
+        return true;
+    };
+
+    // Add a function to handle user logout cleanup
+    const clearScanHistoryOnLogout = () => {
+        setScanHistory([]);
+        console.log("Cleared scan history due to user logout");
+    };
+
+    // Clear scan history when user logs out
+    useEffect(() => {
+        if (!isAuthenticated) {
+            clearScanHistoryOnLogout();
+        }
+    }, [isAuthenticated]);    // Add a function to update device data in scan history
+    const updateDeviceInHistory = async (deviceIP, updatedDeviceData) => {
+        let updatedEntries = [];
+        
         setScanHistory((prev) => {
             const updated = prev.map(entry => {
                 // Skip entries without data
@@ -130,12 +510,14 @@ export const ScanHistoryProvider = ({ children }) => {
                 // Create a new copy of the entry
                 const newEntry = { ...entry };
                 newEntry.data = { ...entry.data };
+                let hasChanges = false;
                 
                 // Update matching devices in all categories
                 Object.keys(newEntry.data).forEach(key => {
                     if (Array.isArray(newEntry.data[key])) {
                         newEntry.data[key] = newEntry.data[key].map(device => {
                             if (device.ip === deviceIP) {
+                                hasChanges = true;
                                 return {
                                     ...device,
                                     name: updatedDeviceData.name,
@@ -153,14 +535,47 @@ export const ScanHistoryProvider = ({ children }) => {
                     }
                 });
                 
+                // Track entries that need database sync
+                if (hasChanges && newEntry.isFromDatabase) {
+                    updatedEntries.push(newEntry);
+                }
+                
                 return newEntry;
             });
             
             return updated;
         });
-    };
-
-    return (
+        
+        // Sync updated entries to database
+        if (updatedEntries.length > 0 && isAuthenticated && user) {
+            for (const entry of updatedEntries) {
+                try {
+                    const response = await fetch(`/api/scan-history/${entry.id}`, {
+                        method: 'PUT',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ 
+                            scanData: entry.data,
+                            includeData: false // Don't return large data in response
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        console.log(`Successfully updated device ${deviceIP} in scan ${entry.id}`);
+                        setSyncError(null);
+                    } else {
+                        console.error('Failed to sync device update to database:', response.status);
+                        setSyncError('Failed to sync device update');
+                    }
+                } catch (error) {
+                    console.error('Error syncing device update to database:', error);
+                    setSyncError('Failed to sync device update');
+                }
+            }
+        }
+    };return (
         <ScanHistoryContext.Provider
             value={{ 
                 scanHistory, 
@@ -168,7 +583,16 @@ export const ScanHistoryProvider = ({ children }) => {
                 deleteScan, 
                 updateScanName, 
                 clearHistory,
-                updateDeviceInHistory 
+                updateDeviceInHistory,
+                clearScanHistoryOnLogout,
+                // Database integration functions
+                syncToDatabase,
+                refreshFromDatabase,
+                // State indicators
+                isLoading,
+                isSyncing,
+                syncError,
+                lastSyncTime
             }}
         >
             {children}
@@ -659,10 +1083,13 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             console.error("Error preparing selected scans data for export:", error);
             return null;
         }
-    };
-
-    return (
+    };    return (
         <div className="mt-6">
+            {/* Sync Status Component */}
+            <Suspense fallback={<div className="animate-pulse bg-gray-200 h-16 rounded mb-4"></div>}>
+                <ScanHistorySyncStatus showFullControls={true} />
+            </Suspense>
+            
             <div className="flex justify-between items-center mb-4">
                 <h3 className="text-lg font-bold">Scan History</h3>
                 {scanHistory.length > 0 && (

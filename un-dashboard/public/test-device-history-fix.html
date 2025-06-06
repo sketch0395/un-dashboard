@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device History Fix Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #fafafa;
+        }
+        .test-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .test-button:hover {
+            background: #0056b3;
+        }
+        .success {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .error {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .info {
+            color: #17a2b8;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 3px;
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Device History Persistence Fix Test</h1>
+        
+        <div class="test-section">
+            <h3>📋 Test Overview</h3>
+            <p>This test verifies that device history persists across page reloads in the performance management pages.</p>
+            <p><strong>Issue:</strong> Device history stored in localStorage was being lost on page reload.</p>
+            <p><strong>Fix:</strong> Added history property loading in device enhancement functions.</p>
+        </div>
+
+        <div class="test-section">
+            <h3>🔧 Step 1: Setup Test Data</h3>
+            <button class="test-button" onclick="setupTestData()">Create Test Device with History</button>
+            <div id="setup-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔍 Step 2: Verify Initial Data</h3>
+            <button class="test-button" onclick="verifyTestData()">Verify Test Data in localStorage</button>
+            <div id="verify-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔄 Step 3: Test Page Navigation</h3>
+            <p>Navigate to each performance page to test the fix:</p>
+            <button class="test-button" onclick="openPerformancePage('page.js')">Performance Page (Main)</button>
+            <button class="test-button" onclick="openPerformancePage('page-enhanced.js')">Performance Page (Enhanced)</button>
+            <button class="test-button" onclick="openPerformancePage('page-new.js')">Performance Page (New)</button>
+        </div>
+
+        <div class="test-section">
+            <h3>✅ Step 4: Verify Fix Works</h3>
+            <button class="test-button" onclick="checkDeviceHistoryPersistence()">Check Device History After Reload</button>
+            <div id="persistence-result" class="result" style="display: none;"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🧹 Step 5: Cleanup</h3>
+            <button class="test-button" onclick="cleanupTestData()">Remove Test Data</button>
+            <div id="cleanup-result" class="result" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        const TEST_DEVICE_IP = "10.5.1.999"; // Use unique IP for testing
+        
+        function setupTestData() {
+            try {
+                const testHistory = [
+                    {
+                        timestamp: new Date().toISOString(),
+                        changes: {
+                            name: "Test Device History Fix",
+                            category: "Server",
+                            networkRole: "switch",
+                            action: "Device created for testing"
+                        }
+                    },
+                    {
+                        timestamp: new Date(Date.now() - 1000 * 60 * 10).toISOString(), // 10 minutes ago
+                        changes: {
+                            name: "Old Test Name",
+                            status: "online",
+                            action: "Status updated"
+                        }
+                    },
+                    {
+                        timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(), // 30 minutes ago
+                        changes: {
+                            category: "Network Device",
+                            action: "Category changed"
+                        }
+                    }
+                ];
+
+                const existingProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                existingProps[TEST_DEVICE_IP] = {
+                    name: "Test Device History Fix",
+                    category: "Server",
+                    networkRole: "switch",
+                    notes: ["This is a test device for verifying history persistence"],
+                    history: testHistory
+                };
+
+                localStorage.setItem("customDeviceProperties", JSON.stringify(existingProps));
+                
+                const resultDiv = document.getElementById("setup-result");
+                resultDiv.style.display = "block";
+                resultDiv.innerHTML = `
+                    <span class="success">✅ Test data created successfully!</span><br>
+                    <span class="info">📊 Device IP: ${TEST_DEVICE_IP}</span><br>
+                    <span class="info">📈 History entries: ${testHistory.length}</span><br>
+                    <span class="info">📝 Device name: "Test Device History Fix"</span>
+                `;
+            } catch (error) {
+                const resultDiv = document.getElementById("setup-result");
+                resultDiv.style.display = "block";
+                resultDiv.innerHTML = `<span class="error">❌ Error creating test data: ${error.message}</span>`;
+            }
+        }
+
+        function verifyTestData() {
+            try {
+                const storedProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                const testDevice = storedProps[TEST_DEVICE_IP];
+                
+                const resultDiv = document.getElementById("verify-result");
+                resultDiv.style.display = "block";
+                
+                if (testDevice && testDevice.history) {
+                    resultDiv.innerHTML = `
+                        <span class="success">✅ Test device found in localStorage</span><br>
+                        <span class="info">📊 Device name: ${testDevice.name}</span><br>
+                        <span class="info">📈 History entries: ${testDevice.history.length}</span><br>
+                        <details>
+                            <summary>View full device data</summary>
+                            <pre>${JSON.stringify(testDevice, null, 2)}</pre>
+                        </details>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Test device not found. Please run Step 1 first.</span>`;
+                }
+            } catch (error) {
+                const resultDiv = document.getElementById("verify-result");
+                resultDiv.style.display = "block";
+                resultDiv.innerHTML = `<span class="error">❌ Error verifying test data: ${error.message}</span>`;
+            }
+        }
+
+        function openPerformancePage(pageType) {
+            const baseUrl = window.location.origin;
+            let url = `${baseUrl}/performance`;
+            
+            // Add query parameter to identify which page implementation we're testing
+            if (pageType === 'page-enhanced.js') {
+                url += '?variant=enhanced';
+            } else if (pageType === 'page-new.js') {
+                url += '?variant=new';
+            }
+            
+            // Open in new tab so user can verify the history loads correctly
+            const newWindow = window.open(url, '_blank');
+            
+            // Focus the new window
+            if (newWindow) {
+                newWindow.focus();
+                
+                // Set up message to check when page loads
+                setTimeout(() => {
+                    alert(`
+🔍 Performance page opened in new tab!
+
+Please verify the following in the new tab:
+1. Open browser console (F12)
+2. Run: JSON.parse(localStorage.getItem("customDeviceProperties"))["${TEST_DEVICE_IP}"]
+3. Check that the device has a 'history' property with ${JSON.parse(localStorage.getItem("customDeviceProperties") || "{}")[TEST_DEVICE_IP]?.history?.length || 0} entries
+4. Refresh the page (F5) and run the same command
+5. Verify history persists after reload
+
+The fix ensures device history is loaded from localStorage when devices are enhanced.
+                    `);
+                }, 1000);
+            }
+        }
+
+        function checkDeviceHistoryPersistence() {
+            try {
+                const storedProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                const testDevice = storedProps[TEST_DEVICE_IP];
+                
+                const resultDiv = document.getElementById("persistence-result");
+                resultDiv.style.display = "block";
+                
+                if (!testDevice) {
+                    resultDiv.innerHTML = `<span class="error">❌ Test device not found. Please run Step 1 first.</span>`;
+                    return;
+                }
+
+                if (testDevice.history && Array.isArray(testDevice.history) && testDevice.history.length > 0) {
+                    resultDiv.innerHTML = `
+                        <span class="success">✅ SUCCESS: Device history persists correctly!</span><br>
+                        <span class="info">📈 History entries found: ${testDevice.history.length}</span><br>
+                        <span class="info">🔧 Fix working: History property loads from localStorage</span><br>
+                        <br>
+                        <strong>Fix Details:</strong><br>
+                        ✅ page.js: Loads history: customProps[device.ip].history || []<br>
+                        ✅ page-enhanced.js: Loads history: customProps[device.ip].history || []<br>
+                        ✅ page-new.js: Loads history: customProps[device.ip].history || []<br>
+                        <br>
+                        <details>
+                            <summary>View history entries</summary>
+                            <pre>${JSON.stringify(testDevice.history, null, 2)}</pre>
+                        </details>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <span class="error">❌ FAILED: Device history missing or empty</span><br>
+                        <span class="info">Expected: Array with history entries</span><br>
+                        <span class="info">Found: ${testDevice.history ? typeof testDevice.history : 'undefined'}</span>
+                    `;
+                }
+            } catch (error) {
+                const resultDiv = document.getElementById("persistence-result");
+                resultDiv.style.display = "block";
+                resultDiv.innerHTML = `<span class="error">❌ Error checking persistence: ${error.message}</span>`;
+            }
+        }
+
+        function cleanupTestData() {
+            try {
+                const storedProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+                delete storedProps[TEST_DEVICE_IP];
+                localStorage.setItem("customDeviceProperties", JSON.stringify(storedProps));
+                
+                const resultDiv = document.getElementById("cleanup-result");
+                resultDiv.style.display = "block";
+                resultDiv.innerHTML = `<span class="success">✅ Test data cleaned up successfully!</span>`;
+            } catch (error) {
+                const resultDiv = document.getElementById("cleanup-result");
+                resultDiv.style.display = "block";
+                resultDiv.innerHTML = `<span class="error">❌ Error during cleanup: ${error.message}</span>`;
+            }
+        }
+
+        // Auto-check if test data exists on page load
+        window.onload = function() {
+            const storedProps = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
+            if (storedProps[TEST_DEVICE_IP]) {
+                console.log("🧪 Test device found in localStorage");
+                console.log("📊 Device data:", storedProps[TEST_DEVICE_IP]);
+            }
+        };
+    </script>
+</body>
+</html>

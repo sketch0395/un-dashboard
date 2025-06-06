@@ -14,7 +14,7 @@ class DatabaseConnection {
         return this.mongoConnection;
       }
 
-      const mongoUrl = process.env.MONGODB_URL || 'mongodb://unapp:unapp123@10.5.1.212:27017/undashboard?authSource=undashboard';
+      const mongoUrl = process.env.MONGODB_URL || process.env.MONGODB_URI || 'mongodb://admin:un-dashboard-2024@10.5.1.212:27017/undashboard?authSource=admin';
         this.mongoConnection = await mongoose.connect(mongoUrl, {
         serverSelectionTimeoutMS: 5000, // 5 second timeout
         socketTimeoutMS: 45000, // 45 second socket timeout
