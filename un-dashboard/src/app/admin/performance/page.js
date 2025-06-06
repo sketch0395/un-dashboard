@@ -69,63 +69,59 @@ export default function PerformanceMonitor() {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
-
   const MetricCard = ({ title, value, subtitle, color = 'blue', icon }) => (
-    <div className="bg-white rounded-lg shadow p-6">
+    <div className="bg-gray-800 rounded-lg shadow p-6 border border-gray-700">
       <div className="flex items-center">
-        <div className={`p-3 rounded-full bg-${color}-100 text-${color}-600`}>
+        <div className={`p-3 rounded-full bg-${color}-900 text-${color}-400`}>
           {icon}
         </div>
         <div className="ml-4">
-          <p className="text-sm font-medium text-gray-500">{title}</p>
-          <p className="text-2xl font-semibold text-gray-900">{value}</p>
-          {subtitle && <p className="text-sm text-gray-500">{subtitle}</p>}
+          <p className="text-sm font-medium text-gray-300">{title}</p>
+          <p className="text-2xl font-semibold text-white">{value}</p>
+          {subtitle && <p className="text-sm text-gray-400">{subtitle}</p>}
         </div>
       </div>
     </div>
   );
-
   const ActionButton = ({ action, label, description, color = 'blue', params = {} }) => (
     <button
       onClick={() => performAction(action, params)}
       disabled={actionLoading === action}
-      className={`p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition duration-200 text-left w-full ${
+      className={`p-4 border border-gray-700 rounded-lg hover:bg-gray-700 transition duration-200 text-left w-full bg-gray-800 ${
         actionLoading === action ? 'opacity-50 cursor-not-allowed' : ''
       }`}
     >
       <div className="flex items-center justify-between">
         <div>
-          <h4 className={`font-medium text-${color}-700`}>{label}</h4>
-          <p className="text-sm text-gray-500">{description}</p>
+          <h4 className={`font-medium text-${color}-400`}>{label}</h4>
+          <p className="text-sm text-gray-300">{description}</p>
         </div>
         {actionLoading === action && (
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-400"></div>
         )}
       </div>
     </button>
   );
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 p-8">
+      <div className="min-h-screen bg-gray-950 p-8">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400"></div>
           </div>
         </div>
       </div>
     );
   }
-
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
+    <div className="min-h-screen bg-gray-950 p-8">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Performance Monitor</h1>
-              <p className="text-gray-600 mt-2">System performance metrics and optimization tools</p>
+              <h1 className="text-3xl font-bold text-white">Performance Monitor</h1>
+              <p className="text-gray-300 mt-2">System performance metrics and optimization tools</p>
             </div>
             <div className="flex space-x-4">
               <button
@@ -143,17 +139,16 @@ export default function PerformanceMonitor() {
             </div>
           </div>
           {lastUpdate && (
-            <p className="text-sm text-gray-500 mt-2">
+            <p className="text-sm text-gray-400 mt-2">
               Last updated: {lastUpdate.toLocaleString()}
             </p>
           )}
         </div>
 
         {performanceData && (
-          <>
-            {/* Cache Metrics */}
+          <>            {/* Cache Metrics */}
             <div className="mb-8">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Cache Performance</h2>
+              <h2 className="text-xl font-semibold text-white mb-4">Cache Performance</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <MetricCard
                   title="Total Entries"
@@ -196,11 +191,9 @@ export default function PerformanceMonitor() {
                   }
                 />
               </div>
-            </div>
-
-            {/* Session Metrics */}
+            </div>            {/* Session Metrics */}
             <div className="mb-8">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Session Statistics</h2>
+              <h2 className="text-xl font-semibold text-white mb-4">Session Statistics</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <MetricCard
                   title="Total Sessions"
@@ -227,11 +220,9 @@ export default function PerformanceMonitor() {
                   />
                 ))}
               </div>
-            </div>
-
-            {/* Audit Log Metrics */}
+            </div>            {/* Audit Log Metrics */}
             <div className="mb-8">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Audit Log Statistics (24h)</h2>
+              <h2 className="text-xl font-semibold text-white mb-4">Audit Log Statistics (24h)</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {performanceData.auditLogs && performanceData.auditLogs.map((log, index) => (
                   <MetricCard
@@ -247,11 +238,9 @@ export default function PerformanceMonitor() {
                   />
                 ))}
               </div>
-            </div>
-
-            {/* Optimization Actions */}
+            </div>            {/* Optimization Actions */}
             <div className="mb-8">
-              <h2 className="text-xl font-semibold text-gray-900 mb-4">Optimization Actions</h2>
+              <h2 className="text-xl font-semibold text-white mb-4">Optimization Actions</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <ActionButton
                   action="clearCache"

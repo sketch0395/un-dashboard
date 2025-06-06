@@ -35,32 +35,30 @@ export default function AdminLayout({ children }) {
       </div>
     );
   }
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white shadow">
+    <div className="min-h-screen bg-gray-950 text-white">
+      <div className="bg-gray-800 shadow border-b border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Admin Panel</h1>
-              <p className="text-gray-600">Manage users and system settings</p>
+              <h1 className="text-2xl font-bold text-white">Admin Panel</h1>
+              <p className="text-gray-300">Manage users and system settings</p>
             </div>
             <nav className="flex space-x-4">
               <button
                 onClick={() => router.push('/admin')}
-                className="text-blue-600 hover:text-blue-800 font-medium"
-              >
+                className="text-blue-400 hover:text-blue-300 font-medium transition-colors"              >
                 Dashboard
               </button>
               <button
                 onClick={() => router.push('/admin/users')}
-                className="text-blue-600 hover:text-blue-800 font-medium"
+                className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
               >
                 Users
               </button>
               <button
                 onClick={() => router.push('/admin/audit-logs')}
-                className="text-blue-600 hover:text-blue-800 font-medium"
+                className="text-blue-400 hover:text-blue-300 font-medium transition-colors"
               >
                 Audit Logs
               </button>

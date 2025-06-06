@@ -89,40 +89,35 @@ export default function SessionCleanupPage() {
     
     handleAction('manual-cleanup', options);
   };
-
   if (!user || user.role !== 'admin') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Access Denied</h1>
-          <p className="text-gray-600">Admin access required</p>
+          <h1 className="text-2xl font-bold text-white mb-4">Access Denied</h1>
+          <p className="text-gray-300">Admin access required</p>
         </div>
       </div>
     );
   }
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-400"></div>
       </div>
     );
   }
-
   return (
-    <div className="min-h-screen bg-gray-50 py-6">
+    <div className="min-h-screen bg-gray-950 py-6">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="bg-white shadow rounded-lg mb-6">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h1 className="text-2xl font-bold text-gray-900">Session Cleanup Management</h1>
-            <p className="text-gray-600 mt-1">Manage automatic session cleanup and perform manual cleanups</p>
+        <div className="bg-gray-800 shadow rounded-lg mb-6 border border-gray-700">
+          <div className="px-6 py-4 border-b border-gray-700">
+            <h1 className="text-2xl font-bold text-white">Session Cleanup Management</h1>
+            <p className="text-gray-300 mt-1">Manage automatic session cleanup and perform manual cleanups</p>
           </div>
-        </div>
-
-        {/* Messages */}
+        </div>        {/* Messages */}
         {message && (
-          <div className="bg-green-50 border border-green-200 rounded-md p-4 mb-6">
+          <div className="bg-green-900 border border-green-700 rounded-md p-4 mb-6">
             <div className="flex">
               <div className="flex-shrink-0">
                 <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
@@ -130,14 +125,14 @@ export default function SessionCleanupPage() {
                 </svg>
               </div>
               <div className="ml-3">
-                <p className="text-sm text-green-800">{message}</p>
+                <p className="text-sm text-green-300">{message}</p>
               </div>
             </div>
           </div>
         )}
 
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-md p-4 mb-6">
+          <div className="bg-red-900 border border-red-700 rounded-md p-4 mb-6">
             <div className="flex">
               <div className="flex-shrink-0">
                 <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
@@ -145,51 +140,48 @@ export default function SessionCleanupPage() {
                 </svg>
               </div>
               <div className="ml-3">
-                <p className="text-sm text-red-800">{error}</p>
+                <p className="text-sm text-red-300">{error}</p>
               </div>
             </div>
           </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        )}        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Cleanup Service Status */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-medium text-gray-900">Cleanup Service Status</h2>
+          <div className="bg-gray-800 shadow rounded-lg border border-gray-700">
+            <div className="px-6 py-4 border-b border-gray-700">
+              <h2 className="text-lg font-medium text-white">Cleanup Service Status</h2>
             </div>
             <div className="p-6">
-              {stats?.cleanupService && (
-                <div className="space-y-4">
+              {stats?.cleanupService && (                <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-500">Status</span>
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    <span className="text-sm font-medium text-gray-300">Status</span>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${
                       stats.cleanupService.isRunning
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
+                        ? 'bg-green-900 text-green-300 border-green-800'
+                        : 'bg-red-900 text-red-300 border-red-800'
                     }`}>
                       {stats.cleanupService.isRunning ? 'Running' : 'Stopped'}
                     </span>
                   </div>
                   
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-500">Total Cleaned</span>
-                    <span className="text-sm text-gray-900">{stats.cleanupService.totalCleaned}</span>
+                    <span className="text-sm font-medium text-gray-300">Total Cleaned</span>
+                    <span className="text-sm text-white">{stats.cleanupService.totalCleaned}</span>
                   </div>
                   
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-500">Last Cleanup Count</span>
-                    <span className="text-sm text-gray-900">{stats.cleanupService.lastCleanupCount}</span>
+                    <span className="text-sm font-medium text-gray-300">Last Cleanup Count</span>
+                    <span className="text-sm text-white">{stats.cleanupService.lastCleanupCount}</span>
                   </div>
                   
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-gray-500">Errors</span>
-                    <span className="text-sm text-gray-900">{stats.cleanupService.errors}</span>
+                    <span className="text-sm font-medium text-gray-300">Errors</span>
+                    <span className="text-sm text-white">{stats.cleanupService.errors}</span>
                   </div>
                   
                   {stats.cleanupService.lastCleanup && (
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-500">Last Cleanup</span>
-                      <span className="text-sm text-gray-900">
+                      <span className="text-sm font-medium text-gray-300">Last Cleanup</span>
+                      <span className="text-sm text-white">
                         {new Date(stats.cleanupService.lastCleanup).toLocaleString()}
                       </span>
                     </div>
@@ -221,36 +213,32 @@ export default function SessionCleanupPage() {
                 </button>
               </div>
             </div>
-          </div>
-
-          {/* Session Statistics */}
-          <div className="bg-white shadow rounded-lg">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h2 className="text-lg font-medium text-gray-900">Session Statistics</h2>
+          </div>          {/* Session Statistics */}
+          <div className="bg-gray-800 shadow rounded-lg border border-gray-700">
+            <div className="px-6 py-4 border-b border-gray-700">
+              <h2 className="text-lg font-medium text-white">Session Statistics</h2>
             </div>
-            <div className="p-6">
-              {stats?.sessionStats && (
+            <div className="p-6">              {stats?.sessionStats && (
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="text-center p-4 bg-blue-50 rounded-lg">
-                    <div className="text-2xl font-bold text-blue-600">{stats.sessionStats.total}</div>
-                    <div className="text-sm text-blue-800">Total Sessions</div>
+                  <div className="text-center p-4 bg-blue-900 rounded-lg border border-blue-800">
+                    <div className="text-2xl font-bold text-blue-400">{stats.sessionStats.total}</div>
+                    <div className="text-sm text-blue-300">Total Sessions</div>
                   </div>
-                  <div className="text-center p-4 bg-green-50 rounded-lg">
-                    <div className="text-2xl font-bold text-green-600">{stats.sessionStats.active}</div>
-                    <div className="text-sm text-green-800">Active Sessions</div>
+                  <div className="text-center p-4 bg-green-900 rounded-lg border border-green-800">
+                    <div className="text-2xl font-bold text-green-400">{stats.sessionStats.active}</div>
+                    <div className="text-sm text-green-300">Active Sessions</div>
                   </div>
-                  <div className="text-center p-4 bg-red-50 rounded-lg">
-                    <div className="text-2xl font-bold text-red-600">{stats.sessionStats.expired}</div>
-                    <div className="text-sm text-red-800">Expired Sessions</div>
+                  <div className="text-center p-4 bg-red-900 rounded-lg border border-red-800">
+                    <div className="text-2xl font-bold text-red-400">{stats.sessionStats.expired}</div>
+                    <div className="text-sm text-red-300">Expired Sessions</div>
                   </div>
-                  <div className="text-center p-4 bg-yellow-50 rounded-lg">
-                    <div className="text-2xl font-bold text-yellow-600">{stats.sessionStats.createdToday}</div>
-                    <div className="text-sm text-yellow-800">Created Today</div>
+                  <div className="text-center p-4 bg-yellow-900 rounded-lg border border-yellow-800">
+                    <div className="text-2xl font-bold text-yellow-400">{stats.sessionStats.createdToday}</div>
+                    <div className="text-sm text-yellow-300">Created Today</div>
                   </div>
                 </div>
               )}
-              
-              <button
+                <button
                 onClick={fetchStats}
                 disabled={actionLoading}
                 className="w-full mt-4 bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-700 disabled:opacity-50"
@@ -259,18 +247,15 @@ export default function SessionCleanupPage() {
               </button>
             </div>
           </div>
-        </div>
-
-        {/* Manual Cleanup */}
-        <div className="bg-white shadow rounded-lg mt-6">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-medium text-gray-900">Manual Cleanup</h2>
-            <p className="text-sm text-gray-600 mt-1">Perform custom session cleanup with specific criteria</p>
+        </div>        {/* Manual Cleanup */}
+        <div className="bg-gray-800 shadow rounded-lg mt-6 border border-gray-700">
+          <div className="px-6 py-4 border-b border-gray-700">
+            <h2 className="text-lg font-medium text-white">Manual Cleanup</h2>
+            <p className="text-sm text-gray-300 mt-1">Perform custom session cleanup with specific criteria</p>
           </div>
-          <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="p-6">            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
                   Sessions older than (days)
                 </label>
                 <input
@@ -278,20 +263,20 @@ export default function SessionCleanupPage() {
                   min="0"
                   value={cleanupOptions.olderThanDays}
                   onChange={(e) => setCleanupOptions(prev => ({ ...prev, olderThanDays: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-600 rounded-md px-3 py-2 bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="0 = all expired"
                 />
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
                   Specific User ID
                 </label>
                 <input
                   type="text"
                   value={cleanupOptions.userId}
                   onChange={(e) => setCleanupOptions(prev => ({ ...prev, userId: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-600 rounded-md px-3 py-2 bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Leave empty for all users"
                 />
               </div>
@@ -302,9 +287,9 @@ export default function SessionCleanupPage() {
                   id="inactive-sessions"
                   checked={cleanupOptions.inactive}
                   onChange={(e) => setCleanupOptions(prev => ({ ...prev, inactive: e.target.checked }))}
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-600 bg-gray-700 rounded"
                 />
-                <label htmlFor="inactive-sessions" className="ml-2 block text-sm text-gray-900">
+                <label htmlFor="inactive-sessions" className="ml-2 block text-sm text-gray-300">
                   Include inactive sessions (30+ min)
                 </label>
               </div>
@@ -326,9 +311,7 @@ export default function SessionCleanupPage() {
               >
                 Clean Expired Only
               </button>
-            </div>
-
-            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+            </div>            <div className="mt-4 p-4 bg-yellow-900 border border-yellow-700 rounded-md">
               <div className="flex">
                 <div className="flex-shrink-0">
                   <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
@@ -336,7 +319,7 @@ export default function SessionCleanupPage() {
                   </svg>
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm text-yellow-800">
+                  <p className="text-sm text-yellow-300">
                     <strong>Warning:</strong> Manual cleanup will permanently delete sessions matching the criteria. 
                     This action cannot be undone. Use with caution.
                   </p>
