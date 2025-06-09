@@ -131,11 +131,13 @@ class AuthService {
       throw error;
     }
   }
-
   // Verify user authentication
   static async verifyAuth(req) {
     try {
-      const token = req.headers.authorization?.replace('Bearer ', '');
+      // Get token from cookies or authorization header (Next.js request handling)
+      const token = req.cookies?.get?.('auth-token')?.value || 
+                    req.headers.authorization?.replace('Bearer ', '') ||
+                    req.headers?.get?.('authorization')?.replace('Bearer ', '');
       
       if (!token) {
         throw new Error('No token provided');

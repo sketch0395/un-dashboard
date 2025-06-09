@@ -21,11 +21,9 @@ export async function GET(request) {
       headers: {
         authorization: `Bearer ${token}`
       }
-    };
-
-    // Verify authentication
+    };    // Verify authentication
     const authData = await AuthService.verifyAuth(mockReq);
-    if (!authData.success) {
+    if (!authData || !authData.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -114,11 +112,9 @@ export async function POST(request) {
       headers: {
         authorization: `Bearer ${token}`
       }
-    };
-
-    // Verify authentication
+    };    // Verify authentication
     const authData = await AuthService.verifyAuth(mockReq);
-    if (!authData.success) {
+    if (!authData || !authData.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -208,11 +204,9 @@ export async function DELETE(request) {
       headers: {
         authorization: `Bearer ${token}`
       }
-    };
-
-    // Verify authentication
+    };    // Verify authentication
     const authData = await AuthService.verifyAuth(mockReq);
-    if (!authData.success) {
+    if (!authData || !authData.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

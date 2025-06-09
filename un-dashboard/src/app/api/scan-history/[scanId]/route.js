@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import dbConnection from '../../../../lib/db';
-import ScanHistory from '../../../../models/ScanHistory';
-import { AuthService } from '../../../../middleware/auth';
+import dbConnection from '../../../../../lib/db';
+import ScanHistory from '../../../../../models/ScanHistory';
+import { AuthService } from '../../../../../middleware/auth';
 
 // GET - Fetch single scan with full data
 export async function GET(request, { params }) {
@@ -25,7 +25,7 @@ export async function GET(request, { params }) {
 
     // Verify authentication
     const authData = await AuthService.verifyAuth(mockReq);
-    if (!authData.success) {
+    if (!authData || !authData.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -80,7 +80,7 @@ export async function PUT(request, { params }) {
 
     // Verify authentication
     const authData = await AuthService.verifyAuth(mockReq);
-    if (!authData.success) {
+    if (!authData || !authData.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -162,7 +162,7 @@ export async function DELETE(request, { params }) {
 
     // Verify authentication
     const authData = await AuthService.verifyAuth(mockReq);
-    if (!authData.success) {
+    if (!authData || !authData.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

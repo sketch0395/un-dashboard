@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug 400 Error - Data Structure</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; font-size: 16px; margin: 10px 0; }
+        #log { background: #f8f9fa; padding: 15px; border-radius: 5px; white-space: pre-wrap; font-family: monospace; max-height: 600px; overflow-y: auto; }
+        .data-section { background: #e9ecef; padding: 10px; margin: 10px 0; border-radius: 5px; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>Debug 400 Error - Data Structure Analysis</h1>
+    <button onclick="testDataStructure()">Test Scan Data Structure</button>
+    <div id="log"></div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.textContent += `[${timestamp}] ${message}\n`;
+            console.log(message);
+        }
+
+        async function testDataStructure() {
+            document.getElementById('log').textContent = '';
+            log('Testing data structure that would be sent to API...', 'info');
+
+            try {
+                // Step 1: Login
+                log('\n1. Attempting login...');
+                const loginResponse = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123'
+                    }),
+                    credentials: 'include'
+                });
+
+                if (!loginResponse.ok) {
+                    throw new Error(`Login failed: ${loginResponse.status} ${loginResponse.statusText}`);
+                }
+
+                log('✅ Login successful');
+
+                // Step 2: Simulate the actual data structure that's being created in networkscanhistory.js
+                log('\n2. Simulating the data structure from networkscanhistory.js...');
+                
+                // This mimics what happens in the addScanToHistory function
+                const scanData = {
+                    "Test Vendor": [
+                        {
+                            ip: '192.168.1.1',
+                            hostname: 'router.local',
+                            mac: '00:11:22:33:44:55',
+                            vendor: 'Test Vendor',
+                            ports: ['80/tcp open http', '443/tcp open https'],
+                            status: 'up'
+                        },
+                        {
+                            ip: '192.168.1.100',
+                            hostname: 'desktop.local',
+                            mac: '00:11:22:33:44:66',
+                            vendor: 'Test Vendor',
+                            ports: ['22/tcp open ssh'],
+                            status: 'up'
+                        }
+                    ],
+                    "Another Vendor": [
+                        {
+                            ip: '192.168.1.200',
+                            hostname: 'printer.local',
+                            mac: '00:11:22:33:44:77',
+                            vendor: 'Another Vendor',
+                            ports: ['80/tcp open http'],
+                            status: 'up'
+                        }
+                    ]
+                };
+
+                // Calculate device count (this is what saveScanHistory does)
+                let deviceCount = 0;
+                Object.entries(scanData).forEach(([vendor, devices]) => {
+                    if (Array.isArray(devices)) {
+                        deviceCount += devices.length;
+                    }
+                });
+
+                log(`Device count calculated: ${deviceCount}`);
+
+                // Create the entry structure (this is what gets created in addScanToHistory)
+                const scanEntry = {
+                    id: 'test-scan-' + Date.now(),
+                    timestamp: new Date().toISOString(),
+                    ipRange: '192.168.1.0/24',
+                    devices: deviceCount, // This is the NUMBER, not an array
+                    data: scanData, // This contains the actual device data
+                    isFromDatabase: false
+                };
+
+                log('\n3. Scan entry structure:');
+                log(JSON.stringify(scanEntry, null, 2));
+
+                // Step 3: Simulate what saveScanToDatabase does
+                log('\n4. Creating database payload (this is what saveScanToDatabase creates)...');
+                
+                const dbPayload = {
+                    scanId: scanEntry.id,
+                    name: scanEntry.name || `Network Scan Test`,
+                    ipRange: scanEntry.ipRange,
+                    deviceCount: scanEntry.devices || 0, // scanEntry.devices is the count (number)
+                    scanData: {
+                        devices: scanEntry.data || {}, // scanEntry.data contains actual device data
+                        portScanResults: scanEntry.portScanResults || [],
+                        networkInfo: scanEntry.networkInfo || {}
+                    },
+                    metadata: {
+                        timestamp: scanEntry.timestamp,
+                        scanDuration: scanEntry.scanDuration || 0,
+                        userAgent: navigator.userAgent
+                    },
+                    settings: {
+                        isPrivate: true,
+                        isFavorite: false,
+                        tags: ['test'],
+                        notes: 'Test scan for debugging 400 error'
+                    }
+                };
+
+                log('\n5. Database payload structure:');
+                log(JSON.stringify(dbPayload, null, 2));
+
+                // Step 4: Validate the payload before sending
+                log('\n6. Validating payload...');
+                const requiredFields = ['scanId', 'ipRange', 'deviceCount', 'scanData'];
+                const missingFields = requiredFields.filter(field => 
+                    dbPayload[field] === undefined || dbPayload[field] === null
+                );
+
+                if (missingFields.length > 0) {
+                    log(`❌ Missing required fields: ${missingFields.join(', ')}`);
+                    return;
+                }
+
+                log('✅ All required fields present');
+                log(`scanId: ${dbPayload.scanId}`);
+                log(`ipRange: ${dbPayload.ipRange}`);
+                log(`deviceCount: ${dbPayload.deviceCount} (type: ${typeof dbPayload.deviceCount})`);
+                log(`scanData: ${typeof dbPayload.scanData} with ${Object.keys(dbPayload.scanData).length} properties`);
+
+                // Step 5: Test the actual API call
+                log('\n7. Testing actual API call...');
+                
+                const saveResponse = await fetch('/api/scan-history', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(dbPayload),
+                    credentials: 'include'
+                });
+
+                log(`Response status: ${saveResponse.status}`);
+
+                if (!saveResponse.ok) {
+                    const errorText = await saveResponse.text();
+                    log(`❌ Save failed: ${errorText}`);
+                    
+                    // Try to parse as JSON for more details
+                    try {
+                        const errorJson = JSON.parse(errorText);
+                        log(`Error details: ${JSON.stringify(errorJson, null, 2)}`);
+                    } catch (e) {
+                        log(`Raw error text: ${errorText}`);
+                    }
+                } else {
+                    const saveResult = await saveResponse.json();
+                    log('✅ Scan saved successfully!');
+                    log(`Saved scan details: ${JSON.stringify(saveResult, null, 2)}`);
+                }
+
+            } catch (error) {
+                log(`\n❌ Test failed: ${error.message}`, 'error');
+                console.error('Full error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

@@ -31,17 +31,28 @@ export const ScanHistoryProvider = ({ children }) => {
             return `scanHistory_${user._id}`;
         }
         return "scanHistory"; // fallback for unauthenticated users
-    };
-
-    // Load scan history with database-first approach
+    };    // Load scan history with database-first approach (fallback to localStorage if not authenticated)
     const loadScanHistory = async () => {
+        setIsLoading(true);
+        
+        // If not authenticated, load from localStorage only
         if (!isAuthenticated || !user) {
-            setScanHistory([]);
+            console.log('User not authenticated - loading from localStorage only');
+            try {
+                const localKey = getScanHistoryKey();
+                const localScans = JSON.parse(localStorage.getItem(localKey) || '[]');
+                setScanHistory(localScans);
+                console.log(`Loaded ${localScans.length} scans from localStorage`);
+            } catch (error) {
+                console.error('Error loading from localStorage:', error);
+                setScanHistory([]);
+            }
+            setIsLoading(false);
             return;
         }
 
-        setIsLoading(true);
         try {
+            console.log('Authenticated user - attempting database load...');
             // Try to load from database first
             const response = await fetch('/api/scan-history', {
                 method: 'GET',
@@ -54,8 +65,7 @@ export const ScanHistoryProvider = ({ children }) => {
             if (response.ok) {
                 const data = await response.json();
                 const dbHistory = data.scanHistory || [];
-                
-                // Convert database format to component format
+                  // Convert database format to component format
                 const convertedHistory = dbHistory.map(dbEntry => ({
                     id: dbEntry.scanId,
                     timestamp: format(new Date(dbEntry.createdAt), "yyyy-MM-dd HH:mm:ss"),
@@ -69,13 +79,25 @@ export const ScanHistoryProvider = ({ children }) => {
                     isFromDatabase: true
                 }));
 
-                setScanHistory(convertedHistory);
+                // Remove any duplicate scans based on scanId to prevent duplication after refresh
+                const uniqueHistory = [];
+                const seenIds = new Set();
+                convertedHistory.forEach(scan => {
+                    if (!seenIds.has(scan.id)) {
+                        seenIds.add(scan.id);
+                        uniqueHistory.push(scan);
+                    } else {
+                        console.log(`Removing duplicate scan: ${scan.id}`);
+                    }
+                });
+
+                setScanHistory(uniqueHistory);
                 setLastSyncTime(new Date());
-                console.log(`Loaded ${convertedHistory.length} scans from database for user ${user._id}`);
+                console.log(`Loaded ${uniqueHistory.length} unique scans from database for user ${user._id}`);
 
                 // Update localStorage as cache
                 const storageKey = getScanHistoryKey();
-                localStorage.setItem(storageKey, JSON.stringify(convertedHistory));
+                localStorage.setItem(storageKey, JSON.stringify(uniqueHistory));
                 
             } else {
                 throw new Error(`Database fetch failed: ${response.status}`);
@@ -128,19 +150,20 @@ export const ScanHistoryProvider = ({ children }) => {
                 
             console.log('- Auth token present:', !!authToken);
             console.log('- Session ID present:', !!sessionId);
-            
-            if (!isAuthenticated || !user) {
-                console.warn('User not authenticated, skipping database save');
-                return false;
-            }
-
-            const dbPayload = {
+              if (!isAuthenticated || !user) {
+                console.warn('User not authenticated, storing scan locally only');
+                setSyncError('Not logged in - scan saved locally');
+                setTimeout(() => {
+                    setSyncError(null);
+                }, 3000);
+                return false; // Not an error, just not authenticated
+            }            const dbPayload = {
                 scanId: scanEntry.id,
                 name: scanEntry.name || `Network Scan ${format(new Date(scanEntry.timestamp), 'MMM dd, yyyy HH:mm')}`,
                 ipRange: scanEntry.ipRange,
-                deviceCount: scanEntry.devices ? scanEntry.devices.length : 0,
+                deviceCount: scanEntry.devices || 0, // scanEntry.devices is already the count
                 scanData: {
-                    devices: scanEntry.devices || [],
+                    devices: scanEntry.data || {}, // Use scanEntry.data which contains the actual device data
                     portScanResults: scanEntry.portScanResults || [],
                     networkInfo: scanEntry.networkInfo || {}
                 },
@@ -255,8 +278,7 @@ export const ScanHistoryProvider = ({ children }) => {
         
         // Check for duplicates within the last 5 minutes to prevent duplication
         const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-        
-        setScanHistory((prev) => {
+          setScanHistory((prev) => {
             // Check if we already have a very similar scan recently
             const isDuplicate = prev.some(entry => {
                 const entryTime = new Date(entry.timestamp);
@@ -266,6 +288,7 @@ export const ScanHistoryProvider = ({ children }) => {
                 const sameIpRange = entry.ipRange === ipRange;
                 const sameData = JSON.stringify(entry.data) === JSON.stringify(data);
                 
+                // More strict duplicate detection: consider it duplicate if within 5 minutes AND has same data
                 const isDup = timeDifference < 5 * 60 * 1000 && 
                              sameDeviceCount && 
                              sameIpRange && 
@@ -275,7 +298,9 @@ export const ScanHistoryProvider = ({ children }) => {
                     console.log("Potential duplicate detected:", { 
                         timeDifference: Math.round(timeDifference/1000) + "s", 
                         sameDeviceCount, 
-                        sameIpRange
+                        sameIpRange,
+                        entryId: entry.id,
+                        isFromDatabase: entry.isFromDatabase
                     });
                 }
                 
@@ -286,13 +311,14 @@ export const ScanHistoryProvider = ({ children }) => {
                 console.log("Duplicate scan detected and prevented:", { deviceCount, ipRange, timestamp });
                 return prev; // Don't add duplicate
             }
-            
+
             const newEntry = {
                 id: uuidv4(),
                 timestamp,
                 ipRange,
                 devices: deviceCount,
                 data,
+                name: `Network Scan ${format(new Date(), 'MMM dd, yyyy HH:mm')}`, // Use consistent naming format
                 isFromDatabase: false // Mark as new entry
             };
             
@@ -688,11 +714,10 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                     // Make sure we preserve history entries
                     enhancedDevice.history = customProps.history || [];
                 }
-                
-                // Add scan source information (important for grouping in the visualization)
+                  // Add scan source information (important for grouping in the visualization)
                 enhancedDevice.scanSource = {
                     id: zone.id || `scan-${zoneIndex}`,
-                    name: zone.name || `Scan ${zoneIndex + 1}`,
+                    name: zone.name || `Network Scan ${format(new Date(zone.timestamp), 'MMM dd, yyyy HH:mm')}`,
                     index: zoneIndex,
                     timestamp: zone.timestamp
                 };
@@ -789,11 +814,10 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                 // Make sure we preserve history entries
                 enhancedDevice.history = customProps.history || [];
             }
-            
-            // Add scan source information
+              // Add scan source information
             enhancedDevice.scanSource = {
                 id: entry.id || `scan-custom`,
-                name: entry.name || `Scan`,
+                name: entry.name || `Network Scan ${format(new Date(entry.timestamp), 'MMM dd, yyyy HH:mm')}`,
                 timestamp: entry.timestamp
             };
             
@@ -818,11 +842,11 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                    `${Object.keys(latestCustomProperties).length} custom properties`);
         
         addZonesToTopology(combinedData);
-    };
-
-    const startRenaming = (index) => {
+    };    const startRenaming = (index) => {
         setEditingIndex(index);
-        setNewName(scanHistory[index].name || `Scan ${index + 1}`);
+        const entry = scanHistory[index];
+        const defaultName = entry.name || `Network Scan ${format(new Date(entry.timestamp), 'MMM dd, yyyy HH:mm')}`;
+        setNewName(defaultName);
         setMenuOpenIndex(null); // Close the menu
     };
 
@@ -1048,11 +1072,10 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                         // Make sure we preserve history entries
                         enhancedDevice.history = customProps.history || [];
                     }
-                    
-                    // Add scan source information (important for grouping in the export)
+                      // Add scan source information (important for grouping in the export)
                     enhancedDevice.scanSource = {
                         id: zone.id || `scan-${zoneIndex}`,
-                        name: zone.name || `Scan ${zoneIndex + 1}`,
+                        name: zone.name || `Network Scan ${format(new Date(zone.timestamp), 'MMM dd, yyyy HH:mm')}`,
                         index: zoneIndex,
                         timestamp: zone.timestamp
                     };
