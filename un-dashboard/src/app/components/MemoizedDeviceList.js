@@ -41,6 +41,14 @@ const HierarchyDisplay = ({ device }) => {
 };
 
 const DeviceList = ({ devices, openModal, isSSHAvailable, openSSHModal }) => {
+    // Debug logging for device data
+    console.log('🎨 MemoizedDeviceList received devices:', {
+        count: devices?.length || 0,
+        isArray: Array.isArray(devices),
+        type: typeof devices,
+        devices: devices
+    });
+    
     // Create a map of colors for categories and vendors
     const [colorMap, setColorMap] = useState({
         category: {},

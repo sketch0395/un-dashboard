@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Scan Completion Test</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            background: #1a1a1a; 
+            color: white; 
+            padding: 20px; 
+        }
+        .container { max-width: 800px; margin: 0 auto; }
+        .status { 
+            padding: 10px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
+            background: #333; 
+        }
+        .scanning { background: #1e40af; }
+        .complete { background: #059669; }
+        .error { background: #dc2626; }
+        button { 
+            padding: 10px 20px; 
+            margin: 5px; 
+            border: none; 
+            border-radius: 5px; 
+            background: #2563eb; 
+            color: white; 
+            cursor: pointer; 
+        }
+        button:disabled { 
+            background: #6b7280; 
+            cursor: not-allowed; 
+        }
+        .log { 
+            background: #111; 
+            padding: 15px; 
+            border-radius: 5px; 
+            white-space: pre-wrap; 
+            font-family: monospace; 
+            height: 300px; 
+            overflow-y: auto; 
+            border: 1px solid #333;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 2s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Frontend Scan Completion Debug Test</h1>
+        
+        <div class="status" id="connectionStatus">
+            <strong>Connection:</strong> <span id="connectionText">Disconnected</span>
+        </div>
+        
+        <div class="status" id="scanStatus">
+            <strong>Scan Status:</strong> <span id="scanStatusText">Idle</span>
+        </div>
+        
+        <div class="status">
+            <strong>Is Scanning:</strong> <span id="isScanningText">false</span>
+        </div>
+        
+        <div class="status">
+            <strong>Last Scan Time:</strong> <span id="lastScanTimeText">Never</span>
+        </div>
+        
+        <div>
+            <input type="text" id="ipRange" value="127.0.0.1" placeholder="IP Range" style="padding: 10px; margin-right: 10px; background: #333; color: white; border: 1px solid #666; border-radius: 5px;">
+            <button id="scanBtn" onclick="startScan()">Start Scan</button>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+        
+        <h3>Event Log:</h3>
+        <div class="log" id="eventLog"></div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        let socket = null;
+        let isScanning = false;
+        let lastScanTime = null;
+        let status = "Idle";
+        
+        function log(message) {
+            const eventLog = document.getElementById('eventLog');
+            const timestamp = new Date().toLocaleTimeString();
+            eventLog.textContent += `[${timestamp}] ${message}\n`;
+            eventLog.scrollTop = eventLog.scrollHeight;
+            console.log(`[${timestamp}] ${message}`);
+        }
+        
+        function updateUI() {
+            document.getElementById('scanStatusText').textContent = status;
+            document.getElementById('isScanningText').textContent = isScanning;
+            document.getElementById('lastScanTimeText').textContent = lastScanTime ? lastScanTime.toLocaleTimeString() : 'Never';
+            
+            const scanBtn = document.getElementById('scanBtn');
+            scanBtn.disabled = isScanning;
+            scanBtn.innerHTML = isScanning ? '<div class="spinner"></div>Scanning...' : 'Start Scan';
+            
+            const scanStatusDiv = document.getElementById('scanStatus');
+            scanStatusDiv.className = 'status ' + (isScanning ? 'scanning' : (status === 'Scan complete' ? 'complete' : ''));
+        }
+        
+        function connectToServer() {
+            const serverUrl = "http://localhost:4000";
+            log(`Attempting to connect to ${serverUrl}...`);
+            
+            socket = io(serverUrl, {
+                reconnectionAttempts: 5,
+                timeout: 10000,
+                transports: ['polling', 'websocket'],
+                upgrade: true
+            });
+            
+            socket.on('connect', () => {
+                log('✅ Connected to server successfully');
+                document.getElementById('connectionText').textContent = 'Connected';
+                document.getElementById('connectionStatus').className = 'status complete';
+            });
+            
+            socket.on('connect_error', (err) => {
+                log(`❌ Connection error: ${err.message}`);
+                document.getElementById('connectionText').textContent = 'Error';
+                document.getElementById('connectionStatus').className = 'status error';
+            });
+            
+            socket.on('disconnect', (reason) => {
+                log(`⚠️ Disconnected: ${reason}`);
+                document.getElementById('connectionText').textContent = 'Disconnected';
+                document.getElementById('connectionStatus').className = 'status';
+            });
+            
+            // Critical event handlers for scan completion debugging
+            socket.on("networkScanStatus", (data) => {
+                log(`📊 networkScanStatus: ${data.status}`);
+                
+                status = data.status;
+                
+                if (data.error) {
+                    log(`❌ Scan Error: ${data.error}`);
+                }
+                
+                if (data.output) {
+                    log(`📝 Scan Output: ${data.output}`);
+                }
+                
+                // CRITICAL: Check scan completion logic
+                if (data.status === "Scan complete") {
+                    log('🎉 SCAN COMPLETION DETECTED! Setting isScanning = false');
+                    isScanning = false;
+                    lastScanTime = new Date();
+                    log(`⏰ Last scan time set to: ${lastScanTime.toLocaleTimeString()}`);
+                } else if (data.status.includes("in progress") || data.status.includes("Starting")) {
+                    log('🔄 SCAN IN PROGRESS DETECTED! Setting isScanning = true');
+                    isScanning = true;
+                }
+                
+                updateUI();
+            });
+            
+            socket.on("networkData", (data) => {
+                log(`📡 networkData received: ${Object.keys(data).length} vendor groups`);
+                let deviceCount = 0;
+                Object.values(data).forEach(group => {
+                    if (Array.isArray(group)) {
+                        deviceCount += group.length;
+                    }
+                });
+                log(`🖥️ Total devices: ${deviceCount}`);
+            });
+            
+            socket.on("saveToScanHistory", (data) => {
+                log(`💾 saveToScanHistory event received`);
+                if (data && data.devices) {
+                    log(`📊 Devices to save: ${Object.keys(data.devices).length} groups`);
+                    log(`📍 IP Range: ${data.ipRange}`);
+                } else {
+                    log(`⚠️ No device data in saveToScanHistory event`);
+                }
+            });
+        }
+        
+        function startScan() {
+            if (!socket || !socket.connected) {
+                log('❌ Not connected to server');
+                return;
+            }
+            
+            if (isScanning) {
+                log('⚠️ Scan already in progress');
+                return;
+            }
+            
+            const ipRange = document.getElementById('ipRange').value || '127.0.0.1';
+            
+            log(`🚀 Starting scan with IP range: ${ipRange}`);
+            
+            // Reset state
+            status = "Starting scan...";
+            isScanning = true;
+            updateUI();
+            
+            // Emit scan request
+            socket.emit("startNetworkScan", { 
+                range: ipRange, 
+                useDocker: true,
+                scanType: 'ping'
+            });
+        }
+        
+        function clearLog() {
+            document.getElementById('eventLog').textContent = '';
+        }
+        
+        // Initialize connection when page loads
+        window.onload = function() {
+            log('🌐 Page loaded, initializing connection...');
+            connectToServer();
+            updateUI();
+        };
+    </script>
+</body>
+</html>

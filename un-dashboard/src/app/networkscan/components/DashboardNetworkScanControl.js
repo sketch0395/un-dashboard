@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { io } from "socket.io-client";
 import { FaNetworkWired, FaDocker, FaTerminal, FaInfoCircle, FaPlay, FaPause, FaSpinner, FaCog, FaExclamationTriangle, FaCode, FaChevronDown, FaChevronUp, FaDatabase } from "react-icons/fa";
-import NetworkScanHistory, { useScanHistory } from "./networkscanhistory.js";
+import NetworkScanHistory from "./networkscanhistory.js";
+import { useScanHistory } from "../../contexts/ScanHistoryContext";
 import NetworkScanExportImport from "./NetworkScanExportImport";
 
 // This component is used inside the Network Dashboard for advanced network scanning functionality
@@ -33,7 +34,19 @@ export default function DashboardNetworkScanControl({ devices, setDevices, custo
     const [rawNetworkData, setRawNetworkData] = useState(null);
     const [rawHistoryData, setRawHistoryData] = useState(null);
     const [showRawNetworkData, setShowRawNetworkData] = useState(false);
-    const [showRawHistoryData, setShowRawHistoryData] = useState(false);
+    const [showRawHistoryData, setShowRawHistoryData] = useState(false);    // Use refs to maintain stable references for socket handlers
+    const ipRangeRef = useRef(ipRange);
+    const scanTypeRef = useRef(scanType);
+    const onScanCompleteRef = useRef(onScanComplete);
+    const setDevicesRef = useRef(setDevices);
+
+    // Update refs when values change
+    useEffect(() => {
+        ipRangeRef.current = ipRange;
+        scanTypeRef.current = scanType;
+        onScanCompleteRef.current = onScanComplete;
+        setDevicesRef.current = setDevices;
+    }, [ipRange, scanType, onScanComplete, setDevices]);
 
     const addZonesToTopology = (data) => {
         console.log("addZonesToTopology called with:", data);
@@ -140,9 +153,8 @@ export default function DashboardNetworkScanControl({ devices, setDevices, custo
             if (document.visibilityState !== 'hidden') {
                 setError(disconnectMessage);
             }
-        });
-
-        socket.on("networkScanStatus", (data) => {
+        });        socket.on("networkScanStatus", (data) => {
+            console.log("[SCAN DEBUG] networkScanStatus received:", data);
             setStatus(data.status);
             if (data.error) {
                 setErrorMessage(data.error);
@@ -154,12 +166,15 @@ export default function DashboardNetworkScanControl({ devices, setDevices, custo
             
             // If scan is complete, update state
             if (data.status === "Scan complete") {
+                console.log("[SCAN DEBUG] SCAN COMPLETION DETECTED! Setting isScanning = false");
                 setIsScanning(false);
                 setLastScanTime(new Date());
+                console.log("[SCAN DEBUG] isScanning state should now be false");
             }
             
             // If scanning is in progress
             if (data.status.includes("in progress") || data.status.includes("Starting")) {
+                console.log("[SCAN DEBUG] SCAN IN PROGRESS DETECTED! Setting isScanning = true");
                 setIsScanning(true);
             }
             
@@ -167,23 +182,21 @@ export default function DashboardNetworkScanControl({ devices, setDevices, custo
             if (data.status === "SSH devices found") {
                 setShowSshInfo(true);
             }
-        });
-
-        socket.on("networkData", (data) => {
+        });        socket.on("networkData", (data) => {
             console.log("WebSocket networkData event received:", data);
-            console.log("Current IP Range (passed directly):", ipRange); // Log the current IP range
+            console.log("Current IP Range (from ref):", ipRangeRef.current); // Use ref for current IP range
             if (data && Object.keys(data).length > 0) {
                 // Save raw network data for inspection
                 setRawNetworkData(JSON.parse(JSON.stringify(data)));
                 
-                setDevices(data); // Update the parent component's devices state
+                setDevicesRef.current(data); // Use ref to call the latest setDevices function
                 
-                // Save the transformed data that goes to history
-                const historyData = { data, ipRange };
+                // Save the transformed data that goes to history using current ipRange from ref
+                const historyData = { data, ipRange: ipRangeRef.current };
                 setScanHistoryData(historyData); 
                 setRawHistoryData(JSON.parse(JSON.stringify(historyData)));
-                  // Convert the data format for onScanComplete if provided
-                if (onScanComplete) {
+                  // Convert the data format for onScanComplete if provided using ref
+                if (onScanCompleteRef.current) {
                     const flattenedDevices = [];
                     // Flatten the grouped devices structure
                     Object.entries(data).forEach(([vendor, deviceList]) => {
@@ -194,15 +207,14 @@ export default function DashboardNetworkScanControl({ devices, setDevices, custo
                                     ...device,
                                     vendor: vendor !== "Unknown" ? vendor : device.vendor || "",
                                     status: device.status || "online",
-                                    scanType: scanType,
+                                    scanType: scanTypeRef.current, // Use ref for scan type
                                     scanTime: new Date().toISOString()
                                 });
                             });
                         } else {
-                            console.warn(`Expected array for vendor "${vendor}" but got:`, typeof deviceList, deviceList);
-                        }
+                            console.warn(`Expected array for vendor "${vendor}" but got:`, typeof deviceList, deviceList);                        }
                     });
-                    onScanComplete(flattenedDevices);
+                    onScanCompleteRef.current(flattenedDevices); // Use ref
                 }
             }
         });
@@ -240,9 +252,10 @@ export default function DashboardNetworkScanControl({ devices, setDevices, custo
                 }
             } else {
                 console.warn("Received saveToScanHistory event without device data:", data);
-            }
-        });// Remove duplicate connect_error handler that was causing issues
-
+            }        });
+        
+        // Remove duplicate connect_error handler that was causing issues
+        
         return () => {
             console.log('Cleaning up Socket.IO connection');
             if (socket) {
@@ -255,7 +268,7 @@ export default function DashboardNetworkScanControl({ devices, setDevices, custo
                 socket.disconnect();
             }
         };
-    }, [setDevices, ipRange, scanType, onScanComplete]);
+    }, []); // Remove problematic dependencies - socket should only be created once
 
     const startNetworkScan = useCallback(() => {
         // Clear previous state
@@ -355,8 +368,7 @@ export default function DashboardNetworkScanControl({ devices, setDevices, custo
                 >
                     <FaCog className="text-gray-300" />
                 </button>
-                
-                {/* Scan Button */}
+                  {/* Scan Button */}
                 <button
                     onClick={startNetworkScan}
                     disabled={isScanning}
@@ -366,17 +378,20 @@ export default function DashboardNetworkScanControl({ devices, setDevices, custo
                             : 'bg-blue-600 hover:bg-blue-700'
                     } text-white transition-colors`}
                 >
-                    {isScanning ? (
-                        <>
-                            <FaSpinner className="animate-spin mr-2" />
-                            Scanning...
-                        </>
-                    ) : (
-                        <>
-                            <FaPlay className="mr-2" />
-                            Start Scan
-                        </>
-                    )}
+                    {(() => {
+                        console.log("[SCAN DEBUG] Button render - isScanning:", isScanning, "status:", status);
+                        return isScanning ? (
+                            <>
+                                <FaSpinner className="animate-spin mr-2" />
+                                Scanning...
+                            </>
+                        ) : (
+                            <>
+                                <FaPlay className="mr-2" />
+                                Start Scan
+                            </>
+                        );
+                    })()}
                 </button>
             </div>
             

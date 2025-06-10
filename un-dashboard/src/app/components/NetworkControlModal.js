@@ -22,7 +22,8 @@ import {
     FaEdit,
     FaEye
 } from "react-icons/fa";
-import NetworkScanHistory, { useScanHistory } from "../networkscan/components/networkscanhistory.js";
+import NetworkScanHistory from "../networkscan/components/networkscanhistory.js";
+import { useScanHistory } from "../contexts/ScanHistoryContext";
 import NetworkScanExportImport from "../networkscan/components/NetworkScanExportImport";
 
 const UnifiedDeviceModal = lazy(() => import("./UnifiedDeviceModal"));
@@ -72,10 +73,8 @@ export default function NetworkControlModal({
     const [rawNetworkData, setRawNetworkData] = useState(null);
     const [rawHistoryData, setRawHistoryData] = useState(null);
     const [showRawNetworkData, setShowRawNetworkData] = useState(false);
-    const [showRawHistoryData, setShowRawHistoryData] = useState(false);
-    const [showCurrentResults, setShowCurrentResults] = useState(false);
-    
-    // Device modal state
+    const [showRawHistoryData, setShowRawHistoryData] = useState(false);    const [showCurrentResults, setShowCurrentResults] = useState(false);
+      // Device modal state
     const [modalDevice, setModalDevice] = useState(null);
 
     // Handle device updates
@@ -93,6 +92,22 @@ export default function NetworkControlModal({
             onCustomNamesUpdate(newCustomNames);
         }
     }, [onCustomNamesUpdate]);
+
+    // Use refs to maintain stable references for socket handlers
+    const ipRangeRef = useRef(ipRange);
+    const scanTypeRef = useRef(scanType);
+    const onScanCompleteRef = useRef(onScanComplete);
+    const handleDevicesUpdateRef = useRef(handleDevicesUpdate);
+    const saveScanHistoryRef = useRef(saveScanHistory);
+
+    // Update refs when values change
+    useEffect(() => {
+        ipRangeRef.current = ipRange;
+        scanTypeRef.current = scanType;
+        onScanCompleteRef.current = onScanComplete;
+        handleDevicesUpdateRef.current = handleDevicesUpdate;
+        saveScanHistoryRef.current = saveScanHistory;
+    }, [ipRange, scanType, onScanComplete, handleDevicesUpdate, saveScanHistory]);
 
     const addZonesToTopology = (data) => {
         console.log("NetworkControlModal: addZonesToTopology called with:", data);
@@ -248,21 +263,22 @@ export default function NetworkControlModal({
             if (data.status === "SSH devices found") {
                 setShowSshInfo(true);
             }
-        });
-
-        socket.on("networkData", (data) => {
+        });        socket.on("networkData", (data) => {
             console.log("NetworkControlModal: WebSocket networkData event received:", data);
-            console.log("Current IP Range:", ipRange);
+            console.log("Current IP Range:", ipRangeRef.current);
             
             if (data && Object.keys(data).length > 0) {
                 setRawNetworkData(JSON.parse(JSON.stringify(data)));
                 
-                handleDevicesUpdate(data);
+                // Use ref to get current handler function
+                if (handleDevicesUpdateRef.current) {
+                    handleDevicesUpdateRef.current(data);
+                }
                 
-                const historyData = { data, ipRange };
+                const historyData = { data, ipRange: ipRangeRef.current };
                 setScanHistoryData(historyData); 
                 setRawHistoryData(JSON.parse(JSON.stringify(historyData)));
-                  if (onScanComplete) {
+                  if (onScanCompleteRef.current) {
                     const flattenedDevices = [];
                     Object.entries(data).forEach(([vendor, deviceList]) => {
                         // Ensure deviceList is an array before iterating
@@ -272,7 +288,7 @@ export default function NetworkControlModal({
                                     ...device,
                                     vendor: vendor !== "Unknown" ? vendor : device.vendor || "",
                                     status: device.status || "online",
-                                    scanType: scanType,
+                                    scanType: scanTypeRef.current,
                                     scanTime: new Date().toISOString()
                                 });
                             });
@@ -280,17 +296,17 @@ export default function NetworkControlModal({
                             console.warn(`Expected array for vendor "${vendor}" but got:`, typeof deviceList, deviceList);
                         }
                     });
-                    onScanComplete(flattenedDevices);
+                    onScanCompleteRef.current(flattenedDevices);
                 }
             }
-        });
-        
-        socket.on("saveToScanHistory", (data) => {
+        });        socket.on("saveToScanHistory", (data) => {
             if (data && data.devices) {
                 try {
                     console.log("NetworkControlModal: Received saveToScanHistory event:", data);
-                    const ipRange = data.ipRange || "API Import";
-                    saveScanHistory(data.devices, ipRange);
+                    const ipRange = data.ipRange || ipRangeRef.current || "API Import";
+                    if (saveScanHistoryRef.current) {
+                        saveScanHistoryRef.current(data.devices, ipRange);
+                    }
                 } catch (error) {
                     console.error("Error saving to scan history:", error);
                 }
@@ -306,9 +322,8 @@ export default function NetworkControlModal({
                 socket.off('networkScanStatus');
                 socket.off('networkData');
                 socket.off('saveToScanHistory');
-                socket.disconnect();
-            }        };
-    }, [isVisible, ipRange, scanType, onScanComplete, handleDevicesUpdate]);
+                socket.disconnect();            }        };
+    }, [isVisible]); // Remove problematic dependencies - socket should only be created when modal visibility changes
 
     const startNetworkScan = useCallback(() => {
         console.log('NETWORK MODAL: Starting new scan');        console.log('NETWORK MODAL: Current state before scan:', {

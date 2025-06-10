@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { FaChevronDown, FaPlay, FaStop, FaSync, FaDocker, FaFilter } from "react-icons/fa";
 import PerformanceControls from "./components/PerformanceControls";
-import { useScanHistory } from '../networkscan/components/networkscanhistory';
+import { useScanHistory } from '../contexts/ScanHistoryContext';
 
 // Use dynamic import with no SSR to avoid the "Component is not a function" error
 const NetworkPerformance = dynamic(

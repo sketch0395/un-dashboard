@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { FaSync, FaDatabase, FaExclamationTriangle, FaCheck, FaClock } from 'react-icons/fa';
-import { useScanHistory } from '../networkscan/components/networkscanhistory';
+import { useScanHistory } from '../contexts/ScanHistoryContext';
 import { format } from 'date-fns';
 
 const ScanHistorySyncStatus = ({ showFullControls = false }) => {

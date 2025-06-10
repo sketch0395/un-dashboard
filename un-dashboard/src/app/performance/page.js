@@ -31,7 +31,7 @@ import {
     createStatusUpdateListener 
 } from "../utils/performanceDeviceStatusSync";
 import { io } from 'socket.io-client';
-import { useScanHistory } from '../networkscan/components/networkscanhistory';
+import { useScanHistory } from '../contexts/ScanHistoryContext';
 
 // Use dynamic import with no SSR to avoid the "Component is not a function" error
 const NetworkPerformance = dynamic(

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan History UI Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #1a1a1a;
+            color: #fff;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #444;
+            border-radius: 5px;
+            background-color: #2a2a2a;
+        }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+        .warning { color: #fbbf24; }
+        .info { color: #60a5fa; }
+        button {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #2563eb; }
+        button:disabled { background-color: #6b7280; cursor: not-allowed; }
+        pre {
+            background-color: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .log {
+            height: 200px;
+            overflow-y: auto;
+            background-color: #1a1a1a;
+            padding: 10px;
+            border: 1px solid #444;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Scan History UI Debug & Test</h1>
+    
+    <div class="test-section">
+        <h2>🔐 Authentication Status</h2>
+        <button onclick="checkAuthStatus()">Check Auth Status</button>
+        <div id="auth-status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>💾 Test Scan History Save (Fixed scanType)</h2>
+        <button onclick="testScanSave()">Test Save with Valid scanType</button>
+        <div id="scan-save-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>📊 Test Device Count Display</h2>
+        <button onclick="testDeviceCountDisplay()">Test Device Count Calculation</button>
+        <div id="device-count-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>🔍 Retrieve and Verify Scan History</h2>
+        <button onclick="retrieveScanHistory()">Get Scan History</button>
+        <button onclick="testUIDisplay()">Test UI Display Logic</button>
+        <div id="scan-history-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>🖥️ Test Network Scan Page Integration</h2>
+        <button onclick="testNetworkScanPage()">Open Network Scan Page</button>
+        <span class="info">Check if scans display correctly with device counts</span>
+    </div>
+
+    <div class="test-section">
+        <h2>📝 Test Log</h2>
+        <button onclick="clearLog()">Clear Log</button>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const colorClass = type === 'success' ? 'success' : 
+                              type === 'error' ? 'error' : 
+                              type === 'warning' ? 'warning' : 'info';
+            logDiv.innerHTML += `<div class="${colorClass}">[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        async function checkAuthStatus() {
+            try {
+                log('Checking authentication status...', 'info');
+                const response = await fetch('/api/auth/status', {
+                    credentials: 'include'
+                });
+                
+                const result = await response.json();
+                const authDiv = document.getElementById('auth-status');
+                
+                if (response.ok && result.authenticated) {
+                    authDiv.innerHTML = `<span class="success">✅ Authenticated as: ${result.user.username}</span>`;
+                    log(`Authentication successful: ${result.user.username}`, 'success');
+                    return true;
+                } else {
+                    authDiv.innerHTML = `<span class="error">❌ Not authenticated</span>`;
+                    log('Authentication failed - please login first', 'error');
+                    return false;
+                }
+            } catch (error) {
+                log(`Authentication check failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function testScanSave() {
+            try {
+                log('Testing scan save with fixed scanType...', 'info');
+                
+                const isAuth = await checkAuthStatus();
+                if (!isAuth) {
+                    log('Cannot test scan save - not authenticated', 'error');
+                    return;
+                }
+
+                // Test data with VALID scanType
+                const testScanData = {
+                    name: "UI Test Scan - Fixed scanType",
+                    ipRange: "192.168.1.0/24",
+                    deviceCount: 3,
+                    scanData: {
+                        devices: {
+                            "Cisco": [
+                                {
+                                    ip: "192.168.1.1",
+                                    hostname: "router.local",
+                                    mac: "00:11:22:33:44:55",
+                                    vendor: "Cisco",
+                                    ports: ["80/tcp open http"],
+                                    status: "up"
+                                }
+                            ],
+                            "Intel": [
+                                {
+                                    ip: "192.168.1.10",
+                                    hostname: "desktop.local", 
+                                    mac: "00:11:22:33:44:66",
+                                    vendor: "Intel",
+                                    ports: ["22/tcp open ssh"],
+                                    status: "up"
+                                },
+                                {
+                                    ip: "192.168.1.11",
+                                    hostname: "laptop.local",
+                                    mac: "00:11:22:33:44:77", 
+                                    vendor: "Intel",
+                                    ports: ["80/tcp open http"],
+                                    status: "up"
+                                }
+                            ]
+                        }
+                    },
+                    settings: {
+                        scanType: "full" // VALID scanType
+                    },
+                    metadata: {
+                        scanType: "full", // VALID scanType 
+                        deviceCount: 3,
+                        ipRange: "192.168.1.0/24"
+                    }
+                };
+
+                log('Sending scan data with valid scanType: "full"', 'info');
+                
+                const response = await fetch('/api/scan-history', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(testScanData)
+                });
+
+                const result = await response.json();
+                const resultDiv = document.getElementById('scan-save-result');
+
+                if (response.ok) {
+                    resultDiv.innerHTML = `<span class="success">✅ Scan saved successfully! ID: ${result.scanId}</span>`;
+                    log(`Scan saved successfully with ID: ${result.scanId}`, 'success');
+                    
+                    // Verify the scan was saved properly
+                    setTimeout(() => {
+                        retrieveScanHistory();
+                    }, 1000);
+                } else {
+                    resultDiv.innerHTML = `<span class="error">❌ Save failed: ${result.error}</span>`;
+                    log(`Scan save failed: ${result.error}`, 'error');
+                    if (result.details) {
+                        log(`Error details: ${result.details}`, 'error');
+                    }
+                }
+            } catch (error) {
+                log(`Scan save test failed: ${error.message}`, 'error');
+                document.getElementById('scan-save-result').innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        }
+
+        function testDeviceCountDisplay() {
+            log('Testing device count calculation logic...', 'info');
+            
+            // Test data mimicking what the UI receives
+            const testScanEntry = {
+                id: "test-scan-123",
+                name: "Test Scan",
+                timestamp: "2025-06-09 12:00:00",
+                ipRange: "192.168.1.0/24",
+                devices: 3, // This is the stored count
+                data: {
+                    "Cisco": [
+                        { ip: "192.168.1.1", hostname: "router" }
+                    ],
+                    "Intel": [
+                        { ip: "192.168.1.10", hostname: "desktop" },
+                        { ip: "192.168.1.11", hostname: "laptop" }
+                    ]
+                }
+            };
+
+            // Calculate actual device count from data
+            let actualDeviceCount = 0;
+            if (testScanEntry.data) {
+                Object.entries(testScanEntry.data).forEach(([vendor, devices]) => {
+                    if (Array.isArray(devices)) {
+                        actualDeviceCount += devices.length;
+                        log(`Vendor "${vendor}": ${devices.length} devices`, 'info');
+                    }
+                });
+            }
+
+            const resultDiv = document.getElementById('device-count-result');
+            
+            if (testScanEntry.devices === actualDeviceCount) {
+                resultDiv.innerHTML = `<span class="success">✅ Device count matches: ${testScanEntry.devices} stored = ${actualDeviceCount} calculated</span>`;
+                log(`Device count calculation successful: ${actualDeviceCount}`, 'success');
+            } else {
+                resultDiv.innerHTML = `<span class="error">❌ Device count mismatch: ${testScanEntry.devices} stored ≠ ${actualDeviceCount} calculated</span>`;
+                log(`Device count mismatch detected!`, 'error');
+            }
+        }
+
+        async function retrieveScanHistory() {
+            try {
+                log('Retrieving scan history...', 'info');
+                
+                const response = await fetch('/api/scan-history', {
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const scans = await response.json();
+                    const resultDiv = document.getElementById('scan-history-result');
+                    
+                    log(`Retrieved ${scans.length} scans from database`, 'success');
+                    
+                    let html = `<div class="success">✅ Retrieved ${scans.length} scans:</div>`;
+                    
+                    scans.slice(0, 5).forEach((scan, index) => {
+                        const deviceCount = scan.deviceCount || 0;
+                        const hasData = !!(scan.scanData && scan.scanData.devices);
+                        
+                        // Calculate actual device count if data is available
+                        let actualCount = 0;
+                        if (hasData) {
+                            Object.entries(scan.scanData.devices).forEach(([vendor, devices]) => {
+                                if (Array.isArray(devices)) {
+                                    actualCount += devices.length;
+                                }
+                            });
+                        }
+                        
+                        const countMatch = deviceCount === actualCount;
+                        const countStatus = hasData ? 
+                            (countMatch ? '✅' : '❌') : '⚠️';
+                        
+                        html += `
+                            <div style="margin: 10px 0; padding: 8px; border: 1px solid #444; border-radius: 4px;">
+                                <strong>${scan.name}</strong><br>
+                                <small>ID: ${scan.scanId}</small><br>
+                                Device Count: ${deviceCount} ${countStatus} 
+                                ${hasData ? `(actual: ${actualCount})` : '(no data)'}
+                            </div>
+                        `;
+                        
+                        log(`Scan "${scan.name}": ${deviceCount} devices (${hasData ? `actual: ${actualCount}` : 'no data'})`, 
+                            countMatch || !hasData ? 'success' : 'warning');
+                    });
+                    
+                    resultDiv.innerHTML = html;
+                } else {
+                    log('Failed to retrieve scan history', 'error');
+                    document.getElementById('scan-history-result').innerHTML = `<span class="error">❌ Failed to retrieve</span>`;
+                }
+            } catch (error) {
+                log(`Scan history retrieval failed: ${error.message}`, 'error');
+            }
+        }
+
+        function testUIDisplay() {
+            log('Testing UI display logic...', 'info');
+            
+            // Simulate what the NetworkScanHistory component does
+            const mockScanHistory = [
+                {
+                    id: "scan-1",
+                    name: "Morning Scan",
+                    timestamp: "2025-06-09 09:00:00", 
+                    ipRange: "192.168.1.0/24",
+                    devices: 5, // This is what gets displayed as "Devices Found: 5"
+                    data: {
+                        "Cisco": [
+                            { ip: "192.168.1.1" },
+                            { ip: "192.168.1.2" }
+                        ],
+                        "Intel": [
+                            { ip: "192.168.1.10" },
+                            { ip: "192.168.1.11" },
+                            { ip: "192.168.1.12" }
+                        ]
+                    }
+                }
+            ];
+
+            // Test the rendering logic
+            mockScanHistory.forEach(entry => {
+                const displayedDeviceCount = entry.devices;
+                const actualDevices = Object.values(entry.data || {}).flat();
+                
+                log(`UI displays "Devices Found: ${displayedDeviceCount}"`, 'info');
+                log(`Actual devices in data: ${actualDevices.length}`, 'info');
+                log(`MemoizedDeviceList receives: ${actualDevices.length} devices`, 'info');
+                
+                if (displayedDeviceCount === actualDevices.length) {
+                    log('✅ UI display is consistent', 'success');
+                } else {
+                    log('❌ UI display inconsistency detected', 'error');
+                }
+            });
+        }
+
+        function testNetworkScanPage() {
+            log('Opening network scan page...', 'info');
+            window.open('/networkscan', '_blank');
+        }
+
+        // Auto-check auth status on page load
+        window.addEventListener('load', () => {
+            checkAuthStatus();
+        });
+    </script>
+</body>
+</html>

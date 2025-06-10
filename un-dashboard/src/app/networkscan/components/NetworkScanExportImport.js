@@ -8,7 +8,7 @@ import {
     parseCSVImport, 
     parseJSONImport 
 } from '../../utils/exportImportUtils';
-import { useScanHistory } from './networkscanhistory';
+import { useScanHistory } from '../../contexts/ScanHistoryContext';
 
 const NetworkScanExportImport = ({ 
     devices, 

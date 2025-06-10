@@ -18,6 +18,7 @@
     "bcrypt": "^6.0.0",
     "chart.js": "^4.4.9",
     "cors": "^2.8.5",
+    "date-fns": "^4.1.0",
     "dockerode": "^4.0.5",
     "dotenv": "^16.5.0",
     "express": "^5.1.0",
@@ -35,7 +36,8 @@
     "react-icons": "^5.5.0",
     "redis": "^5.5.5",
     "socket.io": "^4.8.1",
-    "socket.io-client": "^4.8.1"
+    "socket.io-client": "^4.8.1",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

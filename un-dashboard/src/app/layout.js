@@ -1,7 +1,7 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Navbar from "./components/navbar";
-import { ScanHistoryProvider } from "./networkscan/components/networkscanhistory";
+import { ScanHistoryProvider } from "./contexts/ScanHistoryContext";
 import PageLayout from "./components/PageLayout";
 import { AuthProvider } from "./contexts/AuthContext";
 import AuthWrapper from "./components/auth/AuthWrapper";

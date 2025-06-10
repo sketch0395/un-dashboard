@@ -1,12 +1,12 @@
 "use client";
 
-import React, { lazy, Suspense, useState, useEffect, memo } from "react";
+import React, { lazy, Suspense, useState, useEffect, memo, useCallback } from "react";
 import { FaChevronDown, FaChevronUp, FaTrash, FaEdit, FaEllipsisV, FaTerminal, FaShare } from "react-icons/fa";
 import { format } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
-import { createContext, useContext } from "react";
 import { FixedSizeList as List } from "react-window";
 import { useAuth } from "../../contexts/AuthContext";
+import { useScanHistory } from "../../contexts/ScanHistoryContext";
 
 const UnifiedDeviceModal = lazy(() => import("../../components/UnifiedDeviceModal"));
 const SSHTerminal = lazy(() => import("../../components/sshterminal"));
@@ -15,621 +15,10 @@ const NetworkScanExportImport = lazy(() => import("./NetworkScanExportImport"));
 const NetworkScanSharingModal = lazy(() => import("./NetworkScanSharingModal"));
 const ScanHistorySyncStatus = lazy(() => import("../../components/ScanHistorySyncStatus"));
 
-const ScanHistoryContext = createContext();
-
-export const ScanHistoryProvider = ({ children }) => {
-    const { user, isAuthenticated } = useAuth();
-    const [scanHistory, setScanHistory] = useState([]);
-    const [isLoading, setIsLoading] = useState(false);
-    const [isSyncing, setIsSyncing] = useState(false);
-    const [syncError, setSyncError] = useState(null);
-    const [lastSyncTime, setLastSyncTime] = useState(null);
-
-    // Get user-specific localStorage key
-    const getScanHistoryKey = () => {
-        if (isAuthenticated && user && user._id) {
-            return `scanHistory_${user._id}`;
-        }
-        return "scanHistory"; // fallback for unauthenticated users
-    };    // Load scan history with database-first approach (fallback to localStorage if not authenticated)
-    const loadScanHistory = async () => {
-        setIsLoading(true);
-        
-        // If not authenticated, load from localStorage only
-        if (!isAuthenticated || !user) {
-            console.log('User not authenticated - loading from localStorage only');
-            try {
-                const localKey = getScanHistoryKey();
-                const localScans = JSON.parse(localStorage.getItem(localKey) || '[]');
-                setScanHistory(localScans);
-                console.log(`Loaded ${localScans.length} scans from localStorage`);
-            } catch (error) {
-                console.error('Error loading from localStorage:', error);
-                setScanHistory([]);
-            }
-            setIsLoading(false);
-            return;
-        }
-
-        try {
-            console.log('Authenticated user - attempting database load...');
-            // Try to load from database first
-            const response = await fetch('/api/scan-history', {
-                method: 'GET',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                const dbHistory = data.scanHistory || [];
-                  // Convert database format to component format
-                const convertedHistory = dbHistory.map(dbEntry => ({
-                    id: dbEntry.scanId,
-                    timestamp: format(new Date(dbEntry.createdAt), "yyyy-MM-dd HH:mm:ss"),
-                    ipRange: dbEntry.ipRange,
-                    devices: dbEntry.deviceCount,
-                    data: dbEntry.scanData || {},
-                    name: dbEntry.name,
-                    settings: dbEntry.settings,
-                    metadata: dbEntry.metadata,
-                    _dbId: dbEntry._id, // Keep database ID for updates
-                    isFromDatabase: true
-                }));
-
-                // Remove any duplicate scans based on scanId to prevent duplication after refresh
-                const uniqueHistory = [];
-                const seenIds = new Set();
-                convertedHistory.forEach(scan => {
-                    if (!seenIds.has(scan.id)) {
-                        seenIds.add(scan.id);
-                        uniqueHistory.push(scan);
-                    } else {
-                        console.log(`Removing duplicate scan: ${scan.id}`);
-                    }
-                });
-
-                setScanHistory(uniqueHistory);
-                setLastSyncTime(new Date());
-                console.log(`Loaded ${uniqueHistory.length} unique scans from database for user ${user._id}`);
-
-                // Update localStorage as cache
-                const storageKey = getScanHistoryKey();
-                localStorage.setItem(storageKey, JSON.stringify(uniqueHistory));
-                
-            } else {
-                throw new Error(`Database fetch failed: ${response.status}`);
-            }
-        } catch (error) {
-            console.warn('Failed to load from database, falling back to localStorage:', error);
-            setSyncError('Failed to sync with database');
-            
-            // Fallback to localStorage
-            const storageKey = getScanHistoryKey();
-            let savedHistory = JSON.parse(localStorage.getItem(storageKey)) || [];
-            
-            // Migration: If user-specific storage is empty, check for global scan history
-            if (savedHistory.length === 0) {
-                const globalHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
-                if (globalHistory.length > 0) {
-                    console.log(`Migrating ${globalHistory.length} global scan entries to user ${user._id}`);
-                    savedHistory = globalHistory;
-                    localStorage.setItem(storageKey, JSON.stringify(savedHistory));
-                }
-            }
-              setScanHistory(savedHistory);
-            console.log(`Loaded ${savedHistory.length} scans from localStorage for user ${user._id}`);
-            
-            // Clear sync error since localStorage fallback was successful
-            setSyncError(null);
-        }
-        
-        setIsLoading(false);
-    };
-
-    // Save scan to database with localStorage fallback
-    const saveScanToDatabase = async (scanEntry) => {
-        try {
-            // Debug authentication state before making request
-            console.log('Authentication Debug Info:');
-            console.log('- User authenticated:', isAuthenticated);
-            console.log('- User object:', user);
-            console.log('- Available cookies:', document.cookie);
-            
-            // Check if we have the required authentication token
-            const authToken = document.cookie
-                .split('; ')
-                .find(row => row.startsWith('auth-token='))
-                ?.split('=')[1];
-            const sessionId = document.cookie
-                .split('; ')
-                .find(row => row.startsWith('session-id='))
-                ?.split('=')[1];
-                
-            console.log('- Auth token present:', !!authToken);
-            console.log('- Session ID present:', !!sessionId);
-              if (!isAuthenticated || !user) {
-                console.warn('User not authenticated, storing scan locally only');
-                setSyncError('Not logged in - scan saved locally');
-                setTimeout(() => {
-                    setSyncError(null);
-                }, 3000);
-                return false; // Not an error, just not authenticated
-            }            const dbPayload = {
-                scanId: scanEntry.id,
-                name: scanEntry.name || `Network Scan ${format(new Date(scanEntry.timestamp), 'MMM dd, yyyy HH:mm')}`,
-                ipRange: scanEntry.ipRange,
-                deviceCount: scanEntry.devices || 0, // scanEntry.devices is already the count
-                scanData: {
-                    devices: scanEntry.data || {}, // Use scanEntry.data which contains the actual device data
-                    portScanResults: scanEntry.portScanResults || [],
-                    networkInfo: scanEntry.networkInfo || {}
-                },
-                metadata: {
-                    timestamp: scanEntry.timestamp,
-                    scanDuration: scanEntry.scanDuration || 0,
-                    userAgent: navigator.userAgent
-                },
-                settings: scanEntry.settings || {
-                    isPrivate: true,
-                    isFavorite: false,
-                    tags: [],
-                    notes: ''
-                }
-            };
-
-            console.log('Making POST request to /api/scan-history...');
-            const response = await fetch('/api/scan-history', {
-                method: 'POST',
-                credentials: 'include',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(dbPayload)
-            });
-
-            console.log('Response status:', response.status);
-            console.log('Response headers:', [...response.headers.entries()]);
-
-            if (response.ok) {
-                const savedScan = await response.json();
-                console.log(`Successfully saved scan ${scanEntry.id} to database`);
-                setSyncError(null);
-                setLastSyncTime(new Date());
-                return true;
-            } else if (response.status === 409) {
-                console.log(`Scan ${scanEntry.id} already exists in database`);
-                return true; // Already exists, not an error
-            } else {
-                // Get error details from response
-                let errorDetails = `${response.status}`;
-                try {
-                    const errorBody = await response.json();
-                    errorDetails += `: ${errorBody.error || 'Unknown error'}`;
-                } catch (e) {
-                    // If we can't parse the error body, just use the status
-                }
-                console.error('Database save failed with details:', errorDetails);
-                throw new Error(`Database save failed: ${errorDetails}`);
-            }
-        } catch (error) {
-            console.error('Failed to save scan to database:', error);
-            setSyncError('Failed to sync with database');
-            
-            // Clear sync error after a delay since data is safely stored in localStorage
-            setTimeout(() => {
-                setSyncError(null);
-            }, 3000); // Clear error after 3 seconds
-            
-            return false;
-        }
-    };
-
-    // Initialize scan history on auth state change
-    useEffect(() => {
-        loadScanHistory();
-    }, [isAuthenticated, user]);
-
-    // Auto-save to localStorage whenever scan history changes
-    useEffect(() => {
-        if (isAuthenticated && user && scanHistory.length > 0) {
-            const storageKey = getScanHistoryKey();
-            localStorage.setItem(storageKey, JSON.stringify(scanHistory));
-        }
-    }, [scanHistory, isAuthenticated, user]);    const saveScanHistory = async (data, ipRange) => {
-        // Only save if user is authenticated
-        if (!isAuthenticated || !user) {
-            console.log("Cannot save scan history: user not authenticated");
-            return;
-        }
-
-        console.log(`saveScanHistory called for user ${user._id} with ipRange: ${ipRange}`, { dataKeys: Object.keys(data) });
-        
-        // Check data structure and calculate device count properly
-        let deviceCount = 0;
-        if (typeof data === 'object' && data !== null) {
-            try {
-                // Properly handle different data formats
-                if (Array.isArray(data)) {
-                    deviceCount = data.length;
-                    console.log(`Data is an array with ${deviceCount} devices`);
-                } else {
-                    // If it's an object with vendor keys (the typical format)
-                    Object.entries(data).forEach(([vendor, devices]) => {
-                        if (Array.isArray(devices)) {
-                            deviceCount += devices.length;
-                            console.log(`Vendor ${vendor} has ${devices.length} devices`);
-                        }
-                    });
-                }
-            } catch (e) {
-                console.error("Error calculating device count:", e);
-                deviceCount = 0;
-            }
-        } else {
-            console.error("Invalid data format received:", typeof data);
-            return; // Exit early for invalid data
-        }
-        
-        const timestamp = format(new Date(), "yyyy-MM-dd HH:mm:ss");
-        console.log(`Preparing to save scan with ${deviceCount} devices from ${ipRange} at ${timestamp}`);
-        
-        // Check for duplicates within the last 5 minutes to prevent duplication
-        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-          setScanHistory((prev) => {
-            // Check if we already have a very similar scan recently
-            const isDuplicate = prev.some(entry => {
-                const entryTime = new Date(entry.timestamp);
-                const timeDifference = Math.abs(new Date() - entryTime);
-                
-                const sameDeviceCount = entry.devices === deviceCount;
-                const sameIpRange = entry.ipRange === ipRange;
-                const sameData = JSON.stringify(entry.data) === JSON.stringify(data);
-                
-                // More strict duplicate detection: consider it duplicate if within 5 minutes AND has same data
-                const isDup = timeDifference < 5 * 60 * 1000 && 
-                             sameDeviceCount && 
-                             sameIpRange && 
-                             sameData;
-                             
-                if (isDup) {
-                    console.log("Potential duplicate detected:", { 
-                        timeDifference: Math.round(timeDifference/1000) + "s", 
-                        sameDeviceCount, 
-                        sameIpRange,
-                        entryId: entry.id,
-                        isFromDatabase: entry.isFromDatabase
-                    });
-                }
-                
-                return isDup;
-            });
-            
-            if (isDuplicate) {
-                console.log("Duplicate scan detected and prevented:", { deviceCount, ipRange, timestamp });
-                return prev; // Don't add duplicate
-            }
-
-            const newEntry = {
-                id: uuidv4(),
-                timestamp,
-                ipRange,
-                devices: deviceCount,
-                data,
-                name: `Network Scan ${format(new Date(), 'MMM dd, yyyy HH:mm')}`, // Use consistent naming format
-                isFromDatabase: false // Mark as new entry
-            };
-            
-            console.log("Adding new scan to history:", { id: newEntry.id, deviceCount, ipRange, timestamp });
-            
-            // Automatically attempt to save to database
-            setTimeout(async () => {
-                const success = await saveScanToDatabase(newEntry);
-                if (success) {
-                    // Update the entry to mark it as synced
-                    setScanHistory(current => 
-                        current.map(entry => 
-                            entry.id === newEntry.id 
-                                ? { ...entry, isFromDatabase: true }
-                                : entry
-                        )
-                    );
-                }
-            }, 100); // Small delay to ensure state update completes first
-            
-            return [...prev, newEntry];
-        });
-    };    const deleteScan = async (index) => {
-        const scanToDelete = scanHistory[index];
-        
-        setScanHistory((prev) => prev.filter((_, i) => i !== index));
-        
-        // If scan was from database, also delete from database
-        if (scanToDelete && scanToDelete.isFromDatabase && isAuthenticated && user) {
-            try {
-                const response = await fetch('/api/scan-history', {
-                    method: 'DELETE',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ scanIds: [scanToDelete.id] })
-                });
-                
-                if (response.ok) {
-                    console.log(`Successfully deleted scan ${scanToDelete.id} from database`);
-                    setSyncError(null);
-                } else {
-                    console.error('Failed to delete scan from database:', response.status);
-                    setSyncError('Failed to delete from database');
-                }
-            } catch (error) {
-                console.error('Error deleting scan from database:', error);
-                setSyncError('Failed to delete from database');
-            }
-        }
-    };    const updateScanName = async (index, newName) => {
-        const scanToUpdate = scanHistory[index];
-        
-        setScanHistory((prev) => {
-            const updated = [...prev];
-            updated[index].name = newName;
-            return updated;
-        });
-        
-        // If scan is from database, also update in database
-        if (scanToUpdate && scanToUpdate.isFromDatabase && isAuthenticated && user) {
-            try {
-                const response = await fetch(`/api/scan-history/${scanToUpdate.id}`, {
-                    method: 'PUT',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ name: newName })
-                });
-                
-                if (response.ok) {
-                    console.log(`Successfully updated scan name in database: ${newName}`);
-                    setSyncError(null);
-                } else {
-                    console.error('Failed to update scan name in database:', response.status);
-                    setSyncError('Failed to update name in database');
-                }
-            } catch (error) {
-                console.error('Error updating scan name in database:', error);
-                setSyncError('Failed to update name in database');
-            }
-        }
-    };// Add a function to clear all scan history
-    const clearHistory = async () => {
-        if (isAuthenticated && user) {
-            // Get all scan IDs that are from database
-            const dbScanIds = scanHistory
-                .filter(scan => scan.isFromDatabase)
-                .map(scan => scan.id);
-            
-            // Delete from database if there are any database scans
-            if (dbScanIds.length > 0) {
-                try {
-                    const response = await fetch('/api/scan-history', {
-                        method: 'DELETE',
-                        credentials: 'include',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ scanIds: dbScanIds })
-                    });
-                    
-                    if (response.ok) {
-                        console.log(`Successfully deleted ${dbScanIds.length} scans from database`);
-                        setSyncError(null);
-                    } else {
-                        console.error('Failed to delete scans from database:', response.status);
-                        setSyncError('Failed to clear database');
-                    }
-                } catch (error) {
-                    console.error('Error deleting scans from database:', error);
-                    setSyncError('Failed to clear database');
-                }
-            }
-            
-            // Clear localStorage
-            const storageKey = getScanHistoryKey();
-            localStorage.removeItem(storageKey);
-            console.log(`Cleared scan history for user ${user._id}`);
-        } else {
-            localStorage.removeItem("scanHistory"); // fallback cleanup
-        }
-        
-        // Clear local state
-        setScanHistory([]);
-    };
-
-    // Manual sync function - push all localStorage scans to database
-    const syncToDatabase = async () => {
-        if (!isAuthenticated || !user) {
-            console.log("Cannot sync: user not authenticated");
-            return false;
-        }
-        
-        setIsSyncing(true);
-        setSyncError(null);
-        
-        try {
-            // Get scans that are not yet in database
-            const unsynced = scanHistory.filter(scan => !scan.isFromDatabase);
-            
-            if (unsynced.length === 0) {
-                console.log("All scans are already synced");
-                setIsSyncing(false);
-                return true;
-            }
-            
-            console.log(`Syncing ${unsynced.length} unsynced scans to database...`);
-            
-            let successCount = 0;
-            for (const scan of unsynced) {
-                const success = await saveScanToDatabase(scan);
-                if (success) {
-                    successCount++;
-                }
-            }
-            
-            if (successCount > 0) {
-                // Update synced scans to mark them as from database
-                setScanHistory(current => 
-                    current.map(scan => 
-                        unsynced.includes(scan) 
-                            ? { ...scan, isFromDatabase: true }
-                            : scan
-                    )
-                );
-                setLastSyncTime(new Date());
-                console.log(`Successfully synced ${successCount}/${unsynced.length} scans`);
-            }
-            
-            setIsSyncing(false);
-            return successCount === unsynced.length;
-            
-        } catch (error) {
-            console.error('Error during sync:', error);
-            setSyncError('Sync failed');
-            setIsSyncing(false);
-            return false;
-        }
-    };
-
-    // Refresh from database
-    const refreshFromDatabase = async () => {
-        if (!isAuthenticated || !user) {
-            return false;
-        }
-        
-        setIsLoading(true);
-        await loadScanHistory();
-        return true;
-    };
-
-    // Add a function to handle user logout cleanup
-    const clearScanHistoryOnLogout = () => {
-        setScanHistory([]);
-        console.log("Cleared scan history due to user logout");
-    };
-
-    // Clear scan history when user logs out
-    useEffect(() => {
-        if (!isAuthenticated) {
-            clearScanHistoryOnLogout();
-        }
-    }, [isAuthenticated]);    // Add a function to update device data in scan history
-    const updateDeviceInHistory = async (deviceIP, updatedDeviceData) => {
-        let updatedEntries = [];
-        
-        setScanHistory((prev) => {
-            const updated = prev.map(entry => {
-                // Skip entries without data
-                if (!entry.data) return entry;
-                
-                // Create a new copy of the entry
-                const newEntry = { ...entry };
-                newEntry.data = { ...entry.data };
-                let hasChanges = false;
-                
-                // Update matching devices in all categories
-                Object.keys(newEntry.data).forEach(key => {
-                    if (Array.isArray(newEntry.data[key])) {
-                        newEntry.data[key] = newEntry.data[key].map(device => {
-                            if (device.ip === deviceIP) {
-                                hasChanges = true;
-                                return {
-                                    ...device,
-                                    name: updatedDeviceData.name,
-                                    color: updatedDeviceData.color,
-                                    icon: updatedDeviceData.icon,
-                                    category: updatedDeviceData.category,
-                                    notes: updatedDeviceData.notes,
-                                    networkRole: updatedDeviceData.networkRole,
-                                    portCount: updatedDeviceData.portCount,
-                                    parentSwitch: updatedDeviceData.parentSwitch
-                                };
-                            }
-                            return device;
-                        });
-                    }
-                });
-                
-                // Track entries that need database sync
-                if (hasChanges && newEntry.isFromDatabase) {
-                    updatedEntries.push(newEntry);
-                }
-                
-                return newEntry;
-            });
-            
-            return updated;
-        });
-        
-        // Sync updated entries to database
-        if (updatedEntries.length > 0 && isAuthenticated && user) {
-            for (const entry of updatedEntries) {
-                try {
-                    const response = await fetch(`/api/scan-history/${entry.id}`, {
-                        method: 'PUT',
-                        credentials: 'include',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ 
-                            scanData: entry.data,
-                            includeData: false // Don't return large data in response
-                        })
-                    });
-                    
-                    if (response.ok) {
-                        console.log(`Successfully updated device ${deviceIP} in scan ${entry.id}`);
-                        setSyncError(null);
-                    } else {
-                        console.error('Failed to sync device update to database:', response.status);
-                        setSyncError('Failed to sync device update');
-                    }
-                } catch (error) {
-                    console.error('Error syncing device update to database:', error);
-                    setSyncError('Failed to sync device update');
-                }
-            }
-        }
-    };return (
-        <ScanHistoryContext.Provider
-            value={{ 
-                scanHistory, 
-                saveScanHistory, 
-                deleteScan, 
-                updateScanName, 
-                clearHistory,
-                updateDeviceInHistory,
-                clearScanHistoryOnLogout,
-                // Database integration functions
-                syncToDatabase,
-                refreshFromDatabase,
-                // State indicators
-                isLoading,
-                isSyncing,
-                syncError,
-                lastSyncTime
-            }}
-        >
-            {children}
-        </ScanHistoryContext.Provider>
-    );
-};
-
-export const useScanHistory = () => useContext(ScanHistoryContext);
-
 export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData }) {
-    const { scanHistory, saveScanHistory, deleteScan, updateScanName, clearHistory, updateDeviceInHistory } = useScanHistory();
+    const { scanHistory, saveScanHistory, deleteScan, updateScanName, clearHistory, updateDeviceInHistory, updateScanData } = useScanHistory();
+    const { user, isAuthenticated } = useAuth();
+    
     const [selectedScans, setSelectedScans] = useState([]);
     const [expandedIndex, setExpandedIndex] = useState(null);
     const [modalDevice, setModalDevice] = useState(null);
@@ -639,7 +28,8 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     const [sshModalVisible, setSSHModalVisible] = useState(false);
     const [sshTarget, setSSHTarget] = useState(null);
     const [sshUsername, setSSHUsername] = useState("");
-    const [sshPassword, setSSHPassword] = useState("");    const [showTerminal, setShowTerminal] = useState(false);
+    const [sshPassword, setSSHPassword] = useState("");
+    const [showTerminal, setShowTerminal] = useState(false);
     // Add a state variable to persist custom device properties
     const [persistentCustomNames, setPersistentCustomNames] = useState({});
     // Add state for confirmation modal
@@ -680,7 +70,7 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         );
     };
 
-    const handleAddZones = () => {
+    const handleAddZones = async () => {
         console.log("Adding zones from selected scans with custom names");
         
         // First, make sure we have the latest customProperties data from localStorage
@@ -693,7 +83,37 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         let combinedDevices = [];
         
         // Process each selected zone/scan
-        selectedZones.forEach((zone, zoneIndex) => {
+        for (let zoneIndex = 0; zoneIndex < selectedZones.length; zoneIndex++) {
+            const zone = selectedZones[zoneIndex];
+            
+            // Ensure database scans have their full data loaded
+            if (zone.isFromDatabase && (!zone.data || Object.keys(zone.data).length === 0)) {
+                console.log("Fetching full data for database scan:", zone.id);
+                try {
+                    const response = await fetch(`/api/scan-history/${zone.id}`, {
+                        method: 'GET',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                    });
+                      
+                    if (response.ok) {
+                        const fullScanData = await response.json();
+                        zone.data = fullScanData.scanData?.devices || fullScanData.scanData || {};
+                        
+                        // Update the scan history to cache this data
+                        updateScanData(zone.id, zone.data);
+                    } else {
+                        console.error("Failed to fetch full scan data for zone:", zone.id, response.status);
+                        continue; // Skip this zone if we can't get its data
+                    }
+                } catch (error) {
+                    console.error("Error fetching full scan data for zone:", zone.id, error);
+                    continue; // Skip this zone if we can't get its data
+                }
+            }
+            
             // Get all devices from this scan
             const zoneDevices = Object.values(zone.data || {}).flat();
             
@@ -714,7 +134,8 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                     // Make sure we preserve history entries
                     enhancedDevice.history = customProps.history || [];
                 }
-                  // Add scan source information (important for grouping in the visualization)
+                  
+                // Add scan source information (important for grouping in the visualization)
                 enhancedDevice.scanSource = {
                     id: zone.id || `scan-${zoneIndex}`,
                     name: zone.name || `Network Scan ${format(new Date(zone.timestamp), 'MMM dd, yyyy HH:mm')}`,
@@ -727,7 +148,7 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             
             // Add these enhanced devices to the combined array
             combinedDevices = [...combinedDevices, ...enhancedDevices];
-        });
+        }
         
         // Update our local state to match localStorage (ensuring consistency)
         if (JSON.stringify(latestCustomProperties) !== JSON.stringify(persistentCustomNames)) {
@@ -750,8 +171,111 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         setSelectedScans([]); // Clear selections after adding to topology
     };
 
-    const toggleAccordion = (index) => {
+    const toggleAccordion = async (index) => {
+        console.log('🎯 TOGGLE ACCORDION CALLED for index:', index);
         setExpandedIndex((prev) => (prev === index ? null : index));
+        
+        // Debug device flow when expanding
+        if (expandedIndex !== index) {
+            const entry = scanHistory[index];
+            console.log('\n🔍 EXPANDING SCAN DEBUG:', {
+                name: entry.name,
+                deviceCount: entry.devices,
+                isFromDatabase: entry.isFromDatabase,
+                hasData: !!entry.data,
+                dataKeys: entry.data ? Object.keys(entry.data) : [],
+                entryId: entry.id,
+                entryType: typeof entry
+            });
+            
+            // CRITICAL FIX: Fetch data for database scans when expanding
+            if (entry.isFromDatabase && (!entry.data || Object.keys(entry.data).length === 0)) {
+                console.log("🔄 FETCHING FULL SCAN DATA for expansion:", entry.id);
+                try {
+                    const response = await fetch(`/api/scan-history/${entry.id}`, {
+                        method: 'GET',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                    });
+                    
+                    console.log('📡 API Response status:', response.status);
+                    
+                    if (response.ok) {
+                        const fullScanData = await response.json();
+                        console.log("📥 RETRIEVED FULL SCAN DATA:", {
+                            hasScanData: !!fullScanData.scanData,
+                            scanDataKeys: fullScanData.scanData ? Object.keys(fullScanData.scanData) : 'none',
+                            deviceCount: fullScanData.scanData?.devices?.length || 'no devices array'
+                        });
+                        
+                        // Update the entry with the full data
+                        const newData = fullScanData.scanData?.devices || fullScanData.scanData || {};
+                        console.log('📦 NEW DATA TO SET:', {
+                            type: typeof newData,
+                            keys: Object.keys(newData),
+                            isArray: Array.isArray(newData)
+                        });
+                        
+                        // Update the scan history to cache this data
+                        updateScanData(entry.id, newData);
+                        
+                        // Update the current entry reference for immediate use
+                        entry.data = newData;
+                        console.log("✅ UPDATED ENTRY DATA:", {
+                            type: typeof entry.data,
+                            keys: Object.keys(entry.data),
+                            isArray: Array.isArray(entry.data)
+                        });
+                        
+                        // Force a re-render by toggling expanded state
+                        setTimeout(() => {
+                            console.log('🔄 FORCING RE-RENDER');
+                            setExpandedIndex(prev => prev === index ? index : prev);
+                        }, 50);
+                    } else {
+                        const errorText = await response.text();
+                        console.error("❌ FAILED TO FETCH full scan data:", response.status, errorText);
+                    }
+                } catch (error) {
+                    console.error("❌ ERROR FETCHING full scan data:", error);
+                }
+            } else {
+                console.log('ℹ️ Scan data already available or not from database');
+            }
+            
+            // Test device extraction regardless of source
+            if (entry.data) {
+                console.log('🔧 TESTING DEVICE EXTRACTION:');
+                console.log('  entry.data type:', typeof entry.data);
+                console.log('  entry.data keys:', Object.keys(entry.data));
+                console.log('  entry.data is array:', Array.isArray(entry.data));
+                
+                const extractedDevices = Object.values(entry.data).flat();
+                console.log('📱 EXTRACTED DEVICES FOR DISPLAY:', {
+                    count: extractedDevices.length,
+                    devices: extractedDevices,
+                    firstDevice: extractedDevices[0] ? {
+                        ip: extractedDevices[0].ip,
+                        status: extractedDevices[0].status,
+                        vendor: extractedDevices[0].vendor,
+                        hasRequiredFields: !!(extractedDevices[0].ip && extractedDevices[0].status)
+                    } : 'none'
+                });
+                
+                // Force a state update to trigger re-render
+                setTimeout(() => {
+                    console.log('🔄 FORCING STATE UPDATE');
+                    setExpandedIndex(prev => prev); // Trigger re-render
+                }, 100);
+                
+            } else {
+                console.log('❌ NO DATA AVAILABLE for device extraction after all attempts');
+            }
+        } else {
+            console.log('🔄 COLLAPSING scan accordion');
+        }
     };
 
     const openModal = (device) => {
@@ -761,7 +285,8 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
     const closeModal = () => {
         setModalDevice(null);
     };
-      const openSSHModal = (device) => {
+      
+    const openSSHModal = (device) => {
         setSSHTarget(device);
         setSSHUsername(""); // Reset username
         setSSHPassword(""); // Reset password
@@ -788,14 +313,78 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         // You could add a toast notification here or update UI state
     };
 
-    const visualizeOnTopology = (entry) => {
-        console.log("Visualizing entry with custom names:", persistentCustomNames);
+    const visualizeOnTopology = async (entry) => {
+        console.log("Visualizing entry:", { 
+            id: entry.id, 
+            isFromDatabase: entry.isFromDatabase,
+            dataStructure: typeof entry.data,
+            deviceCount: entry.devices,
+            hasCustomNames: Object.keys(persistentCustomNames).length
+        });
         
         // First, make sure we have the latest customNames data from localStorage
         const latestCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
         
-        // Get all devices from the scan entry
-        const entryDevices = Object.values(entry.data || {}).flat();
+        // Get all devices from the scan entry - handle both localStorage and database formats
+        let entryDevices = [];
+        
+        if (entry.isFromDatabase) {
+            // Database scans need to fetch full data including devices
+            if (!entry.data || Object.keys(entry.data).length === 0) {
+                console.log("Fetching full scan data from database for scan:", entry.id);
+                try {
+                    const response = await fetch(`/api/scan-history/${entry.id}`, {
+                        method: 'GET',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                    });
+                    
+                    if (response.ok) {
+                        const fullScanData = await response.json();
+                        console.log("Retrieved full scan data:", fullScanData);
+                        
+                        // Update the entry with the full data
+                        entry.data = fullScanData.scanData?.devices || fullScanData.scanData || {};
+                        console.log("Updated entry data:", typeof entry.data, Object.keys(entry.data));
+                        
+                        // Update the scan history to cache this data
+                        updateScanData(entry.id, entry.data);
+                    } else {
+                        console.error("Failed to fetch full scan data:", response.status);
+                        return;
+                    }
+                } catch (error) {
+                    console.error("Error fetching full scan data:", error);
+                    return;
+                }
+            }
+            
+            // Extract devices from the full scan data
+            if (entry.data && typeof entry.data === 'object') {
+                if (Array.isArray(entry.data)) {
+                    // If data is already an array of devices
+                    entryDevices = entry.data;
+                } else if (entry.data.devices) {
+                    // If data has a devices property
+                    entryDevices = Object.values(entry.data.devices).flat();
+                } else {
+                    // If data is object with vendor keys (standard format)
+                    entryDevices = Object.values(entry.data).flat();
+                }
+            }
+            console.log("Database scan devices extracted:", entryDevices.length);
+        } else {
+            // localStorage format: data contains vendor-grouped devices
+            entryDevices = Object.values(entry.data || {}).flat();
+            console.log("localStorage scan devices extracted:", entryDevices.length);
+        }
+        
+        if (entryDevices.length === 0) {
+            console.warn("No devices found in scan entry:", entry);
+            return;
+        }
         
         // Create a deep copy of the devices to avoid modifying the original data
         const devicesWithCustomProperties = entryDevices.map(device => {
@@ -811,12 +400,19 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                 enhancedDevice.icon = customProps.icon || enhancedDevice.icon;
                 enhancedDevice.category = customProps.category || enhancedDevice.category;
                 enhancedDevice.notes = customProps.notes || enhancedDevice.notes;
+                enhancedDevice.networkRole = customProps.networkRole || enhancedDevice.networkRole;
+                enhancedDevice.parentSwitch = customProps.parentSwitch || enhancedDevice.parentSwitch;
+                enhancedDevice.parentGateway = customProps.parentGateway || enhancedDevice.parentGateway;
+                enhancedDevice.connectedGateways = customProps.connectedGateways || enhancedDevice.connectedGateways;
+                enhancedDevice.connectedSwitches = customProps.connectedSwitches || enhancedDevice.connectedSwitches;
+                enhancedDevice.isMainGateway = customProps.isMainGateway || enhancedDevice.isMainGateway;
                 // Make sure we preserve history entries
                 enhancedDevice.history = customProps.history || [];
             }
-              // Add scan source information
-            enhancedDevice.scanSource = {
-                id: entry.id || `scan-custom`,
+              
+            // Add scan source information for topology grouping
+            enhancedDevice.scanSource = entry.scanSource || {
+                id: entry.id || `scan-${Date.now()}`,
                 name: entry.name || `Network Scan ${format(new Date(entry.timestamp), 'MMM dd, yyyy HH:mm')}`,
                 timestamp: entry.timestamp
             };
@@ -839,10 +435,13 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         
         console.log("Sending to topology:", 
                    `${devicesWithCustomProperties.length} devices with`, 
-                   `${Object.keys(latestCustomProperties).length} custom properties`);
+                   `${Object.keys(latestCustomProperties).length} custom properties`,
+                   "from", entry.isFromDatabase ? "database" : "localStorage");
         
         addZonesToTopology(combinedData);
-    };    const startRenaming = (index) => {
+    };
+
+    const startRenaming = (index) => {
         setEditingIndex(index);
         const entry = scanHistory[index];
         const defaultName = entry.name || `Network Scan ${format(new Date(entry.timestamp), 'MMM dd, yyyy HH:mm')}`;
@@ -858,7 +457,9 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
 
     const toggleMenu = (index) => {
         setMenuOpenIndex((prev) => (prev === index ? null : index));
-    };    const isSSHAvailable = (device) => {
+    };
+
+    const isSSHAvailable = (device) => {
         if (!device || !device.ports) return false;
 
         // Check if port 22 is not marked as "closed" (allow filtered and open)
@@ -907,7 +508,9 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             setSSHModalVisible(false);
             setShowTerminal(true);
         }
-    };    const getDeviceChanges = (oldDevice, newDevice) => {
+    };
+
+    const getDeviceChanges = (oldDevice, newDevice) => {
         const changes = {};
         if (oldDevice.name !== newDevice.name) changes.name = newDevice.name;
         if (oldDevice.color !== newDevice.color) changes.color = newDevice.color;
@@ -941,7 +544,8 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             setSSHModalVisible(true);
             return; // Exit early, no need to save other changes
         }
-          // First, update our persistent custom names in localStorage
+          
+        // First, update our persistent custom names in localStorage
         const updatedCustomNames = {
             ...persistentCustomNames,
             [updatedDevice.ip]: {
@@ -971,7 +575,8 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         
         // Update localStorage directly to ensure it persists
         localStorage.setItem("customDeviceProperties", JSON.stringify(updatedCustomNames));
-          // Update the device in scan history using the context function
+          
+        // Update the device in scan history using the context function
         updateDeviceInHistory(updatedDevice.ip, {
             name: updatedDevice.name,
             color: updatedDevice.color,
@@ -1025,7 +630,9 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                 customNames: updatedCustomNames
             });
         }
-    };    const getSelectedScansData = () => {
+    };
+
+    const getSelectedScansData = async () => {
         if (selectedScans.length === 0) return null;
         
         try {
@@ -1044,7 +651,37 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             let combinedDevices = [];
             
             // Process each selected zone/scan
-            selectedZones.forEach((zone, zoneIndex) => {
+            for (let zoneIndex = 0; zoneIndex < selectedZones.length; zoneIndex++) {
+                const zone = selectedZones[zoneIndex];
+                
+                // Ensure database scans have their full data loaded
+                if (zone.isFromDatabase && (!zone.data || Object.keys(zone.data).length === 0)) {
+                    console.log("Fetching full data for export from database scan:", zone.id);
+                    try {
+                        const response = await fetch(`/api/scan-history/${zone.id}`, {
+                            method: 'GET',
+                            credentials: 'include',
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                        });
+                          
+                        if (response.ok) {
+                            const fullScanData = await response.json();
+                            zone.data = fullScanData.scanData?.devices || fullScanData.scanData || {};
+                            
+                            // Update the scan history to cache this data
+                            updateScanData(zone.id, zone.data);
+                        } else {
+                            console.error("Failed to fetch full scan data for export:", zone.id, response.status);
+                            continue; // Skip this zone if we can't get its data
+                        }
+                    } catch (error) {
+                        console.error("Error fetching full scan data for export:", zone.id, error);
+                        continue; // Skip this zone if we can't get its data
+                    }
+                }
+                
                 // Get all devices from this scan
                 const zoneDevices = Object.values(zone.data || {}).flat();
                 
@@ -1055,7 +692,9 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                     
                     // Apply custom properties from the latest localStorage data if they exist
                     if (device.ip && latestCustomProperties[device.ip]) {
-                        const customProps = latestCustomProperties[device.ip];                        // Apply all custom properties including history
+                        const customProps = latestCustomProperties[device.ip];
+                        
+                        // Apply all custom properties including history
                         enhancedDevice.name = customProps.name || enhancedDevice.name;
                         enhancedDevice.color = customProps.color || enhancedDevice.color;
                         enhancedDevice.icon = customProps.icon || enhancedDevice.icon;
@@ -1072,7 +711,8 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                         // Make sure we preserve history entries
                         enhancedDevice.history = customProps.history || [];
                     }
-                      // Add scan source information (important for grouping in the export)
+                      
+                    // Add scan source information (important for grouping in the export)
                     enhancedDevice.scanSource = {
                         id: zone.id || `scan-${zoneIndex}`,
                         name: zone.name || `Network Scan ${format(new Date(zone.timestamp), 'MMM dd, yyyy HH:mm')}`,
@@ -1082,10 +722,10 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                     
                     return enhancedDevice;
                 });
-                
+                  
                 // Add these enhanced devices to the combined array
                 combinedDevices = [...combinedDevices, ...enhancedDevices];
-            });
+            }
             
             // Convert to grouped format expected by export functions
             const groupedDevices = {};
@@ -1106,7 +746,9 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
             console.error("Error preparing selected scans data for export:", error);
             return null;
         }
-    };    return (
+    };
+
+    return (
         <div className="mt-6">
             {/* Sync Status Component */}
             <Suspense fallback={<div className="animate-pulse bg-gray-200 h-16 rounded mb-4"></div>}>
@@ -1202,7 +844,9 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                                     className="text-gray-400 hover:text-white"
                                                 >
                                                     <FaEllipsisV />
-                                                </button>                                                {menuOpenIndex === originalIndex && (
+                                                </button>
+                                                
+                                                {menuOpenIndex === originalIndex && (
                                                     <div className="absolute right-0 mt-2 bg-gray-800 text-white rounded shadow-lg z-10">
                                                         <button
                                                             onClick={() => startRenaming(originalIndex)}
@@ -1249,17 +893,30 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                             Visualize on Topology
                                         </button>
                                     </div>
-
+                                    
                                     {isExpanded && (
                                         <div className="mt-4 bg-gray-800 p-3 rounded">
                                             <h5 className="text-sm font-bold mb-2">Devices:</h5>
                                             <Suspense fallback={<div>Loading devices...</div>}>
-                                                <MemoizedDeviceList
-                                                    devices={Object.values(entry.data || {}).flat()}
-                                                    openModal={openModal}
-                                                    isSSHAvailable={isSSHAvailable}
-                                                    openSSHModal={openSSHModal}
-                                                />
+                                                {(() => {
+                                                    const extractedDevices = Object.values(entry.data || {}).flat();
+                                                    console.log('🎨 PASSING TO MemoizedDeviceList:', {
+                                                        scanName: entry.name,
+                                                        entryDataType: typeof entry.data,
+                                                        entryDataKeys: Object.keys(entry.data || {}),
+                                                        extractedCount: extractedDevices.length,
+                                                        extractedDevices: extractedDevices,
+                                                        firstDevice: extractedDevices[0]
+                                                    });
+                                                    return (
+                                                        <MemoizedDeviceList
+                                                            devices={extractedDevices}
+                                                            openModal={openModal}
+                                                            isSSHAvailable={isSSHAvailable}
+                                                            openSSHModal={openSSHModal}
+                                                        />
+                                                    );
+                                                })()}
                                             </Suspense>
                                         </div>
                                     )}
@@ -1268,7 +925,9 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                             );
                         })}
                 </div>
-            )}            {selectedScans.length >= 1 && (
+            )}
+            
+            {selectedScans.length >= 1 && (
                 <div className="mt-4 flex flex-col gap-3">
                     {/* Export Selected Scans */}
                     <div className="p-3 border border-gray-700 rounded bg-gray-800">
@@ -1296,7 +955,9 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                         </button>
                     )}
                 </div>
-            )}<Suspense fallback={<div>Loading modal...</div>}>
+            )}
+
+            <Suspense fallback={<div>Loading modal...</div>}>
                 <UnifiedDeviceModal
                     modalDevice={modalDevice}
                     setModalDevice={setModalDevice}
@@ -1388,7 +1049,8 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                                 className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
                             >
                                 Clear All History
-                            </button>                        </div>
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -1407,4 +1069,3 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         </div>
     );
 }
-

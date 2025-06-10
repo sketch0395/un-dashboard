@@ -174,13 +174,34 @@ export async function POST(request) {
     // Return without the large scanData field
     const response = savedScan.toObject();
     delete response.scanData;
-    
-    return NextResponse.json(response, { status: 201 });
-    
+      return NextResponse.json(response, { status: 201 });
   } catch (error) {
     console.error('Error saving scan history:', error);
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    if (error.errors) {
+      console.error('Validation errors:', error.errors);
+    }
+    
+    // Handle MongoDB duplicate key error specifically
+    if (error.code === 11000 || error.message.includes('E11000 duplicate key error')) {
+      console.log('Duplicate scan detected at database level');
+      return NextResponse.json(
+        { error: 'Scan with this ID already exists' },
+        { status: 409 }
+      );
+    }
+    
+    // Return more specific error information for other errors
+    let errorMessage = 'Failed to save scan history';
+    if (error.name === 'ValidationError') {
+      errorMessage = `Validation error: ${Object.keys(error.errors).join(', ')}`;
+    } else if (error.name === 'MongoError' || error.name === 'MongoServerError') {
+      errorMessage = `Database error: ${error.message}`;
+    }
+    
     return NextResponse.json(
-      { error: 'Failed to save scan history' },
+      { error: errorMessage, details: error.message },
       { status: 500 }
     );
   }

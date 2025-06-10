@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Auth Test</title>
+</head>
+<body>
+    <h1>Admin Authentication Test</h1>
+    <p>Open the browser console to see test results.</p>
+    
+    <div id="results">
+        <h2>Test Results:</h2>
+        <div id="output"></div>
+    </div>
+    
+    <script>
+        const output = document.getElementById('output');
+        
+        function log(message) {
+            console.log(message);
+            output.innerHTML += '<p>' + message + '</p>';
+        }
+        
+        async function testAuthentication() {
+            log('🔍 Starting authentication test...');
+            
+            try {
+                // Test 1: Create/fix admin user
+                log('Step 1: Creating/fixing admin user...');
+                const createResponse = await fetch('/api/admin/create-admin', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const createData = await createResponse.json();
+                log('Create admin response: ' + JSON.stringify(createData));
+                
+                // Test 2: Try to login
+                log('Step 2: Testing login...');
+                const loginResponse = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123!'
+                    })
+                });
+                
+                const loginData = await loginResponse.json();
+                log('Login response status: ' + loginResponse.status);
+                log('Login response data: ' + JSON.stringify(loginData));
+                
+                if (loginResponse.ok) {
+                    log('✅ Login successful!');
+                    
+                    // Test 3: Check profile endpoint
+                    log('Step 3: Testing profile endpoint...');
+                    const profileResponse = await fetch('/api/user/profile', {
+                        credentials: 'include'
+                    });
+                    
+                    const profileData = await profileResponse.json();
+                    log('Profile response status: ' + profileResponse.status);
+                    log('Profile response data: ' + JSON.stringify(profileData));
+                    
+                    if (profileResponse.ok) {
+                        log('✅ Profile endpoint working!');
+                        log('Authentication is now fixed. Refreshing page...');
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 2000);
+                    } else {
+                        log('❌ Profile endpoint failed');
+                    }
+                } else {
+                    log('❌ Login failed: ' + loginData.message);
+                }
+                
+            } catch (error) {
+                log('❌ Test error: ' + error.message);
+            }
+        }
+        
+        // Run test when page loads
+        window.onload = function() {
+            testAuthentication();
+        };
+    </script>
+</body>
+</html>

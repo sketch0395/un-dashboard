@@ -10,15 +10,14 @@ export async function POST(request) {
     
     // Check if admin already exists
     const existingAdmin = await User.findOne({ username: 'admin' });
-    
-    if (existingAdmin) {
+      if (existingAdmin) {
       console.log('Updating existing admin user...');
       
-      // Reset password
-      const hashedPassword = await bcrypt.hash('admin123!', 10);
-      existingAdmin.password = hashedPassword;
+      // Set password directly - let the User model pre-save middleware handle hashing
+      existingAdmin.password = 'admin123!';
       existingAdmin.isActive = true;
-      existingAdmin.loginAttempts = 0;      existingAdmin.isLocked = false;
+      existingAdmin.loginAttempts = 0;
+      existingAdmin.isLocked = false;
       existingAdmin.approvedAt = new Date();
       existingAdmin.approvedBy = null; // System creation
       
@@ -33,18 +32,16 @@ export async function POST(request) {
           isActive: existingAdmin.isActive
         }
       });
-    } else {
-      console.log('Creating new admin user...');
+    } else {      console.log('Creating new admin user...');
       
-      // Create new admin user
-      const hashedPassword = await bcrypt.hash('admin123!', 10);
-      
+      // Create new admin user - let User model handle password hashing
       const adminUser = new User({
         username: 'admin',
         email: 'admin@undashboard.local',
-        password: hashedPassword,
+        password: 'admin123!', // Will be hashed by pre-save middleware
         firstName: 'Admin',
-        lastName: 'User',        role: 'admin',
+        lastName: 'User',
+        role: 'admin',
         isActive: true,
         approvedAt: new Date(),
         approvedBy: null // System creation
