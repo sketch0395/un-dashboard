@@ -240,13 +240,98 @@ export const ScanHistoryProvider = ({ children }) => {
         }));
         
         console.log('🔧 Updated device in scan history:', { scanId, deviceId });
-    }, []);
-
-    // Add a function to handle user logout cleanup
+    }, []);    // Add a function to handle user logout cleanup
     const clearScanHistoryOnLogout = useCallback(() => {
         setScanHistory([]);
         console.log("Cleared scan history due to user logout");
     }, []);
+
+    // Manual sync function - push localStorage scans to database
+    const syncToDatabase = useCallback(async () => {
+        if (!isAuthenticated || !user) {
+            console.log("Cannot sync: user not authenticated");
+            return false;
+        }
+        
+        setIsSyncing(true);
+        setSyncError(null);
+        
+        try {
+            // Get scans that are not yet in database
+            const unsynced = scanHistory.filter(scan => !scan.isFromDatabase);
+            
+            if (unsynced.length === 0) {
+                console.log("All scans are already synced");
+                setIsSyncing(false);
+                return true;
+            }
+            
+            console.log(`Syncing ${unsynced.length} unsynced scans to database...`);
+            
+            let successCount = 0;
+            for (const scan of unsynced) {
+                try {
+                    const response = await fetch('/api/scan-history', {
+                        method: 'POST',
+                        credentials: 'include',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            scanId: scan.id,
+                            name: scan.name,
+                            ipRange: scan.ipRange,
+                            deviceCount: scan.devices,
+                            scanData: scan.data,
+                            metadata: scan.metadata || {},
+                            settings: scan.settings || {}
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        successCount++;
+                    } else {
+                        console.error('Failed to sync scan:', scan.id, response.status);
+                    }
+                } catch (error) {
+                    console.error('Error syncing scan:', scan.id, error);
+                }
+            }
+            
+            if (successCount > 0) {
+                // Mark synced scans as from database
+                setScanHistory(current => 
+                    current.map(scan => 
+                        unsynced.includes(scan) 
+                            ? { ...scan, isFromDatabase: true }
+                            : scan
+                    )
+                );
+                setLastSyncTime(new Date());
+                console.log(`Successfully synced ${successCount}/${unsynced.length} scans`);
+            }
+            
+            setIsSyncing(false);
+            return successCount === unsynced.length;
+            
+        } catch (error) {
+            console.error('Error during sync:', error);
+            setSyncError('Sync failed');
+            setIsSyncing(false);
+            return false;
+        }
+    }, [scanHistory, isAuthenticated, user]);
+
+    // Refresh from database
+    const refreshFromDatabase = useCallback(async () => {
+        if (!isAuthenticated || !user) {
+            return false;
+        }
+        
+        setIsLoading(true);
+        await loadScanHistory();
+        return true;
+    }, [isAuthenticated, user]);
 
     // Clear scan history when user logs out
     useEffect(() => {
@@ -267,6 +352,8 @@ export const ScanHistoryProvider = ({ children }) => {
         updateScanName,
         clearHistory,
         updateDeviceInHistory,
+        syncToDatabase,
+        refreshFromDatabase,
         isLoading,
         isSyncing,
         syncError,

@@ -7,9 +7,24 @@ const socketIo = require('socket.io');
 const http = require('http');
 const Docker = require('dockerode');
 const SSH2 = require('ssh2');
+const { CollaborationServer } = require('./collaboration-server');
 
 const app = express();
 const server = http.createServer(app);
+
+// Initialize collaboration server - make it async
+const collaborationServer = new CollaborationServer();
+
+// We'll initialize the collaboration server after the main server setup
+async function initializeCollaborationServer() {
+    try {
+        await collaborationServer.initialize(server);
+        console.log('✅ Collaboration server initialized successfully');
+    } catch (error) {
+        console.error('❌ Failed to initialize collaboration server:', error);
+    }
+}
+
 const io = socketIo(server, {
     cors: {
         origin: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://10.5.1.83:3000', /^http:\/\/10\.5\.1\.\d+:3000$/],
@@ -2046,6 +2061,23 @@ io.on('connection', (socket) => {
     });
 });
 
+// Collaboration status endpoint
+app.get('/collaboration/status', (req, res) => {
+    try {
+        const stats = collaborationServer.getSessionStats();
+        res.json({
+            success: true,
+            data: stats
+        });
+    } catch (error) {
+        console.error('Error getting collaboration status:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
 // Error-handling middleware
 app.use((err, req, res, next) => {
     console.error('[ERROR]', err.message);
@@ -2057,8 +2089,14 @@ app.use((err, req, res, next) => {
 });
 
 // --- START SERVER ---
-server.listen(4000, '0.0.0.0', () => {
+server.listen(4000, '0.0.0.0', async () => {
     console.log('Server running on http://0.0.0.0:4000');
+    
+    // Initialize collaboration server
+    await initializeCollaborationServer();
+    
+    // Start collaboration server heartbeat
+    collaborationServer.startHeartbeat();
     
     // Test Docker connection on startup
     testDockerConnection().then(success => {

@@ -4,6 +4,38 @@ import ScanCollaboration from '../../../../../../../models/ScanCollaboration';
 import { AuthService } from '../../../../../../../middleware/auth';
 import { NextResponse } from 'next/server';
 
+// Access control function
+function checkScanAccess(sharedScan, user) {
+  // Admin can access all scans
+  if (user.role === 'admin') {
+    return true;
+  }
+  
+  // Owner can access their own scans
+  if (sharedScan.ownerId._id.toString() === user._id.toString()) {
+    return true;
+  }
+  
+  // Check visibility
+  if (sharedScan.sharing.visibility === 'public') {
+    return true;
+  }
+  
+  if (sharedScan.sharing.visibility === 'restricted') {
+    // Check if user is in allowed users list
+    if (sharedScan.sharing.allowedUsers.some(userId => userId.toString() === user._id.toString())) {
+      return true;
+    }
+    
+    // Check if user role is in allowed roles
+    if (sharedScan.sharing.allowedRoles.includes(user.role)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 export async function POST(request, { params }) {
   try {
     await dbConnection.connectMongoDB();
@@ -21,10 +53,9 @@ export async function POST(request, { params }) {
       cookies: { get: (name) => name === 'auth-token' ? { value: token } : null },
       headers: { get: (name) => request.headers.get(name) }
     };
-    
-    // Apply authentication
+      // Apply authentication
     const authResult = await AuthService.verifyAuth(mockReq);
-    if (!authResult.success) {
+    if (!authResult || !authResult.user) {
       return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
     }
     
@@ -77,40 +108,8 @@ export async function POST(request, { params }) {
       success: true,
       message: 'Scan downloaded successfully',
       data: downloadData
-    });
-  } catch (error) {
+    });  } catch (error) {
     console.error('Error downloading shared scan:', error);
     return NextResponse.json({ success: false, message: 'Failed to download shared scan' }, { status: 500 });
   }
-}
-
-function checkScanAccess(sharedScan, user) {
-  // Admin can access all scans
-  if (user.role === 'admin') {
-    return true;
-  }
-  
-  // Owner can access their own scans
-  if (sharedScan.ownerId._id.toString() === user._id.toString()) {
-    return true;
-  }
-  
-  // Check visibility
-  if (sharedScan.sharing.visibility === 'public') {
-    return true;
-  }
-  
-  if (sharedScan.sharing.visibility === 'restricted') {
-    // Check if user is in allowed users list
-    if (sharedScan.sharing.allowedUsers.some(userId => userId.toString() === user._id.toString())) {
-      return true;
-    }
-    
-    // Check if user role is in allowed roles
-    if (sharedScan.sharing.allowedRoles.includes(user.role)) {
-      return true;
-    }
-  }
-  
-  return false;
 }

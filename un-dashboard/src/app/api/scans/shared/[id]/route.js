@@ -5,6 +5,38 @@ import { AuthService } from '../../../../../../middleware/auth';
 import AuditLogger from '../../../../../../services/auditLogger';
 import { NextResponse } from 'next/server';
 
+// Access control function
+function checkScanAccess(sharedScan, user) {
+  // Admin can access all scans
+  if (user.role === 'admin') {
+    return true;
+  }
+  
+  // Owner can access their own scans
+  if (sharedScan.ownerId.toString() === user._id.toString()) {
+    return true;
+  }
+  
+  // Check visibility
+  if (sharedScan.sharing.visibility === 'public') {
+    return true;
+  }
+  
+  if (sharedScan.sharing.visibility === 'restricted') {
+    // Check if user is in allowed users list
+    if (sharedScan.sharing.allowedUsers.some(userId => userId.toString() === user._id.toString())) {
+      return true;
+    }
+    
+    // Check if user role is in allowed roles
+    if (sharedScan.sharing.allowedRoles.includes(user.role)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 export async function GET(request, { params }) {
   try {
     await dbConnection.connectMongoDB();
@@ -12,8 +44,7 @@ export async function GET(request, { params }) {
     // Extract token from cookies or headers
     const token = request.cookies.get('auth-token')?.value || 
                  request.headers.get('authorization')?.replace('Bearer ', '');
-    
-    if (!token) {
+      if (!token) {
       return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
     }
     
@@ -25,12 +56,12 @@ export async function GET(request, { params }) {
     
     // Apply authentication
     const authResult = await AuthService.verifyAuth(mockReq);
-    if (!authResult.success) {
+    if (!authResult || !authResult.user) {
       return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
     }
     
     const user = authResult.user;
-    const { id } = params;
+    const { id } = await params;
     
     // Find the shared scan
     const sharedScan = await SharedScan.findById(id).populate('ownerId', 'username email');
@@ -88,7 +119,7 @@ export async function PUT(request, { params }) {
     
     // Apply authentication
     const authResult = await AuthService.verifyAuth(mockReq);
-    if (!authResult.success) {
+    if (!authResult || !authResult.user) {
       return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
     }
     
@@ -175,7 +206,7 @@ export async function DELETE(request, { params }) {
     
     // Apply authentication
     const authResult = await AuthService.verifyAuth(mockReq);
-    if (!authResult.success) {
+    if (!authResult || !authResult.user) {
       return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
     }
     
@@ -215,40 +246,8 @@ export async function DELETE(request, { params }) {
     return NextResponse.json({
       success: true,
       message: 'Shared scan deleted successfully'
-    });
-  } catch (error) {
+    });  } catch (error) {
     console.error('Error deleting shared scan:', error);
     return NextResponse.json({ success: false, message: 'Failed to delete shared scan' }, { status: 500 });
   }
-}
-
-function checkScanAccess(sharedScan, user) {
-  // Admin can access all scans
-  if (user.role === 'admin') {
-    return true;
-  }
-  
-  // Owner can access their own scans
-  if (sharedScan.ownerId.toString() === user._id.toString()) {
-    return true;
-  }
-  
-  // Check visibility
-  if (sharedScan.sharing.visibility === 'public') {
-    return true;
-  }
-  
-  if (sharedScan.sharing.visibility === 'restricted') {
-    // Check if user is in allowed users list
-    if (sharedScan.sharing.allowedUsers.some(userId => userId.toString() === user._id.toString())) {
-      return true;
-    }
-    
-    // Check if user role is in allowed roles
-    if (sharedScan.sharing.allowedRoles.includes(user.role)) {
-      return true;
-    }
-  }
-  
-  return false;
 }
