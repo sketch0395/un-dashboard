@@ -521,6 +521,16 @@ export default function NetworkDashboard() {
                 </div>
             ) : (                <div className="flex-1 overflow-hidden">
                     <SharedScansBrowser 
+                        onScanSelect={(scanData) => {
+                            // Load scan directly to topology view
+                            if (scanData && scanData.scanData && scanData.scanData.devices) {
+                                // Set devices data from the shared scan
+                                setDevices(scanData.scanData.devices);
+                                // Switch to topology view to see loaded scan
+                                setActiveTab('topology');
+                                console.log('Scan loaded to topology:', scanData.name);
+                            }
+                        }}
                         onImportSuccess={(scanData) => {
                             // Import the shared scan data
                             if (scanData && scanData.scanData && scanData.scanData.devices) {

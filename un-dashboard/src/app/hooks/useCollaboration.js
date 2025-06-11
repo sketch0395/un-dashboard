@@ -45,15 +45,12 @@ export function useCollaboration(scanId) {
       const cookieToken = document.cookie
         .split('; ')
         .find(row => row.startsWith('auth-token='))
-        ?.split('=')[1];
-
-      console.log('🍪 Cookie token found:', cookieToken ? 'yes' : 'no');      // The collaboration server is integrated into the main server on port 3000
-      // with the path '/collaboration-ws'
+        ?.split('=')[1];      console.log('🍪 Cookie token found:', cookieToken ? 'yes' : 'no');      // Connect to the collaboration server on port 4000
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsHost = window.location.hostname;
-      const wsPort = window.location.port || (window.location.protocol === 'https:' ? 443 : 80);
+      const wsPort = 4000; // Collaboration server runs on port 4000
       
-      // Connect to the collaboration WebSocket endpoint on the same server
+      // Connect to the collaboration WebSocket endpoint
       let wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/collaboration-ws?scanId=${encodeURIComponent(scanId)}`;
       if (cookieToken) {
         wsUrl += `&token=${encodeURIComponent(cookieToken)}`;
@@ -267,15 +264,20 @@ export function useCollaboration(scanId) {
         console.log('Unknown collaboration message:', data.type);
     }
   }, []);  // Collaboration actions
-  const lockDevice = useCallback((deviceId) => {
-    console.log('🔒 Attempting to lock device:', deviceId);
+  const lockDevice = useCallback((deviceId) => {      console.log('🔒 Attempting to lock device:', deviceId);
     return new Promise((resolve, reject) => {
+      // Check if WebSocket is connected
+      if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+        reject(new Error('WebSocket not connected'));
+        return;
+      }
+
       // Set up a timeout for the lock request
       const timeout = setTimeout(() => {
         console.log('⏰ Lock request timeout for device:', deviceId);
         pendingLockRequests.current.delete(deviceId);
         reject(new Error('Lock request timeout'));
-      }, 5000);
+      }, 10000); // Increased to 10 seconds
 
       // Store the resolver
       pendingLockRequests.current.set(deviceId, {
