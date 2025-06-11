@@ -4,12 +4,29 @@ import NetworkViewManager from '../networkviews/NetworkViewManager'; // Direct i
 // determineDeviceRoles has been moved to deviceManagementUtils.js
 
 // Wrap component with forwardRef to expose refresh method
-const TopologyMap = forwardRef(({ devices, vendorColors, customNames, setCustomNames, openSSHModal, setModalDevice }, ref) => {
+const TopologyMap = forwardRef(({ 
+    devices, 
+    vendorColors, 
+    customNames, 
+    setCustomNames, 
+    openSSHModal, 
+    setModalDevice,
+    contentDimensions,
+    // Collaboration props
+    collaborativeMode,
+    scanId,
+    isConnected,
+    collaborators,
+    deviceLocks,
+    onCollaborativeDeviceClick,
+    isDeviceLockedByMe,
+    isDeviceLockedByOther,
+    getDeviceLock
+}, ref) => {
     // Simply pass through props to the NetworkViewManager component
     // which now handles all visualization logic and UI controls
     return (
-        <div className="w-full h-full">
-            <NetworkViewManager 
+        <div className="w-full h-full">            <NetworkViewManager 
                 ref={ref}
                 devices={devices} 
                 vendorColors={vendorColors} 
@@ -17,6 +34,17 @@ const TopologyMap = forwardRef(({ devices, vendorColors, customNames, setCustomN
                 setCustomNames={setCustomNames}
                 openSSHModal={openSSHModal}
                 setModalDevice={setModalDevice}
+                contentDimensions={contentDimensions}
+                // Collaboration props
+                collaborativeMode={collaborativeMode}
+                scanId={scanId}
+                isConnected={isConnected}
+                collaborators={collaborators}
+                deviceLocks={deviceLocks}
+                onCollaborativeDeviceClick={onCollaborativeDeviceClick}
+                isDeviceLockedByMe={isDeviceLockedByMe}
+                isDeviceLockedByOther={isDeviceLockedByOther}
+                getDeviceLock={getDeviceLock}
             />
         </div>
     );

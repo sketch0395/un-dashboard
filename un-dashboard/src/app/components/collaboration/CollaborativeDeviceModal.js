@@ -17,8 +17,7 @@ export function CollaborativeDeviceModal({
   onClose, 
   onSave,
   readOnly = false 
-}) {
-  const [localDevice, setLocalDevice] = useState(device);
+}) {  const [localDevice, setLocalDevice] = useState(device || {});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
@@ -46,10 +45,9 @@ export function CollaborativeDeviceModal({
   const lock = getDeviceLock(deviceId);
   const isLocked = !!lock;
   const canEdit = !readOnly && (!isLocked || isDeviceLockedByMe(deviceId));
-
   // Sync device data when props change
   useEffect(() => {
-    setLocalDevice(device);
+    setLocalDevice(device || {});
     setHasUnsavedChanges(false);
   }, [device]);
 
@@ -235,10 +233,11 @@ export function CollaborativeDeviceModal({
     
     handleStopEdit();
     onClose();
-  }, [hasUnsavedChanges, saveChanges, handleStopEdit, onClose]);
+  }, [hasUnsavedChanges, saveChanges, handleStopEdit, onClose]);  if (!isOpen || !device) return null;
 
-  if (!isOpen || !device) return null;
-
+  // Ensure localDevice is always valid
+  const safeLocalDevice = localDevice || device || {};
+  
   const typingIndicators = getTypingIndicators(deviceId);
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -329,10 +328,9 @@ export function CollaborativeDeviceModal({
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
                   IP Address
-                </label>
-                <input
+                </label>                <input
                   type="text"
-                  value={localDevice.ip || ''}
+                  value={safeLocalDevice.ip || ''}
                   onChange={(e) => handleFieldChange('ip', e.target.value)}
                   onFocus={(e) => handleFieldFocus('ip', e)}
                   onBlur={() => handleFieldBlur('ip')}
@@ -353,10 +351,9 @@ export function CollaborativeDeviceModal({
               </div>              <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
                   Hostname
-                </label>
-                <input
+                </label>                <input
                   type="text"
-                  value={localDevice.hostname || ''}
+                  value={safeLocalDevice.hostname || ''}
                   onChange={(e) => handleFieldChange('hostname', e.target.value)}
                   onFocus={(e) => handleFieldFocus('hostname', e)}
                   onBlur={() => handleFieldBlur('hostname')}
@@ -377,10 +374,9 @@ export function CollaborativeDeviceModal({
               </div>              <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
                   MAC Address
-                </label>
-                <input
+                </label>                <input
                   type="text"
-                  value={localDevice.mac || ''}
+                  value={safeLocalDevice.mac || ''}
                   onChange={(e) => handleFieldChange('mac', e.target.value)}
                   onFocus={(e) => handleFieldFocus('mac', e)}
                   onBlur={() => handleFieldBlur('mac')}
@@ -397,10 +393,9 @@ export function CollaborativeDeviceModal({
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
                   Operating System
-                </label>
-                <input
+                </label>                <input
                   type="text"
-                  value={localDevice.os || ''}
+                  value={safeLocalDevice.os || ''}
                   onChange={(e) => handleFieldChange('os', e.target.value)}
                   onFocus={(e) => handleFieldFocus('os', e)}
                   onBlur={() => handleFieldBlur('os')}
@@ -420,9 +415,8 @@ export function CollaborativeDeviceModal({
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
                   Device Type
-                </label>
-                <select
-                  value={localDevice.type || ''}
+                </label>                <select
+                  value={safeLocalDevice.type || ''}
                   onChange={(e) => handleFieldChange('type', e.target.value)}
                   onFocus={(e) => handleFieldFocus('type', e)}
                   onBlur={() => handleFieldBlur('type')}
@@ -446,10 +440,9 @@ export function CollaborativeDeviceModal({
               </div>              <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
                   Vendor
-                </label>
-                <input
+                </label>                <input
                   type="text"
-                  value={localDevice.vendor || ''}
+                  value={safeLocalDevice.vendor || ''}
                   onChange={(e) => handleFieldChange('vendor', e.target.value)}
                   onFocus={(e) => handleFieldFocus('vendor', e)}
                   onBlur={() => handleFieldBlur('vendor')}
@@ -466,9 +459,8 @@ export function CollaborativeDeviceModal({
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
                   Status
-                </label>
-                <select
-                  value={localDevice.status || 'unknown'}
+                </label>                <select
+                  value={safeLocalDevice.status || 'unknown'}
                   onChange={(e) => handleFieldChange('status', e.target.value)}
                   onFocus={(e) => handleFieldFocus('status', e)}
                   onBlur={() => handleFieldBlur('status')}
@@ -486,9 +478,8 @@ export function CollaborativeDeviceModal({
               </div>              <div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
                   Notes
-                </label>
-                <textarea
-                  value={localDevice.notes || ''}
+                </label>                <textarea
+                  value={safeLocalDevice.notes || ''}
                   onChange={(e) => handleFieldChange('notes', e.target.value)}
                   onFocus={(e) => handleFieldFocus('notes', e)}
                   onBlur={() => handleFieldBlur('notes')}
@@ -511,11 +502,11 @@ export function CollaborativeDeviceModal({
               </div>
             </div>
           </div>          {/* Ports and Services */}
-          {localDevice.ports && localDevice.ports.length > 0 && (
+          {safeLocalDevice.ports && safeLocalDevice.ports.length > 0 && (
             <div className="mt-6">
               <h3 className="text-lg font-medium text-white mb-4">Open Ports</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {localDevice.ports.map((port, index) => (
+                {safeLocalDevice.ports.map((port, index) => (
                   <div key={index} className="bg-gray-700 rounded-lg p-3">
                     <div className="text-sm font-medium text-white">Port {port.port}/{port.protocol}</div>
                     {port.service && (

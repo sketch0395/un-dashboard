@@ -4,6 +4,7 @@ require('dotenv').config({ path: '.env' });
 
 const WebSocket = require('ws');
 const http = require('http');
+const fetch = require('node-fetch');
 const { AuthService } = require('./middleware/auth');
 const dbConnection = require('./lib/db');
 
@@ -99,9 +100,10 @@ class CollaborationServer {
         console.log('❌ Authentication verification failed');
         ws.close(1008, 'Invalid authentication');
         return;
-      }
+      }      console.log('✅ Authentication successful for user:', authData.user.username);
 
-      console.log('✅ Authentication successful for user:', authData.user.username);      ws.user = authData.user;
+      ws.user = authData.user;
+      ws.authToken = token; // Store the token for persistence calls
       ws.scanId = scanId;
       ws.isAlive = true;
 
@@ -419,18 +421,31 @@ class CollaborationServer {
         timestamp: new Date()
       });
     }
-  }
-
-  handleDeviceUpdate(ws, data) {
+  }  async handleDeviceUpdate(ws, data) {
+    console.log('🔄 Device update received:', {
+      user: data.user || ws.user?.username,
+      deviceId: data.device?.ip || data.deviceId,
+      changes: data.device || data.changes
+    });
+    
     const { scanId, user } = ws;
     const { deviceId, changes, version } = data;
 
     const session = this.scanSessions.get(scanId);
-    if (!session) return;
+    if (!session) {
+      console.log('❌ No session found for scan:', scanId);
+      return;
+    }
 
     // Check if user has lock on device
     const lock = session.lockState.get(deviceId);
     if (!lock || lock.userId !== user._id) {
+      console.log('❌ Device not locked by user:', {
+        deviceId,
+        hasLock: !!lock,
+        lockOwnerId: lock?.userId,
+        currentUserId: user._id
+      });
       ws.send(JSON.stringify({
         type: 'device_update_failed',
         deviceId,
@@ -449,10 +464,21 @@ class CollaborationServer {
       changes,
       timestamp: new Date(),
       version
-    };    session.pendingChanges.set(changeId, change);
-    session.lastModified = new Date();
-    session.version++;
+    };
 
+    session.pendingChanges.set(changeId, change);
+    session.lastModified = new Date();
+    session.version++;    // Persist the device changes to the database
+    try {
+      console.log('💾 Attempting to persist device changes to database...');
+      await this.persistDeviceChanges(scanId, deviceId, changes, user, ws.authToken);
+      console.log(`✅ Device ${deviceId} changes persisted to database for scan ${scanId}`);
+    } catch (error) {
+      console.error('❌ Failed to persist device changes to database:', error);
+      // Continue with broadcast even if persistence fails
+    }
+
+    console.log('📡 Broadcasting device update to all users...');
     // Broadcast device update to ALL users (including sender for symmetric collaboration)
     this.broadcastToScan(scanId, {
       type: 'device_updated',
@@ -464,6 +490,7 @@ class CollaborationServer {
       version: session.version,
       timestamp: new Date()
     });
+    console.log('✅ Device update broadcast complete');
   }
 
   handleScanUpdate(ws, data) {
@@ -548,8 +575,35 @@ class CollaborationServer {
       users,
       locks,
       version: session.version,
-      timestamp: new Date()
-    }));
+      timestamp: new Date()    }));
+  }
+  async persistDeviceChanges(scanId, deviceId, changes, user, authToken) {
+    try {
+      // Use fetch to call our API endpoint
+      const response = await fetch(`http://localhost:3000/api/scans/shared/${scanId}/devices`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cookie': `auth-token=${authToken}` // Use the passed auth token
+        },
+        body: JSON.stringify({
+          deviceId,
+          deviceChanges: changes
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`API call failed: ${response.status} - ${error}`);
+      }
+
+      const result = await response.json();
+      console.log(`💾 Device ${deviceId} successfully persisted:`, result);
+      return result;
+    } catch (error) {
+      console.error(`Failed to persist device ${deviceId} changes:`, error);
+      throw error;
+    }
   }
 
   startHeartbeat() {

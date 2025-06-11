@@ -15,7 +15,18 @@ const NetworkViewManager = forwardRef(({
     customNames, 
     setCustomNames, // Add setCustomNames prop
     openSSHModal, 
-    setModalDevice 
+    setModalDevice,
+    contentDimensions,
+    // Collaboration props
+    collaborativeMode,
+    scanId,
+    isConnected,
+    collaborators,
+    deviceLocks,
+    onCollaborativeDeviceClick,
+    isDeviceLockedByMe,
+    isDeviceLockedByOther,
+    getDeviceLock
 }, ref) => {
     const svgRef = useRef();
     const containerRef = useRef();
@@ -294,14 +305,21 @@ const NetworkViewManager = forwardRef(({
                 }}
             >
                 {content}
-            </div>
-        );
-    };    // Handle device click
+            </div>        );
+    };
+
+    // Handle device click
     const handleDeviceClick = (device, event) => {
         // Check if this is a right-click (context menu)
         if (event && (event.button === 2 || event.ctrlKey)) {
-            // Show context menu on right-click or ctrl+click
-            // Ensure we have clientX and clientY values
+            // In collaborative mode, don't show context menu - use collaborative click instead
+            if (collaborativeMode && onCollaborativeDeviceClick) {
+                console.log('🔗 Right-click in collaborative mode, using collaborative device click');
+                onCollaborativeDeviceClick(device);
+                return;
+            }
+            
+            // Show context menu on right-click or ctrl+click in solo mode
             const clientX = event.clientX || 0;
             const clientY = event.clientY || 0;
             
@@ -312,17 +330,22 @@ const NetworkViewManager = forwardRef(({
                 y: clientY
             });
         } else {
-            // Direct open modal on regular click
-            if (setModalDevice) {
-                setModalDevice(device);
+            // Handle regular click
+            if (collaborativeMode && onCollaborativeDeviceClick) {
+                console.log('🔗 Regular click in collaborative mode, using collaborative device click');
+                onCollaborativeDeviceClick(device);
+            } else {
+                // Direct open modal on regular click in solo mode
+                if (setModalDevice) {
+                    setModalDevice(device);
+                }
             }
         }
     };
 
     // Prepare filtered devices
     const filteredDevices = getFilteredDevices();    // Render appropriate view component based on visualization type
-    const renderVisualization = () => {
-        const viewProps = {
+    const renderVisualization = () => {        const viewProps = {
             devices: filteredDevices,
             vendorColors,
             customNames,
@@ -335,7 +358,16 @@ const NetworkViewManager = forwardRef(({
             onDeviceClick: handleDeviceClick,
             showTooltip,
             hideTooltip,
-            refreshTrigger
+            refreshTrigger,
+            // Collaboration props
+            collaborativeMode,
+            scanId,
+            isConnected,
+            collaborators,
+            deviceLocks,
+            isDeviceLockedByMe,
+            isDeviceLockedByOther,
+            getDeviceLock
         };
 
         switch (visualizationType) {
@@ -450,8 +482,7 @@ const NetworkViewManager = forwardRef(({
                             </button>
                         </div>
                     </div>
-                    
-                    {(visualizationType === "circular" || visualizationType === "hierarchical") && (
+                      {(visualizationType === "circular" || visualizationType === "hierarchical") && (
                         <div className="mt-3">
                             <button
                                 className="w-full px-2 py-1 text-xs rounded bg-gray-600 hover:bg-gray-500 flex items-center justify-center"
@@ -460,6 +491,22 @@ const NetworkViewManager = forwardRef(({
                                 <FaLayerIcon size={10} className="mr-1" /> 
                                 {Object.keys(subnetGroups).length ? "Disable" : "Enable"} Subnet Grouping
                             </button>
+                        </div>
+                    )}
+                    
+                    {/* Collaboration Status Indicator */}
+                    {collaborativeMode && (
+                        <div className="mt-3 border-t border-gray-600 pt-3">
+                            <div className="text-xs text-gray-300 mb-1">Collaboration Status:</div>
+                            <div className="flex items-center space-x-2">
+                                <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                <span className="text-xs text-gray-400">
+                                    {isConnected ? `${collaborators.length} users` : 'Disconnected'}
+                                </span>
+                            </div>
+                            {scanId && (
+                                <div className="text-xs text-gray-500 mt-1">Scan: {scanId}</div>
+                            )}
                         </div>
                     )}
                 </div>

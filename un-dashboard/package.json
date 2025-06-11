@@ -28,7 +28,7 @@
     "lucide-react": "^0.487.0",
     "mongoose": "^8.15.1",
     "next": "15.2.4",
-    "node-fetch": "^3.3.2",
+    "node-fetch": "^2.7.0",
     "nodemailer": "^7.0.3",
     "ping": "^0.4.4",
     "puppeteer": "^24.10.0",

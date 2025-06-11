@@ -21,7 +21,16 @@ const CircularNetworkView = ({
     onDeviceClick,
     showTooltip,
     hideTooltip,
-    refreshTrigger
+    refreshTrigger,
+    // Collaboration props
+    collaborativeMode,
+    scanId,
+    isConnected,
+    collaborators,
+    deviceLocks,
+    isDeviceLockedByMe,
+    isDeviceLockedByOther,
+    getDeviceLock
 }) => {
     const svgRef = useRef();
       useEffect(() => {
@@ -334,13 +343,39 @@ const CircularNetworkView = ({
                 
                 // Fallback
                 return d.groupColor || "#6b7280";
-            };
-
-            const nodeShape = node.append(isSwitch ? "rect" : "circle")
+            };            const nodeShape = node.append(isSwitch ? "rect" : "circle")
                 .attr("fill", deviceColor())
                 .attr("stroke", "white")
                 .attr("stroke-width", 1.5)
                 .attr("cursor", "pointer");
+                
+            // Add collaboration indicators
+            if (collaborativeMode && d.ip) {
+                const deviceLock = getDeviceLock(d.ip);
+                
+                if (deviceLock) {
+                    // Device is locked by someone
+                    const isLockedByMe = isDeviceLockedByMe(d.ip);
+                    const lockColor = isLockedByMe ? '#10b981' : '#ef4444'; // Green for me, red for others
+                    
+                    // Add lock border
+                    nodeShape
+                        .attr("stroke", lockColor)
+                        .attr("stroke-width", 3)
+                        .attr("stroke-dasharray", isLockedByMe ? "none" : "5,3");
+                    
+                    // Add lock indicator icon
+                    node.append("text")
+                        .attr("x", (d.size || 20) + 8)
+                        .attr("y", -(d.size || 20) + 8)
+                        .attr("text-anchor", "middle")
+                        .attr("font-size", "12px")
+                        .attr("fill", lockColor)
+                        .text("🔒")
+                        .append("title")
+                        .text(isLockedByMe ? "Locked by you" : `Locked by ${deviceLock.username}`);
+                }
+            }
                 
             if (isSwitch) {
                 const nodeSize = d.size || 20;

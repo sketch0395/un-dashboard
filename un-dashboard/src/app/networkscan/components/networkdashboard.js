@@ -4,9 +4,11 @@ import { useState, lazy, Suspense, useEffect, useRef } from "react";
 import TopologyMap from "./networktopology";
 import SharedScansBrowser from "./SharedScansBrowser";
 import UnifiedDeviceModal from "../../components/UnifiedDeviceModal";
+import { CollaborativeDeviceModal } from "../../components/collaboration/CollaborativeDeviceModal";
 import NetworkControlModal from "../../components/NetworkControlModal";
 import { useNetworkControlModal } from "../../components/useNetworkControlModal";
-import { FaNetworkWired, FaCog, FaBug, FaExpand, FaCompress, FaShare } from "react-icons/fa";
+import { useCollaboration } from "../../hooks/useCollaboration";
+import { FaNetworkWired, FaCog, FaBug, FaExpand, FaCompress, FaShare, FaUsers, FaTimes, FaChevronDown } from "react-icons/fa";
 import { format } from "date-fns";
 import { debugNetworkRelationships, fixSwitchParentGateway } from "../../utils/networkRelationshipDebug";
 
@@ -38,7 +40,29 @@ export default function NetworkDashboard() {
     const [contentDimensions, setContentDimensions] = useState({ width: 0, height: 0 });
     
     // Add ref for the topology map component
-    const topologyMapRef = useRef(null);
+    const topologyMapRef = useRef(null);    // Collaboration state for topology views
+    const [collaborativeMode, setCollaborativeMode] = useState(false);
+    const [scanId, setScanId] = useState(null);
+      // Scan selection modal state
+    const [showScanSelector, setShowScanSelector] = useState(false);
+    const [availableScans, setAvailableScans] = useState([]);
+    const [loadingScans, setLoadingScans] = useState(false);
+    const [scanSelectorFilter, setScanSelectorFilter] = useState('');
+    const [scanSourceFilter, setScanSourceFilter] = useState('all'); // 'all', 'shared', 'history'
+    
+    // Initialize collaboration hook when in collaborative mode
+    const collaboration = useCollaboration(collaborativeMode ? scanId : null);
+    const {
+        isConnected,
+        collaborators,
+        deviceLocks,
+        getDeviceLock,
+        lockDevice,
+        unlockDevice,
+        updateDevice,
+        isDeviceLockedByMe,
+        isDeviceLockedByOther
+    } = collaboration;
 
     // Add collaboration event handlers for real-time topology updates
     useEffect(() => {
@@ -371,9 +395,7 @@ export default function NetworkDashboard() {
             setSSHModalVisible(false);
             setShowTerminal(true);
         }
-    };
-
-    // Get all devices from the devices object and flatten them into a single array
+    };    // Get all devices from the devices object and flatten them into a single array
     const getAllDevices = () => {
         if (!devices) return [];
         const allDevices = [];
@@ -403,7 +425,197 @@ export default function NetworkDashboard() {
         }
         
         return allDevices;
-    };    return (        <div className="flex flex-col bg-gray-900 text-white h-screen w-screen overflow-hidden">
+    };    // Fetch available scans for collaboration
+    const fetchAvailableScans = async () => {
+        setLoadingScans(true);
+        try {
+            // Fetch both shared scans and user's scan history
+            const [sharedResponse, historyResponse] = await Promise.all([
+                fetch('/api/scans/shared?limit=25', {
+                    credentials: 'include'
+                }),
+                fetch('/api/scan-history?limit=25', {
+                    credentials: 'include'
+                })
+            ]);
+            
+            const allScans = [];
+            
+            // Add shared scans
+            if (sharedResponse.ok) {
+                const sharedData = await sharedResponse.json();
+                if (sharedData.success && sharedData.data) {
+                    allScans.push(...sharedData.data.map(scan => ({
+                        ...scan,
+                        source: 'shared',
+                        scanId: scan._id // Use MongoDB _id for shared scans
+                    })));
+                }
+            }
+            
+            // Add scan history
+            if (historyResponse.ok) {
+                const historyData = await historyResponse.json();
+                if (Array.isArray(historyData)) {
+                    allScans.push(...historyData.map(scan => ({
+                        ...scan,
+                        _id: scan.scanId, // Use scanId as _id for consistency
+                        source: 'history',
+                        scanId: scan.scanId,
+                        ownerId: { username: 'You' }, // Mark as user's own scan
+                        metadata: {
+                            deviceCount: scan.deviceCount,
+                            ...scan.metadata
+                        }
+                    })));
+                }
+            }
+            
+            // Sort by creation date (newest first)
+            allScans.sort((a, b) => new Date(b.createdAt || b.timestamp) - new Date(a.createdAt || a.timestamp));
+            
+            setAvailableScans(allScans);
+        } catch (error) {
+            console.error('Error fetching scans:', error);
+            setAvailableScans([]);
+        } finally {
+            setLoadingScans(false);
+        }
+    };// Collaborative device handling functions
+    const handleCollaborativeDeviceClick = async (device) => {
+        console.log('🔗 Collaborative device click for:', device.ip);
+        
+        if (!collaborativeMode || !scanId) {
+            console.warn('Not in collaborative mode or no scan ID');
+            return;
+        }
+
+        try {
+            // Attempt to lock the device
+            const lockSuccess = await lockDevice(device.ip);
+            
+            if (lockSuccess) {
+                console.log(`🔒 Successfully locked device ${device.ip} for editing`);
+                setModalDevice(device);
+            } else {
+                const lock = getDeviceLock(device.ip);
+                if (lock) {
+                    console.log(`❌ Device ${device.ip} is locked by ${lock.username}`);
+                    alert(`Device ${device.ip} is currently being edited by ${lock.username}`);
+                } else {
+                    console.log(`❌ Failed to lock device ${device.ip}`);
+                    alert('Unable to lock device for editing. Please try again.');
+                }
+            }
+        } catch (error) {
+            console.error('Error handling collaborative device click:', error);
+            alert('Error occurred while trying to edit device');
+        }
+    };
+
+    const handleCollaborativeDeviceSave = async (updatedDevice) => {
+        console.log('💾 Saving collaborative device:', updatedDevice.ip);
+        
+        if (!collaborativeMode || !scanId) {
+            console.warn('Not in collaborative mode, falling back to regular save');
+            handleSaveDevice(updatedDevice);
+            return;
+        }
+
+        try {
+            // Check if this is an SSH request
+            if (updatedDevice._requestSSH) {
+                const { _requestSSH, ...deviceWithoutFlag } = updatedDevice;
+                handleOpenSSH(deviceWithoutFlag);
+                
+                // Still need to unlock the device
+                await unlockDevice(updatedDevice.ip);
+                return;
+            }
+
+            // Get the original device for comparison
+            const originalDevice = getAllDevices().find(d => d.ip === updatedDevice.ip) || {};
+            const mergedOriginal = {
+                ...originalDevice,
+                ...customNames[updatedDevice.ip]
+            };
+
+            // Calculate what changed
+            const changes = getDeviceChanges(mergedOriginal, updatedDevice);
+            
+            if (Object.keys(changes).length > 0) {
+                console.log('📤 Broadcasting device changes:', changes);
+                
+                // Update device through collaboration system
+                await updateDevice(updatedDevice.ip, changes);
+                
+                // Also update local state
+                handleSaveDevice(updatedDevice);
+            } else {
+                console.log('No changes detected, just unlocking device');
+            }
+
+            // Unlock the device
+            await unlockDevice(updatedDevice.ip);
+            console.log(`🔓 Unlocked device ${updatedDevice.ip}`);
+            
+        } catch (error) {
+            console.error('Error saving collaborative device:', error);
+            alert('Error occurred while saving device');
+            
+            // Try to unlock the device even if save failed
+            try {
+                await unlockDevice(updatedDevice.ip);
+            } catch (unlockError) {
+                console.error('Error unlocking device after failed save:', unlockError);
+            }
+        }
+    };
+
+    const handleCollaborativeModalClose = async (device) => {
+        console.log('❌ Closing collaborative modal for device:', device?.ip);
+        
+        if (collaborativeMode && scanId && device?.ip) {
+            try {
+                await unlockDevice(device.ip);
+                console.log(`🔓 Unlocked device ${device.ip} on modal close`);
+            } catch (error) {
+                console.error('Error unlocking device on modal close:', error);
+            }
+        }
+    };    // Toggle collaboration mode
+    const toggleCollaborationMode = async () => {
+        if (collaborativeMode) {
+            // Disable collaboration mode
+            setCollaborativeMode(false);
+            setScanId(null);
+            console.log('❌ Collaboration mode disabled');
+        } else {
+            // Enable collaboration mode - show scan selector
+            await fetchAvailableScans();
+            setShowScanSelector(true);
+        }
+    };    // Handle scan selection for collaboration
+    const handleScanSelect = (selectedScan) => {
+        const collaborationScanId = selectedScan.scanId || selectedScan._id;
+        setScanId(collaborationScanId);
+        setCollaborativeMode(true);
+        setShowScanSelector(false);
+        console.log(`✅ Collaboration mode enabled for scan: ${selectedScan.name} (${collaborationScanId}) from ${selectedScan.source}`);
+    };
+
+    // Handle manual scan ID entry
+    const handleManualScanId = () => {
+        const newScanId = prompt('Enter Scan ID for collaboration:');
+        if (newScanId && newScanId.trim()) {
+            setScanId(newScanId.trim());
+            setCollaborativeMode(true);
+            setShowScanSelector(false);
+            console.log(`✅ Collaboration mode enabled for scan: ${newScanId}`);
+        }
+    };
+
+    return (        <div className="flex flex-col bg-gray-900 text-white h-screen w-screen overflow-hidden">
             {/* Tab Navigation */}
             <div className="bg-gray-800 border-b border-gray-700">
                 <div className="flex space-x-0">
@@ -447,8 +659,32 @@ export default function NetworkDashboard() {
                                 )}
                             </div>
                         </div>
-                        
-                        <div className="flex items-center space-x-3">
+                          <div className="flex items-center space-x-3">
+                            {/* Collaboration Toggle */}
+                            <button
+                                onClick={toggleCollaborationMode}
+                                className={`px-4 py-2 rounded flex items-center transition-colors ${
+                                    collaborativeMode 
+                                        ? 'bg-green-600 hover:bg-green-700 text-white' 
+                                        : 'bg-gray-600 hover:bg-gray-700 text-white'
+                                }`}
+                                title={collaborativeMode ? 'Disable Collaboration Mode' : 'Enable Collaboration Mode'}
+                            >
+                                <FaUsers className="mr-2" />
+                                {collaborativeMode ? 'Collaborative' : 'Solo'}
+                            </button>
+
+                            {/* Collaboration Status */}
+                            {collaborativeMode && (
+                                <div className="flex items-center space-x-2 text-sm">
+                                    <span className="text-gray-400">Scan ID: {scanId}</span>
+                                    <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                                    <span className="text-gray-400">
+                                        {isConnected ? `${collaborators.length} users` : 'Disconnected'}
+                                    </span>
+                                </div>
+                            )}
+                            
                             {/* Network Control Button */}
                             <button
                                 onClick={networkModal.openModal}
@@ -506,8 +742,7 @@ export default function NetworkDashboard() {
                     <div 
                         ref={contentRef}
                         className="w-full h-full bg-gray-800 rounded-lg overflow-hidden"
-                    >
-                        <TopologyMap
+                    >                        <TopologyMap
                             ref={topologyMapRef}
                             devices={devices}
                             vendorColors={vendorColors}
@@ -516,6 +751,16 @@ export default function NetworkDashboard() {
                             openSSHModal={handleOpenSSH}
                             contentDimensions={contentDimensions}
                             setModalDevice={setModalDevice}
+                            // Collaboration props
+                            collaborativeMode={collaborativeMode}
+                            scanId={scanId}
+                            isConnected={isConnected}
+                            collaborators={collaborators}
+                            deviceLocks={deviceLocks}
+                            onCollaborativeDeviceClick={handleCollaborativeDeviceClick}
+                            isDeviceLockedByMe={isDeviceLockedByMe}
+                            isDeviceLockedByOther={isDeviceLockedByOther}
+                            getDeviceLock={getDeviceLock}
                         />
                     </div>
                 </div>
@@ -542,18 +787,35 @@ export default function NetworkDashboard() {
                         }}
                     />
                 </div>
+            )}            {/* Device Modal - Use CollaborativeDeviceModal when in collaborative mode */}
+            {collaborativeMode ? (
+                <CollaborativeDeviceModal
+                    device={modalDevice}
+                    isOpen={!!modalDevice}
+                    onSave={handleCollaborativeDeviceSave}
+                    onClose={() => {
+                        if (modalDevice) {
+                            handleCollaborativeModalClose(modalDevice);
+                        }
+                        setModalDevice(null);
+                    }}
+                    onStartSSH={(device) => {
+                        setSSHTarget(device);
+                        setSSHModalVisible(true);
+                    }}
+                    scanId={scanId}
+                />
+            ) : (
+                <UnifiedDeviceModal
+                    modalDevice={modalDevice}
+                    setModalDevice={setModalDevice}
+                    onSave={handleSaveDevice}
+                    onStartSSH={(device) => {
+                        setSSHTarget(device);
+                        setSSHModalVisible(true);
+                    }}
+                />
             )}
-
-            {/* Device Modal */}
-            <UnifiedDeviceModal
-                modalDevice={modalDevice}
-                setModalDevice={setModalDevice}
-                onSave={handleSaveDevice}
-                onStartSSH={(device) => {
-                    setSSHTarget(device);
-                    setSSHModalVisible(true);
-                }}
-            />
             
             {/* SSH Modal */}
             {sshModalVisible && sshTarget && (
@@ -613,9 +875,7 @@ export default function NetworkDashboard() {
                         onClose={() => setShowTerminal(false)}
                     />
                 </Suspense>
-            )}
-
-            {/* Network Control Modal */}
+            )}            {/* Network Control Modal */}
             <NetworkControlModal
                 isVisible={networkModal.isModalVisible}
                 onClose={networkModal.closeModal}
@@ -630,6 +890,98 @@ export default function NetworkDashboard() {
                 showRawDataInspector={true}
                 currentState={{ devices }}
             />
+
+            {/* Scan Selection Modal for Collaboration */}
+            {showScanSelector && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+                    <div className="bg-gray-800 rounded-lg p-6 w-96 max-h-96 overflow-hidden flex flex-col">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-white text-xl font-semibold">Select Scan for Collaboration</h2>
+                            <button
+                                onClick={() => setShowScanSelector(false)}
+                                className="text-gray-400 hover:text-white"
+                            >
+                                <FaTimes />
+                            </button>
+                        </div>
+
+                        {/* Search Filter */}
+                        <div className="mb-4">
+                            <input
+                                type="text"
+                                placeholder="Search scans..."
+                                value={scanSelectorFilter}
+                                onChange={(e) => setScanSelectorFilter(e.target.value)}
+                                className="w-full bg-gray-700 text-white px-3 py-2 rounded border border-gray-600 focus:border-blue-500 focus:outline-none"
+                            />
+                        </div>
+
+                        {/* Scan List */}
+                        <div className="flex-1 overflow-y-auto mb-4">
+                            {loadingScans ? (
+                                <div className="text-center text-gray-400 py-4">
+                                    Loading scans...
+                                </div>
+                            ) : availableScans.length === 0 ? (
+                                <div className="text-center text-gray-400 py-4">
+                                    No scans available for collaboration
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {availableScans
+                                        .filter(scan => 
+                                            scanSelectorFilter === '' || 
+                                            scan.name.toLowerCase().includes(scanSelectorFilter.toLowerCase()) ||
+                                            scan.description?.toLowerCase().includes(scanSelectorFilter.toLowerCase())
+                                        )                                        .map(scan => (
+                                            <div
+                                                key={scan._id}
+                                                className="bg-gray-700 hover:bg-gray-600 p-3 rounded cursor-pointer transition-colors"
+                                                onClick={() => handleScanSelect(scan)}
+                                            >
+                                                <div className="flex justify-between items-start">
+                                                    <div className="text-white font-medium">{scan.name}</div>
+                                                    <span className={`text-xs px-2 py-1 rounded ${
+                                                        scan.source === 'shared' 
+                                                            ? 'bg-blue-600 text-blue-100' 
+                                                            : 'bg-green-600 text-green-100'
+                                                    }`}>
+                                                        {scan.source === 'shared' ? 'Shared' : 'My Scan'}
+                                                    </span>
+                                                </div>
+                                                <div className="text-gray-400 text-sm">
+                                                    {scan.description || 'No description'}
+                                                </div>
+                                                <div className="text-gray-500 text-xs mt-1">
+                                                    Owner: {scan.ownerId?.username} • 
+                                                    {scan.metadata?.deviceCount || 0} devices • 
+                                                    {format(new Date(scan.createdAt || scan.timestamp), 'MMM dd, yyyy')}
+                                                </div>
+                                            </div>
+                                        ))
+                                    }
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex justify-between">
+                            <button
+                                onClick={handleManualScanId}
+                                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded transition-colors"
+                            >
+                                Enter Scan ID Manually
+                            </button>
+                            <button
+                                onClick={() => setShowScanSelector(false)}
+                                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded transition-colors"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -122,9 +122,8 @@ export async function PUT(request, { params }) {
     if (!authResult || !authResult.user) {
       return NextResponse.json({ success: false, message: 'Authentication required' }, { status: 401 });
     }
-    
-    const user = authResult.user;
-    const { id } = params;
+      const user = authResult.user;
+    const { id } = await params;
     const body = await request.json();
     
     // Find the shared scan
