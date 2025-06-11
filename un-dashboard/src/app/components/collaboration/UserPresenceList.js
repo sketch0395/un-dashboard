@@ -10,14 +10,18 @@ export default function UserPresenceList({
   if (collaborators.length === 0) {
     return null;
   }
-
   return (
     <div className={`space-y-2 ${className}`}>
       <h4 className="text-sm font-medium text-gray-300">Active Collaborators</h4>
       <div className="space-y-1">
-        {collaborators.map((collaborator) => (
+        {collaborators
+          .filter((collaborator, index, array) => 
+            // Remove duplicates by userId
+            array.findIndex(c => c.userId === collaborator.userId) === index
+          )
+          .map((collaborator, index) => (
           <div 
-            key={collaborator.userId}
+            key={`${collaborator.userId}-${index}`}
             className="flex items-center justify-between p-2 bg-gray-800 rounded text-sm"
           >
             <div className="flex items-center space-x-2">

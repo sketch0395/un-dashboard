@@ -199,7 +199,6 @@ class CollaborationServer {
       return null;
     }
   }
-
   addClientToScan(ws) {
     const { scanId, user } = ws;
 
@@ -209,10 +208,13 @@ class CollaborationServer {
     }
     this.clients.get(scanId).add(ws);
 
-    // Add to user presence
+    // Add to user presence - this will automatically replace any existing entry
+    // for the same user since Map uses user._id as key
     if (!this.userPresence.has(scanId)) {
       this.userPresence.set(scanId, new Map());
     }
+    
+    // Always set/update the user presence (Map will handle deduplication)
     this.userPresence.get(scanId).set(user._id, {
       userId: user._id,
       username: user.username,
@@ -234,7 +236,7 @@ class CollaborationServer {
       });
     }
 
-    console.log(`👤 User ${user.username} joined scan ${scanId}`);
+    console.log(`👤 User ${user.username} joined scan ${scanId} (${this.userPresence.get(scanId).size} unique users present)`);
 
     // Broadcast user joined event
     this.broadcastToScan(scanId, {
@@ -247,7 +249,6 @@ class CollaborationServer {
       timestamp: new Date()
     }, ws);
   }
-
   removeClientFromScan(ws) {
     const { scanId, user } = ws;
     if (!scanId || !user) return;
@@ -260,27 +261,50 @@ class CollaborationServer {
       }
     }
 
-    // Update user presence
-    if (this.userPresence.has(scanId)) {
-      this.userPresence.get(scanId).delete(user._id);
-      if (this.userPresence.get(scanId).size === 0) {
-        this.userPresence.delete(scanId);
-        // Clean up session when no users are present
-        this.scanSessions.delete(scanId);
+    // Only remove user from presence if this was their last connection
+    if (this.clients.has(scanId)) {
+      const remainingConnections = Array.from(this.clients.get(scanId))
+        .filter(client => client.user && client.user._id === user._id);
+      
+      if (remainingConnections.length === 0) {
+        // This was the user's last connection, remove from presence
+        if (this.userPresence.has(scanId)) {
+          this.userPresence.get(scanId).delete(user._id);
+          
+          console.log(`👋 User ${user.username} left scan ${scanId} (${this.userPresence.get(scanId).size} users remaining)`);
+          
+          // Broadcast user left event only when completely disconnected
+          this.broadcastToScan(scanId, {
+            type: 'user_left',
+            user: {
+              userId: user._id,
+              username: user.username
+            },
+            timestamp: new Date()
+          });
+          
+          // Clean up session when no users are present
+          if (this.userPresence.get(scanId).size === 0) {
+            this.userPresence.delete(scanId);
+            this.scanSessions.delete(scanId);
+            console.log(`🧹 Cleaned up empty session for scan ${scanId}`);
+          }
+        }
+      } else {
+        console.log(`🔗 User ${user.username} still has ${remainingConnections.length} active connection(s) to scan ${scanId}`);
       }
+    } else {
+      // No more clients for this scan, clean everything up
+      if (this.userPresence.has(scanId)) {
+        this.userPresence.get(scanId).delete(user._id);
+        if (this.userPresence.get(scanId).size === 0) {
+          this.userPresence.delete(scanId);
+          this.scanSessions.delete(scanId);
+        }
+      }
+      
+      console.log(`👋 User ${user.username} left scan ${scanId} (last client)`);
     }
-
-    console.log(`👋 User ${user.username} left scan ${scanId}`);
-
-    // Broadcast user left event
-    this.broadcastToScan(scanId, {
-      type: 'user_left',
-      user: {
-        userId: user._id,
-        username: user.username
-      },
-      timestamp: new Date()
-    });
   }
 
   handleMessage(ws, message) {

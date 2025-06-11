@@ -39,10 +39,8 @@ const NetworkPerformance = dynamic(
   { ssr: false }
 );
 
-const ScanHistorySyncStatus = dynamic(
-  () => import("../components/ScanHistorySyncStatus"),
-  { ssr: false }
-);
+// Use regular import instead of dynamic to avoid chunk loading issues
+import ScanHistorySyncStatus from "../components/ScanHistorySyncStatus";
 
 export default function PerformanceDeviceManagementPage() {
     const [devices, setDevices] = useState([]);

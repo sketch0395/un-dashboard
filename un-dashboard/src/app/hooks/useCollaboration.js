@@ -47,16 +47,13 @@ export function useCollaboration(scanId) {
         .find(row => row.startsWith('auth-token='))
         ?.split('=')[1];
 
-      console.log('🍪 Cookie token found:', cookieToken ? 'yes' : 'no');
-
-      // Since we use HTTP-only cookies, we'll connect without token in URL
-      // The collaboration server should check cookies for authentication
-      // The collaboration server runs on port 4000, not the Next.js port
+      console.log('🍪 Cookie token found:', cookieToken ? 'yes' : 'no');      // The collaboration server is integrated into the main server on port 3000
+      // with the path '/collaboration-ws'
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsHost = window.location.hostname;
-      const wsPort = 4000; // Collaboration server port
+      const wsPort = window.location.port || (window.location.protocol === 'https:' ? 443 : 80);
       
-      // Include token in URL if available since cross-port cookies might not work
+      // Connect to the collaboration WebSocket endpoint on the same server
       let wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/collaboration-ws?scanId=${encodeURIComponent(scanId)}`;
       if (cookieToken) {
         wsUrl += `&token=${encodeURIComponent(cookieToken)}`;
@@ -189,21 +186,34 @@ export function useCollaboration(scanId) {
           newMap.delete(data.deviceId);
           return newMap;
         });
-        break;
-
-      case 'device_updated':
+        break;      case 'device_updated':
         setSessionVersion(data.version);
-        // Emit custom event for device updates
+        console.log('📱 Received device update from collaboration:', data.deviceId, data.changes);
+        // Emit custom event for device updates with the actual changes
         window.dispatchEvent(new CustomEvent('collaborationDeviceUpdate', {
-          detail: data
+          detail: {
+            deviceId: data.deviceId,
+            changes: data.changes,
+            userId: data.userId,
+            username: data.username,
+            version: data.version,
+            timestamp: data.timestamp
+          }
         }));
         break;
 
       case 'scan_updated':
         setSessionVersion(data.version);
-        // Emit custom event for scan updates
+        console.log('📊 Received scan update from collaboration:', data.changes);
+        // Emit custom event for scan updates with the actual changes
         window.dispatchEvent(new CustomEvent('collaborationScanUpdate', {
-          detail: data
+          detail: {
+            changes: data.changes,
+            userId: data.userId,
+            username: data.username,
+            version: data.version,
+            timestamp: data.timestamp
+          }
         }));
         break;
 

@@ -42,12 +42,16 @@ export function UserPresenceList({ collaborators, currentUserId, className = '' 
     <div className={`space-y-2 ${className}`}>
       <h4 className="text-sm font-medium text-gray-700 flex items-center">
         <FaUsers className="w-4 h-4 mr-2" />
-        Active Users ({collaborators.length})
-      </h4>
+        Active Users ({collaborators.length})      </h4>
       <div className="space-y-1">
-        {collaborators.map(user => (
+        {collaborators
+          .filter((user, index, array) => 
+            // Remove duplicates by userId
+            array.findIndex(u => u.userId === user.userId) === index
+          )
+          .map((user, index) => (
           <div 
-            key={user.userId} 
+            key={`${user.userId}-${index}`}
             className={`flex items-center space-x-2 p-2 rounded-lg text-sm ${
               user.userId === currentUserId 
                 ? 'bg-blue-50 border border-blue-200' 

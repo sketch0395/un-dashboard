@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
 import { useCollaboration } from '../../hooks/useCollaboration';
-import { CollaborativeDeviceModal } from '../../components/collaboration/CollaborativeDeviceModal';
+import UnifiedDeviceModal from '../../components/UnifiedDeviceModal';
 import CollaborationIndicator from '../../components/collaboration/CollaborationIndicator';
 import UserPresenceList from '../../components/collaboration/UserPresenceList';
 import DeviceLockIndicator from '../../components/collaboration/DeviceLockIndicator';
@@ -48,10 +48,83 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
     isDeviceLockedByMe,
     isDeviceLockedByOther
   } = collaboration;
-
   useEffect(() => {
     fetchSharedScans();
   }, [filters, pagination.current]);
+
+  // Real-time collaboration data sync
+  useEffect(() => {
+    if (!collaborativeMode || !selectedScan) return;
+
+    console.log('🔗 Setting up collaboration data sync listeners for scan:', selectedScan._id);
+
+    // Listen for device updates from other users
+    const handleDeviceUpdate = (event) => {
+      const { deviceId, changes, userId, username } = event.detail;
+      
+      // Don't process our own updates
+      if (userId === user._id) return;
+      
+      console.log(`📱 Applying device update from ${username}:`, deviceId, changes);
+      
+      // Update the scan data in real-time
+      setSelectedScan(prevScan => {
+        if (!prevScan?.scanData?.devices) return prevScan;
+        
+        const updatedScanData = { ...prevScan.scanData };
+        
+        // Find and update the device across all vendors
+        Object.keys(updatedScanData.devices).forEach(vendor => {
+          if (Array.isArray(updatedScanData.devices[vendor])) {
+            updatedScanData.devices[vendor] = updatedScanData.devices[vendor].map(device => {
+              if (device.ip === deviceId || device.id === deviceId) {
+                console.log(`📝 Updating device ${deviceId} with changes:`, changes);
+                return { ...device, ...changes };
+              }
+              return device;
+            });
+          }
+        });
+        
+        return {
+          ...prevScan,
+          scanData: updatedScanData
+        };
+      });
+      
+      // Show notification to user
+      showToast(`Device ${deviceId} updated by ${username}`, 'info');
+    };
+
+    // Listen for scan-level updates from other users
+    const handleScanUpdate = (event) => {
+      const { changes, userId, username } = event.detail;
+      
+      // Don't process our own updates
+      if (userId === user._id) return;
+      
+      console.log(`📊 Applying scan update from ${username}:`, changes);
+      
+      // Update the scan metadata
+      setSelectedScan(prevScan => ({
+        ...prevScan,
+        ...changes
+      }));
+      
+      // Show notification to user
+      showToast(`Scan updated by ${username}`, 'info');
+    };
+
+    // Add event listeners
+    window.addEventListener('collaborationDeviceUpdate', handleDeviceUpdate);
+    window.addEventListener('collaborationScanUpdate', handleScanUpdate);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('collaborationDeviceUpdate', handleDeviceUpdate);
+      window.removeEventListener('collaborationScanUpdate', handleScanUpdate);
+    };
+  }, [collaborativeMode, selectedScan?._id, user?._id, showToast]);
 
   const fetchSharedScans = async () => {
     try {
@@ -134,7 +207,60 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
       console.error('Error downloading scan:', error);
       showToast('Failed to download scan', 'error');
     }
-  };  const handleScanDelete = async (scan) => {
+  };
+
+  // Load scan directly to topology map without downloading file
+  const handleLoadToTopology = async (scan) => {
+    try {
+      showToast('Loading scan to topology...', 'info');
+      
+      // Fetch the full scan data
+      const response = await fetch(`/api/scans/shared/${scan._id}`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const scanData = data.data;
+        
+        console.log('Loading scan to topology:', scanData.name);
+        
+        // Transform scan data to topology-compatible format
+        const topologyData = {
+          scanId: scanData.originalScanId || scanData._id,
+          name: scanData.name,
+          ipRange: scanData.metadata?.ipRange || 'Unknown Range',
+          deviceCount: scanData.metadata?.deviceCount || 0,
+          scanData: scanData.scanData,
+          metadata: scanData.metadata,
+          isFromSharedScan: true,
+          sharedScanId: scanData._id
+        };
+        
+        // Call the topology visualization function
+        if (onScanSelect) {
+          // Pass the scan data to parent component for topology visualization
+          onScanSelect(topologyData);
+          showToast('Scan loaded to topology successfully!', 'success');
+        } else {
+          // Fallback: navigate to topology page with scan data
+          window.location.href = `/networkscan?scanId=${encodeURIComponent(topologyData.scanId)}`;
+        }
+        
+        // Update view count
+        fetchSharedScans();
+        
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to load scan data');
+      }
+    } catch (error) {
+      console.error('Error loading scan to topology:', error);
+      showToast(`Failed to load scan to topology: ${error.message}`, 'error');
+    }
+  };
+
+  const handleScanDelete = async (scan) => {
     // Check authentication state before attempting delete
     if (!user) {
       showToast('Please log in to delete scans', 'error');
@@ -602,6 +728,13 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
                     Download
                   </button>
                   <button
+                    onClick={() => handleLoadToTopology(scan)}
+                    className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm transition-colors"
+                    title="Load scan directly to topology map"
+                  >
+                    🗺️ Topology
+                  </button>
+                  <button
                     onClick={() => handleCollaborativeView(scan)}
                     className="flex-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-md text-sm transition-colors"
                     title="Open collaborative view"
@@ -864,40 +997,80 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
                       >
                         🗑️ Delete Scan
                       </button>
-                    )}
-                    <button
+                    )}                    <button
                       onClick={() => handleScanDownload(selectedScan)}
                       className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
                     >
                       Download Scan
+                    </button>
+                    <button
+                      onClick={() => handleLoadToTopology(selectedScan)}
+                      className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors"
+                      title="Load scan directly to topology map"
+                    >
+                      🗺️ Load to Topology
                     </button>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>      )}
-
-      {/* Collaborative Device Modal */}
-      {showDeviceModal && selectedDevice && collaborativeMode && (
-        <CollaborativeDeviceModal
-          device={selectedDevice}
-          scanId={selectedScan?._id}
-          isOpen={showDeviceModal}
-          onClose={() => {
-            setShowDeviceModal(false);
-            setSelectedDevice(null);
-            // Unlock device when closing
-            if (selectedDevice) {
-              unlockDevice(selectedDevice.id || selectedDevice.ip);
-            }
-          }}
-          onSave={handleDeviceSave}
-          readOnly={!canModifyScan(selectedScan)}
-        />
-      )}
-
-      <ToastContainer />
+        </div>      )}      {/* Device Modal - Using UnifiedDeviceModal for better functionality */}
+      {showDeviceModal && selectedDevice && (
+        <div>
+          {/* Collaboration status banner when in collaborative mode */}
+          {collaborativeMode && (
+            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] max-w-md">
+              <div className="bg-purple-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center space-x-2">
+                <span className="text-sm font-medium">🤝 Collaborative Editing</span>
+                <CollaborationIndicator 
+                  isConnected={isConnected}
+                  collaborators={collaborators}
+                  className="text-xs"
+                />
+                {selectedDevice && (
+                  <DeviceLockIndicator
+                    deviceId={selectedDevice.id || selectedDevice.ip}
+                    lock={getDeviceLock(selectedDevice.id || selectedDevice.ip)}
+                    isLockedByMe={isDeviceLockedByMe(selectedDevice.id || selectedDevice.ip)}
+                    isLockedByOther={isDeviceLockedByOther(selectedDevice.id || selectedDevice.ip)}
+                    onUnlock={() => unlockDevice(selectedDevice.id || selectedDevice.ip)}
+                    className="text-xs"
+                  />
+                )}
+              </div>
+            </div>
+          )}
+          
+          <UnifiedDeviceModal
+            modalDevice={selectedDevice}
+            setModalDevice={() => {
+              setShowDeviceModal(false);
+              setSelectedDevice(null);
+              // Unlock device when closing if in collaborative mode
+              if (collaborativeMode && selectedDevice) {
+                unlockDevice(selectedDevice.id || selectedDevice.ip);
+              }
+            }}
+            onSave={async (updatedDevice) => {
+              await handleDeviceSave(updatedDevice);
+              
+              // Close modal after saving
+              setShowDeviceModal(false);
+              setSelectedDevice(null);
+              
+              // Unlock device if in collaborative mode
+              if (collaborativeMode && selectedDevice) {
+                unlockDevice(selectedDevice.id || selectedDevice.ip);
+              }
+            }}
+            onStartSSH={(device) => {
+              console.log("SSH requested for device:", device);
+              // SSH functionality can be added here if needed
+            }}
+          />
+        </div>
+      )}      <ToastContainer />
     </div>
   );
 }

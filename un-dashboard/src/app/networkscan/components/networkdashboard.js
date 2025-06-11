@@ -39,6 +39,94 @@ export default function NetworkDashboard() {
     
     // Add ref for the topology map component
     const topologyMapRef = useRef(null);
+
+    // Add collaboration event handlers for real-time topology updates
+    useEffect(() => {
+        console.log('🔗 Setting up collaboration event listeners for topology updates');
+
+        // Listen for device updates from other users
+        const handleCollaborativeDeviceUpdate = (event) => {
+            const { deviceId, changes, userId, username } = event.detail;
+            
+            console.log(`🔄 Topology received device update from ${username} for device ${deviceId}:`, changes);
+            
+            // Update devices state
+            setDevices(prevDevices => {
+                const updatedDevices = { ...prevDevices };
+                
+                // Find and update the device across all vendors
+                Object.keys(updatedDevices).forEach(vendor => {
+                    if (Array.isArray(updatedDevices[vendor])) {
+                        updatedDevices[vendor] = updatedDevices[vendor].map(device => {
+                            if (device.ip === deviceId || device.id === deviceId) {
+                                console.log(`🔄 Updating device ${deviceId} in topology with changes:`, changes);
+                                return { ...device, ...changes };
+                            }
+                            return device;
+                        });
+                    }
+                });
+                
+                return updatedDevices;
+            });
+
+            // Update custom names if the changes include custom properties
+            if (changes.name || changes.color || changes.icon || changes.category || changes.notes || 
+                changes.networkRole || changes.portCount || changes.parentSwitch) {
+                setCustomNames(prevCustomNames => {
+                    const updatedCustomNames = { ...prevCustomNames };
+                    if (!updatedCustomNames[deviceId]) {
+                        updatedCustomNames[deviceId] = {};
+                    }
+                    
+                    // Update custom properties
+                    if (changes.name) updatedCustomNames[deviceId].name = changes.name;
+                    if (changes.color) updatedCustomNames[deviceId].color = changes.color;
+                    if (changes.icon) updatedCustomNames[deviceId].icon = changes.icon;
+                    if (changes.category) updatedCustomNames[deviceId].category = changes.category;
+                    if (changes.notes) updatedCustomNames[deviceId].notes = changes.notes;
+                    if (changes.networkRole) updatedCustomNames[deviceId].networkRole = changes.networkRole;
+                    if (changes.portCount) updatedCustomNames[deviceId].portCount = changes.portCount;
+                    if (changes.parentSwitch) updatedCustomNames[deviceId].parentSwitch = changes.parentSwitch;
+                    
+                    // Update localStorage
+                    localStorage.setItem("customDeviceProperties", JSON.stringify(updatedCustomNames));
+                    
+                    return updatedCustomNames;
+                });
+            }
+
+            // Trigger topology refresh
+            if (topologyMapRef.current) {
+                console.log('🔄 Triggering topology refresh for collaborative device update');
+                topologyMapRef.current.refresh();
+            }
+        };
+
+        // Listen for scan updates from other users
+        const handleCollaborativeScanUpdate = (event) => {
+            const { changes, userId, username } = event.detail;
+            
+            console.log(`📊 Topology received scan update from ${username}:`, changes);
+            
+            // If the scan update affects devices, refresh the topology
+            if (topologyMapRef.current) {
+                console.log('🔄 Triggering topology refresh for collaborative scan update');
+                topologyMapRef.current.refresh();
+            }
+        };
+
+        // Add event listeners
+        window.addEventListener('collaborationDeviceUpdate', handleCollaborativeDeviceUpdate);
+        window.addEventListener('collaborationScanUpdate', handleCollaborativeScanUpdate);
+
+        // Cleanup function
+        return () => {
+            console.log('🧹 Cleaning up collaboration event listeners for topology');
+            window.removeEventListener('collaborationDeviceUpdate', handleCollaborativeDeviceUpdate);
+            window.removeEventListener('collaborationScanUpdate', handleCollaborativeScanUpdate);
+        };
+    }, []);
     
     // Track content dimensions for responsive layout
     useEffect(() => {

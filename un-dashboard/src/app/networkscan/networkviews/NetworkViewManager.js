@@ -144,6 +144,50 @@ const NetworkViewManager = forwardRef(({
         };
     }, [contextMenu, dropdownOpen]);
     
+    // Add collaboration event handlers for real-time visualization updates
+    useEffect(() => {
+        console.log('🔗 NetworkViewManager: Setting up collaboration event listeners');
+
+        // Listen for device updates from other users
+        const handleCollaborativeDeviceUpdate = (event) => {
+            const { deviceId, changes, userId, username } = event.detail;
+            
+            console.log(`🔄 NetworkViewManager received device update from ${username} for device ${deviceId}:`, changes);
+            
+            // Trigger a refresh to update the visualization
+            setRefreshTrigger(prev => {
+                const newValue = prev + 1;
+                console.log(`🔄 NetworkViewManager: Triggering refresh for collaborative update (${prev} -> ${newValue})`);
+                return newValue;
+            });
+        };
+
+        // Listen for scan updates from other users  
+        const handleCollaborativeScanUpdate = (event) => {
+            const { changes, userId, username } = event.detail;
+            
+            console.log(`📊 NetworkViewManager received scan update from ${username}:`, changes);
+            
+            // Trigger a refresh to update the visualization
+            setRefreshTrigger(prev => {
+                const newValue = prev + 1;
+                console.log(`🔄 NetworkViewManager: Triggering refresh for collaborative scan update (${prev} -> ${newValue})`);
+                return newValue;
+            });
+        };
+
+        // Add event listeners
+        window.addEventListener('collaborationDeviceUpdate', handleCollaborativeDeviceUpdate);
+        window.addEventListener('collaborationScanUpdate', handleCollaborativeScanUpdate);
+
+        // Cleanup function
+        return () => {
+            console.log('🧹 NetworkViewManager: Cleaning up collaboration event listeners');
+            window.removeEventListener('collaborationDeviceUpdate', handleCollaborativeDeviceUpdate);
+            window.removeEventListener('collaborationScanUpdate', handleCollaborativeScanUpdate);
+        };
+    }, []);
+    
     // Extract available categories or vendors when grouping changes
     useEffect(() => {
         if (!devices || Object.keys(devices).length === 0) return;
