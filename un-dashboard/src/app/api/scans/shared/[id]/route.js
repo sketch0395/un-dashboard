@@ -138,8 +138,7 @@ export async function PUT(request, { params }) {
     if (sharedScan.ownerId.toString() !== user._id.toString() && user.role !== 'admin') {
       return NextResponse.json({ success: false, message: 'Permission denied' }, { status: 403 });
     }
-    
-    // Update allowed fields
+      // Update allowed fields
     const updateFields = {};
     if (body.name) updateFields.name = body.name;
     if (body.description !== undefined) updateFields.description = body.description;
@@ -148,6 +147,7 @@ export async function PUT(request, { params }) {
     if (body.tags) updateFields.tags = body.tags;
     if (body.category) updateFields.category = body.category;
     if (body.isTemplate !== undefined) updateFields.isTemplate = body.isTemplate;
+    if (body.scanData) updateFields.scanData = body.scanData;
     
     const updatedScan = await SharedScan.findByIdAndUpdate(id, updateFields, { new: true });
       // Log the update

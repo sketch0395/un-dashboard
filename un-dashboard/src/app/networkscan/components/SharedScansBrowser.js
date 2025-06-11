@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/Toast';
 import { useCollaboration } from '../../hooks/useCollaboration';
 import UnifiedDeviceModal from '../../components/UnifiedDeviceModal';
+import { CollaborativeDeviceModal } from '../../components/collaboration/CollaborativeDeviceModal';
 import CollaborationIndicator from '../../components/collaboration/CollaborationIndicator';
 import UserPresenceList from '../../components/collaboration/UserPresenceList';
 import DeviceLockIndicator from '../../components/collaboration/DeviceLockIndicator';
@@ -37,7 +38,6 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
   const collaboration = useCollaboration(
     collaborativeMode && selectedScan ? selectedScan._id : null
   );
-
   const {
     isConnected,
     collaborators,
@@ -45,6 +45,8 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
     getDeviceLock,
     lockDevice,
     unlockDevice,
+    updateDevice,
+    updateScan,
     isDeviceLockedByMe,
     isDeviceLockedByOther
   } = collaboration;
@@ -56,14 +58,9 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
   useEffect(() => {
     if (!collaborativeMode || !selectedScan) return;
 
-    console.log('🔗 Setting up collaboration data sync listeners for scan:', selectedScan._id);
-
-    // Listen for device updates from other users
+    console.log('🔗 Setting up collaboration data sync listeners for scan:', selectedScan._id);    // Listen for device updates from other users
     const handleDeviceUpdate = (event) => {
       const { deviceId, changes, userId, username } = event.detail;
-      
-      // Don't process our own updates
-      if (userId === user._id) return;
       
       console.log(`📱 Applying device update from ${username}:`, deviceId, changes);
       
@@ -94,14 +91,9 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
       
       // Show notification to user
       showToast(`Device ${deviceId} updated by ${username}`, 'info');
-    };
-
-    // Listen for scan-level updates from other users
+    };    // Listen for scan-level updates from other users
     const handleScanUpdate = (event) => {
       const { changes, userId, username } = event.detail;
-      
-      // Don't process our own updates
-      if (userId === user._id) return;
       
       console.log(`📊 Applying scan update from ${username}:`, changes);
       
@@ -364,15 +356,29 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
       setSelectedDevice(device);
       setShowDeviceModal(true);
     }
-  };
-
-  const handleDeviceSave = async (updatedDevice) => {
+  };  const handleDeviceSave = async (updatedDevice) => {
     try {
-      // Update the device in the scan data
-      const updatedScanData = {
-        ...selectedScan.scanData,
-        [updatedDevice.id]: updatedDevice
-      };
+      // Send real-time collaboration update first (if in collaborative mode)
+      if (collaborativeMode && isConnected) {
+        const deviceId = updatedDevice.id || updatedDevice.ip;
+        console.log('📤 Sending device update via collaboration:', deviceId, updatedDevice);
+        updateDevice(deviceId, updatedDevice, collaboration.sessionVersion);
+      }      // Update the device in the scan data (fix: properly update within vendor structure)
+      const updatedScanData = { ...selectedScan.scanData };
+      
+      // Find and update the device in the correct vendor array
+      if (updatedScanData.devices) {
+        Object.keys(updatedScanData.devices).forEach(vendor => {
+          if (Array.isArray(updatedScanData.devices[vendor])) {
+            updatedScanData.devices[vendor] = updatedScanData.devices[vendor].map(device => {
+              if (device.ip === updatedDevice.ip || device.id === updatedDevice.id) {
+                return { ...device, ...updatedDevice };
+              }
+              return device;
+            });
+          }
+        });
+      }
 
       // Send update to server
       const response = await fetch(`/api/scans/shared/${selectedScan._id}`, {
@@ -1015,7 +1021,7 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
               </div>
             </div>
           </div>
-        </div>      )}      {/* Device Modal - Using UnifiedDeviceModal for better functionality */}
+        </div>      )}      {/* Device Modal - Use CollaborativeDeviceModal in collaborative mode */}
       {showDeviceModal && selectedDevice && (
         <div>
           {/* Collaboration status banner when in collaborative mode */}
@@ -1028,49 +1034,45 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
                   collaborators={collaborators}
                   className="text-xs"
                 />
-                {selectedDevice && (
-                  <DeviceLockIndicator
-                    deviceId={selectedDevice.id || selectedDevice.ip}
-                    lock={getDeviceLock(selectedDevice.id || selectedDevice.ip)}
-                    isLockedByMe={isDeviceLockedByMe(selectedDevice.id || selectedDevice.ip)}
-                    isLockedByOther={isDeviceLockedByOther(selectedDevice.id || selectedDevice.ip)}
-                    onUnlock={() => unlockDevice(selectedDevice.id || selectedDevice.ip)}
-                    className="text-xs"
-                  />
-                )}
               </div>
             </div>
           )}
           
-          <UnifiedDeviceModal
-            modalDevice={selectedDevice}
-            setModalDevice={() => {
-              setShowDeviceModal(false);
-              setSelectedDevice(null);
-              // Unlock device when closing if in collaborative mode
-              if (collaborativeMode && selectedDevice) {
-                unlockDevice(selectedDevice.id || selectedDevice.ip);
-              }
-            }}
-            onSave={async (updatedDevice) => {
-              await handleDeviceSave(updatedDevice);
-              
-              // Close modal after saving
-              setShowDeviceModal(false);
-              setSelectedDevice(null);
-              
-              // Unlock device if in collaborative mode
-              if (collaborativeMode && selectedDevice) {
-                unlockDevice(selectedDevice.id || selectedDevice.ip);
-              }
-            }}
-            onStartSSH={(device) => {
-              console.log("SSH requested for device:", device);
-              // SSH functionality can be added here if needed
-            }}
-          />
+          {collaborativeMode ? (
+            <CollaborativeDeviceModal
+              device={selectedDevice}
+              scanId={selectedScan._id}
+              isOpen={showDeviceModal}
+              onClose={() => {
+                setShowDeviceModal(false);
+                setSelectedDevice(null);
+              }}
+              onSave={async (updatedDevice) => {
+                await handleDeviceSave(updatedDevice);
+                setShowDeviceModal(false);
+                setSelectedDevice(null);
+              }}
+            />
+          ) : (
+            <UnifiedDeviceModal
+              modalDevice={selectedDevice}
+              setModalDevice={() => {
+                setShowDeviceModal(false);
+                setSelectedDevice(null);
+              }}
+              onSave={async (updatedDevice) => {
+                await handleDeviceSave(updatedDevice);
+                setShowDeviceModal(false);
+                setSelectedDevice(null);
+              }}
+              onStartSSH={(device) => {
+                console.log("SSH requested for device:", device);
+                // SSH functionality can be added here if needed
+              }}
+            />
+          )}
         </div>
-      )}      <ToastContainer />
+      )}<ToastContainer />
     </div>
   );
 }

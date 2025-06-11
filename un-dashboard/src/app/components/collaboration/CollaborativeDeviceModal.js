@@ -58,8 +58,8 @@ export function CollaborativeDeviceModal({
     const handleDeviceUpdate = (event) => {
       const { deviceId: updatedDeviceId, changes, userId } = event.detail;
       
-      if (updatedDeviceId === deviceId && userId !== collaboration.user?._id) {
-        // Apply remote changes
+      if (updatedDeviceId === deviceId) {
+        // Apply changes from collaboration system (including our own changes reflected back)
         setLocalDevice(prev => ({
           ...prev,
           ...changes
@@ -240,14 +240,13 @@ export function CollaborativeDeviceModal({
   if (!isOpen || !device) return null;
 
   const typingIndicators = getTypingIndicators(deviceId);
-
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+      <div className="bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between p-6 border-b border-gray-600">
           <div className="flex items-center space-x-4">
-            <h2 className="text-xl font-semibold text-gray-900">
+            <h2 className="text-xl font-semibold text-white">
               Device Details: {device.ip || device.hostname}
             </h2>
             
@@ -269,14 +268,13 @@ export function CollaborativeDeviceModal({
           <div className="flex items-center space-x-2">
             {!readOnly && (
               <>
-                {!editMode ? (
-                  <button
+                {!editMode ? (                  <button
                     onClick={handleStartEdit}
                     disabled={isDeviceLockedByOther(deviceId)}
                     className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium ${
                       isDeviceLockedByOther(deviceId)
-                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        : 'bg-blue-500 text-white hover:bg-blue-600'
+                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700'
                     }`}
                   >
                     <FaEdit className="w-4 h-4" />
@@ -285,7 +283,7 @@ export function CollaborativeDeviceModal({
                 ) : (
                   <button
                     onClick={handleStopEdit}
-                    className="flex items-center space-x-2 px-4 py-2 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-gray-600"
+                    className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-lg text-sm font-medium hover:bg-gray-700"
                   >
                     <FaUnlock className="w-4 h-4" />
                     <span>Stop Editing</span>
@@ -295,7 +293,7 @@ export function CollaborativeDeviceModal({
                 {hasUnsavedChanges && (
                   <button
                     onClick={handleSave}
-                    className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600"
+                    className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
                   >
                     <FaSave className="w-4 h-4" />
                     <span>Save</span>
@@ -306,7 +304,7 @@ export function CollaborativeDeviceModal({
 
             <button
               onClick={handleClose}
-              className="flex items-center space-x-2 px-4 py-2 bg-gray-500 text-white rounded-lg text-sm font-medium hover:bg-gray-600"
+              className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-lg text-sm font-medium hover:bg-gray-700"
             >
               <FaTimes className="w-4 h-4" />
               <span>Close</span>
@@ -324,13 +322,12 @@ export function CollaborativeDeviceModal({
           )}
 
           {/* Device form */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Basic Information */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">            {/* Basic Information */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium text-gray-900">Basic Information</h3>
+              <h3 className="text-lg font-medium text-white">Basic Information</h3>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-300 mb-1">
                   IP Address
                 </label>
                 <input
@@ -343,8 +340,8 @@ export function CollaborativeDeviceModal({
                   disabled={!canEdit}
                   className={`w-full px-3 py-2 border rounded-lg text-sm ${
                     canEdit 
-                      ? 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
-                      : 'border-gray-200 bg-gray-50 text-gray-500'
+                      ? 'bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
+                      : 'bg-gray-600 border-gray-500 text-gray-300'
                   }`}
                 />
                 {getTypingIndicators(deviceId, 'ip').length > 0 && (
@@ -353,10 +350,8 @@ export function CollaborativeDeviceModal({
                     className="mt-1"
                   />
                 )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+              </div>              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
                   Hostname
                 </label>
                 <input
@@ -369,8 +364,8 @@ export function CollaborativeDeviceModal({
                   disabled={!canEdit}
                   className={`w-full px-3 py-2 border rounded-lg text-sm ${
                     canEdit 
-                      ? 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
-                      : 'border-gray-200 bg-gray-50 text-gray-500'
+                      ? 'bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
+                      : 'bg-gray-600 border-gray-500 text-gray-300'
                   }`}
                 />
                 {getTypingIndicators(deviceId, 'hostname').length > 0 && (
@@ -379,10 +374,8 @@ export function CollaborativeDeviceModal({
                     className="mt-1"
                   />
                 )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+              </div>              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
                   MAC Address
                 </label>
                 <input
@@ -395,14 +388,14 @@ export function CollaborativeDeviceModal({
                   disabled={!canEdit}
                   className={`w-full px-3 py-2 border rounded-lg text-sm ${
                     canEdit 
-                      ? 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
-                      : 'border-gray-200 bg-gray-50 text-gray-500'
+                      ? 'bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
+                      : 'bg-gray-600 border-gray-500 text-gray-300'
                   }`}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-300 mb-1">
                   Operating System
                 </label>
                 <input
@@ -415,19 +408,17 @@ export function CollaborativeDeviceModal({
                   disabled={!canEdit}
                   className={`w-full px-3 py-2 border rounded-lg text-sm ${
                     canEdit 
-                      ? 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
-                      : 'border-gray-200 bg-gray-50 text-gray-500'
+                      ? 'bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
+                      : 'bg-gray-600 border-gray-500 text-gray-300'
                   }`}
                 />
               </div>
-            </div>
-
-            {/* Additional Information */}
+            </div>            {/* Additional Information */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium text-gray-900">Additional Information</h3>
+              <h3 className="text-lg font-medium text-white">Additional Information</h3>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-300 mb-1">
                   Device Type
                 </label>
                 <select
@@ -438,8 +429,8 @@ export function CollaborativeDeviceModal({
                   disabled={!canEdit}
                   className={`w-full px-3 py-2 border rounded-lg text-sm ${
                     canEdit 
-                      ? 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
-                      : 'border-gray-200 bg-gray-50 text-gray-500'
+                      ? 'bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
+                      : 'bg-gray-600 border-gray-500 text-gray-300'
                   }`}
                 >
                   <option value="">Unknown</option>
@@ -452,10 +443,8 @@ export function CollaborativeDeviceModal({
                   <option value="iot">IoT Device</option>
                   <option value="other">Other</option>
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+              </div>              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
                   Vendor
                 </label>
                 <input
@@ -468,14 +457,14 @@ export function CollaborativeDeviceModal({
                   disabled={!canEdit}
                   className={`w-full px-3 py-2 border rounded-lg text-sm ${
                     canEdit 
-                      ? 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
-                      : 'border-gray-200 bg-gray-50 text-gray-500'
+                      ? 'bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
+                      : 'bg-gray-600 border-gray-500 text-gray-300'
                   }`}
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-300 mb-1">
                   Status
                 </label>
                 <select
@@ -486,18 +475,16 @@ export function CollaborativeDeviceModal({
                   disabled={!canEdit}
                   className={`w-full px-3 py-2 border rounded-lg text-sm ${
                     canEdit 
-                      ? 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
-                      : 'border-gray-200 bg-gray-50 text-gray-500'
+                      ? 'bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
+                      : 'bg-gray-600 border-gray-500 text-gray-300'
                   }`}
                 >
                   <option value="online">Online</option>
                   <option value="offline">Offline</option>
                   <option value="unknown">Unknown</option>
                 </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+              </div>              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-1">
                   Notes
                 </label>
                 <textarea
@@ -510,8 +497,8 @@ export function CollaborativeDeviceModal({
                   rows={4}
                   className={`w-full px-3 py-2 border rounded-lg text-sm ${
                     canEdit 
-                      ? 'border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
-                      : 'border-gray-200 bg-gray-50 text-gray-500'
+                      ? 'bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
+                      : 'bg-gray-600 border-gray-500 text-gray-300'
                   }`}
                   placeholder="Add any additional notes about this device..."
                 />
@@ -523,21 +510,19 @@ export function CollaborativeDeviceModal({
                 )}
               </div>
             </div>
-          </div>
-
-          {/* Ports and Services */}
+          </div>          {/* Ports and Services */}
           {localDevice.ports && localDevice.ports.length > 0 && (
             <div className="mt-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Open Ports</h3>
+              <h3 className="text-lg font-medium text-white mb-4">Open Ports</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {localDevice.ports.map((port, index) => (
-                  <div key={index} className="bg-gray-50 rounded-lg p-3">
-                    <div className="text-sm font-medium">Port {port.port}/{port.protocol}</div>
+                  <div key={index} className="bg-gray-700 rounded-lg p-3">
+                    <div className="text-sm font-medium text-white">Port {port.port}/{port.protocol}</div>
                     {port.service && (
-                      <div className="text-xs text-gray-600">{port.service}</div>
+                      <div className="text-xs text-gray-300">{port.service}</div>
                     )}
                     {port.version && (
-                      <div className="text-xs text-gray-500">{port.version}</div>
+                      <div className="text-xs text-gray-400">{port.version}</div>
                     )}
                   </div>
                 ))}
@@ -547,7 +532,7 @@ export function CollaborativeDeviceModal({
 
           {/* Status indicator */}
           {hasUnsavedChanges && (
-            <div className="fixed bottom-4 right-4 bg-yellow-100 border border-yellow-300 text-yellow-800 px-4 py-2 rounded-lg text-sm">
+            <div className="fixed bottom-4 right-4 bg-yellow-800 border border-yellow-600 text-yellow-100 px-4 py-2 rounded-lg text-sm">
               Unsaved changes
             </div>
           )}

@@ -91,17 +91,16 @@ export function DeviceLockIndicator({
 
   return (
     <div className={`flex items-center space-x-2 ${className}`}>
-      {isLockedByMe ? (
-        <div className="flex items-center space-x-2 px-2 py-1 bg-blue-100 text-blue-800 border border-blue-200 rounded text-xs">
+      {isLockedByMe ? (        <div className="flex items-center space-x-2 px-2 py-1 bg-blue-100 text-blue-800 border border-blue-200 rounded text-xs">
           <FaEdit className="w-3 h-3" />
-          <span>You're editing</span>
+          <span>You&apos;re editing</span>
           {onUnlock && (
             <button 
               onClick={() => onUnlock(deviceId)}
               className="ml-1 text-blue-600 hover:text-blue-800"
               title="Stop editing"
             >
-              ×
+              &times;
             </button>
           )}
         </div>

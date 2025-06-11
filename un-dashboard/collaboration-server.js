@@ -449,13 +449,11 @@ class CollaborationServer {
       changes,
       timestamp: new Date(),
       version
-    };
-
-    session.pendingChanges.set(changeId, change);
+    };    session.pendingChanges.set(changeId, change);
     session.lastModified = new Date();
     session.version++;
 
-    // Broadcast device update
+    // Broadcast device update to ALL users (including sender for symmetric collaboration)
     this.broadcastToScan(scanId, {
       type: 'device_updated',
       deviceId,
@@ -465,7 +463,7 @@ class CollaborationServer {
       username: user.username,
       version: session.version,
       timestamp: new Date()
-    }, ws);
+    });
   }
 
   handleScanUpdate(ws, data) {
@@ -473,12 +471,10 @@ class CollaborationServer {
     const { changes } = data;
 
     const session = this.scanSessions.get(scanId);
-    if (!session) return;
-
-    session.lastModified = new Date();
+    if (!session) return;    session.lastModified = new Date();
     session.version++;
 
-    // Broadcast scan update
+    // Broadcast scan update to ALL users (including sender for symmetric collaboration)
     this.broadcastToScan(scanId, {
       type: 'scan_updated',
       changes,
@@ -486,7 +482,7 @@ class CollaborationServer {
       username: user.username,
       version: session.version,
       timestamp: new Date()
-    }, ws);
+    });
   }
 
   handleCursorPosition(ws, data) {
