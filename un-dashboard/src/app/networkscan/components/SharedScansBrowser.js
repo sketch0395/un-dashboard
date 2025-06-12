@@ -9,6 +9,7 @@ import { CollaborativeDeviceModal } from '../../components/collaboration/Collabo
 import CollaborationIndicator from '../../components/collaboration/CollaborationIndicator';
 import UserPresenceList from '../../components/collaboration/UserPresenceList';
 import DeviceLockIndicator from '../../components/collaboration/DeviceLockIndicator';
+import NetworkTopologyVisualization from '../../components/NetworkTopologyVisualization';
 
 export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
   const { user } = useAuth();

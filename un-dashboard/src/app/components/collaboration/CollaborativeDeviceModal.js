@@ -9,6 +9,9 @@ import {
   CursorPosition,
   CollaborationIndicator 
 } from './CollaborationUI';
+import { DEVICE_TYPES, getDeviceTypeById, migrateDeviceType } from '../../utils/deviceTypes';
+import DeviceTypeSelector from '../DeviceTypeSelector';
+import ParentDeviceSelector from '../ParentDeviceSelector';
 
 export function CollaborativeDeviceModal({ 
   device, 
@@ -44,10 +47,16 @@ export function CollaborativeDeviceModal({
   const deviceId = device?.id || device?.ip;
   const lock = getDeviceLock(deviceId);
   const isLocked = !!lock;
-  const canEdit = !readOnly && (!isLocked || isDeviceLockedByMe(deviceId));
-  // Sync device data when props change
+  const canEdit = !readOnly && (!isLocked || isDeviceLockedByMe(deviceId));  // Sync device data when props change
   useEffect(() => {
-    setLocalDevice(device || {});
+    const mergedDevice = { ...device || {} };
+    
+    // Migrate legacy device type if needed
+    if (mergedDevice.type) {
+      mergedDevice.deviceType = migrateDeviceType(mergedDevice.type);
+    }
+    
+    setLocalDevice(mergedDevice);
     setHasUnsavedChanges(false);
   }, [device]);
 
@@ -410,34 +419,47 @@ export function CollaborativeDeviceModal({
               </div>
             </div>            {/* Additional Information */}
             <div className="space-y-4">
-              <h3 className="text-lg font-medium text-white">Additional Information</h3>
-              
+              <h3 className="text-lg font-medium text-white">Additional Information</h3>              {/* Device Type Selector */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
-                  Device Type
-                </label>                <select
-                  value={safeLocalDevice.type || ''}
-                  onChange={(e) => handleFieldChange('type', e.target.value)}
-                  onFocus={(e) => handleFieldFocus('type', e)}
-                  onBlur={() => handleFieldBlur('type')}
+                <DeviceTypeSelector
+                  value={safeLocalDevice.deviceType || safeLocalDevice.type || ''}
+                  onChange={(newTypeId) => {
+                    handleFieldChange('deviceType', newTypeId);
+                    handleTyping('deviceType');
+                  }}
                   disabled={!canEdit}
-                  className={`w-full px-3 py-2 border rounded-lg text-sm ${
-                    canEdit 
-                      ? 'bg-gray-700 border-gray-600 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500' 
-                      : 'bg-gray-600 border-gray-500 text-gray-300'
-                  }`}
-                >
-                  <option value="">Unknown</option>
-                  <option value="router">Router</option>
-                  <option value="switch">Switch</option>
-                  <option value="server">Server</option>
-                  <option value="workstation">Workstation</option>
-                  <option value="printer">Printer</option>
-                  <option value="mobile">Mobile Device</option>
-                  <option value="iot">IoT Device</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>              <div>
+                  showDescription={true}
+                  className="mb-2"
+                />
+                {getTypingIndicators(deviceId, 'deviceType').length > 0 && (
+                  <TypingIndicator 
+                    indicators={getTypingIndicators(deviceId, 'deviceType')} 
+                    className="mt-1"
+                  />
+                )}
+              </div>
+
+              {/* Parent Device Selector */}
+              {safeLocalDevice.deviceType && (
+                <div>
+                  <ParentDeviceSelector
+                    deviceType={safeLocalDevice.deviceType}
+                    currentParent={safeLocalDevice.parentDevice}
+                    onParentChange={(parentIp) => {
+                      handleFieldChange('parentDevice', parentIp);
+                      handleTyping('parentDevice');
+                    }}
+                    excludeDeviceId={deviceId}
+                    className="mb-2"
+                  />
+                  {getTypingIndicators(deviceId, 'parentDevice').length > 0 && (
+                    <TypingIndicator 
+                      indicators={getTypingIndicators(deviceId, 'parentDevice')} 
+                      className="mt-1"
+                    />
+                  )}
+                </div>
+              )}<div>
                 <label className="block text-sm font-medium text-gray-300 mb-1">
                   Vendor
                 </label>                <input
