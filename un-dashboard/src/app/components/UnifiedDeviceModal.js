@@ -1,31 +1,65 @@
 'use client';
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Modal from "./Modal";
 import { 
     FaEdit, 
     FaSave, 
     FaTimes, 
     FaPlus, 
-    FaTrash
+    FaTrash,
+    FaLock,
+    FaUnlock,
+    FaUsers,
+    FaEye
 } from "react-icons/fa";
 import { updateDeviceProperties } from "../utils/deviceManagementUtils";
 import { DEVICE_TYPES, getDeviceTypeById, migrateDeviceType } from "../utils/deviceTypes";
 import DeviceTypeSelector from "./DeviceTypeSelector";
 import ParentDeviceSelector from "./ParentDeviceSelector";
 import NetworkTopologyVisualization from "./NetworkTopologyVisualization";
+import { 
+    DeviceLockIndicator, 
+    TypingIndicator,
+    CursorPosition,
+    CollaborationIndicator 
+} from "./CollaborationUI";
+import { useCollaboration } from "../hooks/useCollaboration";
 
 const UnifiedDeviceModal = ({
     modalDevice, 
     setModalDevice, 
     onSave,
     onStartSSH,
-    systemUptime 
+    systemUptime,
+    scanId = null,
+    isCollaborative = false,
+    readOnly = false
 }) => {
     const [isEditing, setIsEditing] = useState(false);
     const [newNote, setNewNote] = useState('');
-    const [deviceHistory, setDeviceHistory] = useState([]);    // State to track which history items are expanded (first item expanded by default)
+    const [deviceHistory, setDeviceHistory] = useState([]);    
     const [expandedHistoryItems, setExpandedHistoryItems] = useState([0]);
+    const [focusedField, setFocusedField] = useState(null);
+    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+    
+    // Enhanced device with all necessary information loaded from localStorage
+    const [enhancedDevice, setEnhancedDevice] = useState(null);
+    
+    // Collaboration refs
+    const typingTimeoutRef = useRef(null);    const saveTimeoutRef = useRef(null);
+    const formRef = useRef(null);
+
+    // Always call the collaboration hook, but use it conditionally
+    const collaboration = useCollaboration(isCollaborative ? scanId : null);
+    
+    const deviceId = modalDevice?.ip;    // Collaboration-related variables
+    const isCollaborationConnected = isCollaborative && collaboration && collaboration.isConnected;
+    const lock = isCollaborative && collaboration ? collaboration.getDeviceLock(deviceId) : null;
+    const isLocked = !!lock;
+    const isLockedByMe = isCollaborative && collaboration && collaboration.isDeviceLockedByMe(deviceId);
+    const isLockedByOther = isCollaborative && collaboration && collaboration.isDeviceLockedByOther(deviceId);
+    const canEdit = !readOnly && (!isLocked || isLockedByMe);
     
     // Toggle history item expansion
     const toggleHistoryItemExpansion = (index) => {
@@ -36,8 +70,7 @@ const UnifiedDeviceModal = ({
                 return [...prev, index];
             }
         });
-    };    // Enhanced device with all necessary information loaded from localStorage
-    const [enhancedDevice, setEnhancedDevice] = useState(null);
+    };    
     
     // Load device data from localStorage when modal opens
     useEffect(() => {
@@ -70,7 +103,8 @@ const UnifiedDeviceModal = ({
         } else {
             setEnhancedDevice(null);
             setDeviceHistory([]);
-        }    }, [modalDevice]);
+        }    
+    }, [modalDevice]);
 
     useEffect(() => {
         if (enhancedDevice?.ip && typeof window !== 'undefined') {
@@ -78,7 +112,170 @@ const UnifiedDeviceModal = ({
             const deviceData = savedCustomProperties[enhancedDevice.ip] || {};
             setDeviceHistory(deviceData.history || []);
         }
-    }, [enhancedDevice?.ip]);// Handle main device save
+    }, [enhancedDevice?.ip]);
+
+    // Listen for collaboration updates if in collaborative mode
+    useEffect(() => {
+        if (!isCollaborative || !collaboration || !deviceId) return;
+        
+        const handleDeviceUpdate = (event) => {
+            const { deviceId: updatedDeviceId, changes, userId } = event.detail;
+            
+            if (updatedDeviceId === deviceId) {
+                // Apply changes from collaboration system
+                setEnhancedDevice(prev => ({
+                    ...prev,
+                    ...changes
+                }));
+                setHasUnsavedChanges(false);
+            }
+        };
+
+        const handleLockFailed = (event) => {
+            const { deviceId: failedDeviceId, reason } = event.detail;
+            if (failedDeviceId === deviceId) {
+                setIsEditing(false);
+                alert(`Cannot edit device: ${reason}`);
+            }
+        };
+
+        window.addEventListener('collaborationDeviceUpdate', handleDeviceUpdate);
+        window.addEventListener('collaborationLockFailed', handleLockFailed);
+
+        return () => {
+            window.removeEventListener('collaborationDeviceUpdate', handleDeviceUpdate);
+            window.removeEventListener('collaborationLockFailed', handleLockFailed);
+        };
+    }, [deviceId, collaboration, isCollaborative]);    // Auto-save changes with debouncing in collaboration mode
+    useEffect(() => {
+        if (!isCollaborative || !hasUnsavedChanges || !isLockedByMe || !collaboration) return;
+
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+        }
+
+        saveTimeoutRef.current = setTimeout(() => {
+            // Call handleSave inline instead of depending on it
+            if (enhancedDevice) {
+                // Auto-save implementation - call handleSave indirectly
+                onSave(enhancedDevice);
+                if (isCollaborative && collaboration) {
+                    collaboration.updateDevice(deviceId, enhancedDevice, collaboration.sessionVersion);
+                }
+                setHasUnsavedChanges(false);
+            }
+        }, 2000); // Auto-save after 2 seconds of inactivity
+
+        return () => {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+        };
+    }, [enhancedDevice, hasUnsavedChanges, isLockedByMe, isCollaborative, collaboration, deviceId, onSave]);// Cleanup on unmount for collaboration
+    useEffect(() => {
+        return () => {
+            if (isCollaborative && isLockedByMe && collaboration) {
+                collaboration.unlockDevice(deviceId);
+            }
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+        };
+    }, [deviceId, isLockedByMe, isCollaborative, collaboration]);// Handle toggling edit mode with collaboration lock support
+    const handleToggleEdit = useCallback(async () => {
+        if (readOnly) return;
+        
+        if (!isEditing) {
+            // Starting edit mode
+            if (isCollaborative) {
+                if (isLockedByOther) {
+                    alert(`This device is currently being edited by ${lock?.username || 'another user'}`);
+                    return;
+                }
+                
+                if (!isLockedByMe && collaboration) {
+                    await collaboration.lockDevice(deviceId);
+                }
+            }
+            setIsEditing(true);        } else {
+            // Ending edit mode
+            if (isCollaborative && isLockedByMe && collaboration) {
+                // Save any pending changes before unlocking
+                if (hasUnsavedChanges && enhancedDevice) {
+                    // Inline save implementation instead of calling handleSave
+                    onSave(enhancedDevice);
+                    if (isCollaborative && collaboration) {
+                        collaboration.updateDevice(deviceId, enhancedDevice, collaboration.sessionVersion);
+                    }
+                    setHasUnsavedChanges(false);
+                }
+                collaboration.unlockDevice(deviceId);
+            }
+            setIsEditing(false);
+            setFocusedField(null);
+        }
+    }, [readOnly, isEditing, isCollaborative, isLockedByOther, isLockedByMe, deviceId, lock, hasUnsavedChanges, enhancedDevice, onSave, collaboration]);// Handle field focus and cursor position for collaboration
+    const handleFieldFocus = useCallback((field, event) => {
+        setFocusedField(field);
+        
+        // Send cursor position for collaboration
+        if (isCollaborationConnected && event?.target && collaboration) {
+            const rect = event.target.getBoundingClientRect();
+            collaboration.setCursorPosition(deviceId, {
+                x: rect.left + rect.width / 2,
+                y: rect.top,
+                field
+            });
+        }
+    }, [deviceId, isCollaborationConnected, collaboration]);
+
+    // Handle field blur and typing indicator
+    const handleFieldBlur = useCallback((field) => {
+        setFocusedField(null);
+        
+        // Stop typing indicator for collaboration
+        if (isCollaborationConnected && collaboration) {
+            collaboration.setTypingIndicator(deviceId, field, false);
+        }
+    }, [deviceId, isCollaborationConnected, collaboration]);
+
+    // Handle typing indicator for collaboration
+    const handleTyping = useCallback((field) => {
+        if (!isCollaborationConnected || !isLockedByMe || !collaboration) return;
+
+        // Send typing indicator
+        collaboration.setTypingIndicator(deviceId, field, true);
+
+        // Clear previous timeout
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+        }
+
+        // Stop typing indicator after delay
+        typingTimeoutRef.current = setTimeout(() => {
+            collaboration.setTypingIndicator(deviceId, field, false);
+        }, 1000);
+    }, [deviceId, isCollaborationConnected, isLockedByMe, collaboration]);
+
+    // Handle field change with support for collaboration
+    const handleFieldChange = useCallback((field, value) => {
+        if (!canEdit) return;
+
+        setEnhancedDevice(prev => ({
+            ...prev,
+            [field]: value
+        }));
+        setHasUnsavedChanges(true);
+        
+        if (isCollaborationConnected) {
+            handleTyping(field);
+        }
+    }, [canEdit, isCollaborationConnected, handleTyping]);
+    
+    // Handle main device save
     const handleSave = () => {
         if (enhancedDevice) {
             console.log("Saving device with the following relationships:", {
@@ -125,7 +322,8 @@ const UnifiedDeviceModal = ({
                 const currSwitches = enhancedDevice.connectedSwitches || [];
                 if (JSON.stringify(prevSwitches) !== JSON.stringify(currSwitches)) {
                     changes.connectedSwitches = currSwitches;
-                }            } else {
+                }            
+            } else {
                 // For regular devices, compare parent switch
                 const prevParentSwitch = previousChanges ? previousChanges.parentSwitch : undefined;
                 if (enhancedDevice.parentSwitch !== prevParentSwitch) {
@@ -165,11 +363,27 @@ const UnifiedDeviceModal = ({
             };
 
             // Update device properties in localStorage
-            updateDeviceProperties(deviceToSave);            // Call parent save handler
+            updateDeviceProperties(deviceToSave);
+            
+            // If in collaborative mode, update through the collaboration API
+            if (isCollaborative && collaboration) {
+                collaboration.updateDevice(deviceId, deviceToSave, collaboration.sessionVersion);
+            }
+
+            // Call parent save handler
             onSave(deviceToSave);
-            handleCloseModal();
+            
+            // Reset state
+            setHasUnsavedChanges(false);
+            
+            // For collaborative mode, don't close the modal automatically
+            if (!isCollaborative) {
+                handleCloseModal();
+            }
         }
-    };    // Note management
+    };    
+
+    // Note management
     const handleAddNote = () => {
         if (!newNote.trim()) return;
         
@@ -182,12 +396,16 @@ const UnifiedDeviceModal = ({
         const updatedNotes = [...(enhancedDevice.notes || []), newNoteObj];
         setEnhancedDevice(prev => ({ ...prev, notes: updatedNotes }));
         setNewNote('');
+        setHasUnsavedChanges(true);
     };
 
     const handleDeleteNote = (noteId) => {
         const updatedNotes = enhancedDevice.notes.filter(note => note.id !== noteId);
         setEnhancedDevice(prev => ({ ...prev, notes: updatedNotes }));
-    };// Format date
+        setHasUnsavedChanges(true);
+    };
+
+    // Format date
     const formatDate = (isoString) => {
         try {
             const date = new Date(isoString);
@@ -200,711 +418,434 @@ const UnifiedDeviceModal = ({
             // Get time components
             const hours = String(date.getHours()).padStart(2, '0');
             const minutes = String(date.getMinutes()).padStart(2, '0');
-            const seconds = String(date.getSeconds()).padStart(2, '0');
             
-            // Format: YYYY-MM-DD HH:MM:SS
-            return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-        } catch (error) {
-            return 'Invalid date';
+            return `${year}-${month}-${day} ${hours}:${minutes}`;
+        } catch (e) {
+            console.error("Invalid date string:", isoString);
+            return "Invalid date";
         }
     };
-    
-    // Generate a summary of changes
-    const generateChangeSummary = (changes) => {
-        if (!changes || Object.keys(changes).length === 0) {
-            return "No changes";
+
+    const handleCloseModal = () => {
+        // If in collaborative mode and we have the lock, release it
+        if (isCollaborative && isLockedByMe) {
+            collaboration.unlockDevice(deviceId);
         }
         
-        const changedItems = [];
-          if (changes.name !== undefined) changedItems.push("name");
-        if (changes.category !== undefined) changedItems.push("category");
-        if (changes.networkRole !== undefined) changedItems.push("device type");        if (changes.parentDevice !== undefined) changedItems.push("parent device");
-        if (changes.parentGateway !== undefined) changedItems.push("parent gateway");
-        if (changes.parentSwitch !== undefined) changedItems.push("parent switch");
-        if (changes.connectedGateways !== undefined) changedItems.push("gateway connections");
-        if (changes.connectedSwitches !== undefined) changedItems.push("switch connections");
-        if (changes.notes !== undefined) changedItems.push("notes");
-        
-        if (changedItems.length === 0) {
-            return "Unknown changes";
-        } else if (changedItems.length === 1) {
-            return `Updated ${changedItems[0]}`;
-        } else {
-            const lastItem = changedItems.pop();
-            return `Updated ${changedItems.join(', ')} and ${lastItem}`;
-        }
-    };    const handleCloseModal = () => {
         setModalDevice(null);
-        setEnhancedDevice(null);
-        setDeviceHistory([]);
         setIsEditing(false);
-        setNewNote('');
-        setExpandedHistoryItems([0]);
     };
+
+    // Format string with separator and fallback
+    const formatWithFallback = (str, separator = ", ", fallback = "-") => {
+        if (!str || str.length === 0) return fallback;
+        if (Array.isArray(str)) return str.join(separator) || fallback;
+        return str;
+    };
+
+    // Get device icon
+    const getDeviceIcon = (networkRole) => {
+        const deviceType = getDeviceTypeById(networkRole || 'unknown');
+        return deviceType ? deviceType.icon : '🖥️';
+    };
+
+    // Determine active section for visualization targeting
+    const determineActiveSection = () => {
+        if (!enhancedDevice) return null;
+        
+        if (['switch', 'gateway', 'router'].includes(enhancedDevice.networkRole)) {
+            return 'network';
+        }
+        
+        return 'device';
+    };
+
+    // If no device is selected, don't render the modal
+    if (!modalDevice) return null;
 
     return (
-        <Modal isVisible={!!enhancedDevice} onClose={handleCloseModal}>
-            <div className="max-h-[80vh] overflow-y-auto pr-2">
-                {/* Header Section */}
-                <div className="sticky top-0 bg-gray-800 z-10 pb-2">
-                    <div className="flex justify-between mb-4">                        {isEditing ? (
-                            <input
-                                type="text"
-                                value={enhancedDevice?.name || ""}
-                                onChange={(e) =>
-                                    setEnhancedDevice((prev) => ({ ...prev, name: e.target.value }))
-                                }
-                                className="flex-1 bg-gray-700 text-white px-3 py-2 rounded mr-2"
-                                placeholder="Enter device name"
-                            />                        ) : (
-                            <div className="flex items-center">                                <h2 className="text-white text-xl py-2">{enhancedDevice?.name || "Edit Device"}</h2>
-                                {enhancedDevice?.networkRole && (
-                                    <div className="ml-3 flex items-center">
-                                        {(() => {
-                                            const typeConfig = getDeviceTypeById(enhancedDevice.networkRole);
-                                            const IconComponent = typeConfig.icon;
-                                            return (
-                                                <div className="flex items-center bg-gray-700 px-2 py-1 rounded">
-                                                    <div 
-                                                        className="w-2 h-2 rounded-full mr-2" 
-                                                        style={{ backgroundColor: typeConfig.color }}
-                                                    ></div>
-                                                    <IconComponent 
-                                                        className="mr-1" 
-                                                        style={{ color: typeConfig.color }}
-                                                        size={14}
-                                                    />
-                                                    <span className="text-xs text-gray-300">{typeConfig.name}</span>
-                                                </div>
-                                            );
-                                        })()}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                        
-                        <div className="flex items-center">
-                            {isEditing ? (
-                                <>
-                                    <button
-                                        onClick={() => setIsEditing(false)}
-                                        className="p-2 text-blue-400 hover:text-blue-300"
-                                        title="Save changes"
-                                    >
-                                        <FaSave />
-                                    </button>
-                                    <button
-                                        onClick={() => setIsEditing(false)}
-                                        className="p-2 text-gray-400 hover:text-gray-300"
-                                        title="Cancel editing"
-                                    >
-                                        <FaTimes />
-                                    </button>
-                                </>
-                            ) : (
-                                <button
-                                    onClick={() => setIsEditing(true)}
-                                    className="p-2 text-blue-400 hover:text-blue-300"
-                                    title="Edit device name"
-                                >
-                                    <FaEdit />
-                                </button>
-                            )}
-                        </div>
+        <Modal 
+            isOpen={!!modalDevice} 
+            onClose={handleCloseModal} 
+            title={
+                <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center">
+                        <span className="mr-2 text-xl">{getDeviceIcon(enhancedDevice?.networkRole)}</span>
+                        <h2 className="text-xl font-semibold truncate">
+                            {enhancedDevice?.name || enhancedDevice?.hostname || modalDevice?.ip || "Device Details"}
+                        </h2>
                     </div>
-                    <div className="text-gray-400 text-sm">{enhancedDevice?.ip}</div>
-                </div>                {/* Device Type Selector */}
-                <div className="mb-4">
-                    <DeviceTypeSelector
-                        value={enhancedDevice?.networkRole || ""}
-                        onChange={(newTypeId) => {
-                            console.log("Device type changing from", enhancedDevice?.networkRole, "to", newTypeId);
-                            
-                            setEnhancedDevice((prev) => {
-                                const updated = { ...prev, networkRole: newTypeId };
-                                const deviceType = getDeviceTypeById(newTypeId);
-                                
-                                // Handle role-specific logic based on new type capabilities
-                                if (deviceType.canHaveParent) {
-                                    // Device can have parent - initialize parent device field
-                                    updated.parentDevice = updated.parentDevice || null;
-                                } else {
-                                    // Device cannot have parent (like gateways) - clear parent
-                                    updated.parentDevice = null;
-                                }
-                                
-                                // Clear legacy connection fields if device type changed significantly
-                                if (prev.networkRole !== newTypeId) {
-                                    updated.parentGateway = null;
-                                    updated.parentSwitch = null;
-                                    updated.connectedGateways = null;
-                                    updated.connectedSwitches = null;
-                                    updated.isMainGateway = deviceType.id === 'gateway' ? (updated.isMainGateway || false) : null;
-                                }
-                                
-                                return updated;
-                            });
-                        }}
-                        showDescription={true}
-                        className="mb-2"
-                    />
-                </div>
-
-                {/* Parent Device Selector */}
-                {enhancedDevice?.networkRole && (
-                    <div className="mb-4">
-                        <ParentDeviceSelector
-                            deviceType={enhancedDevice.networkRole}
-                            currentParent={enhancedDevice?.parentDevice}
-                            onParentChange={(parentIp) => {
-                                setEnhancedDevice((prev) => ({
-                                    ...prev,
-                                    parentDevice: parentIp
-                                }));
-                            }}
-                            excludeDeviceId={enhancedDevice?.ip}
-                            className="mb-2"
-                        />
-                    </div>
-                )}                {/* Main Gateway Checkbox - only shown when device type is Gateway */}
-                {enhancedDevice?.networkRole === 'gateway' && (
-                    <div className="mb-4">
-                        <div className="flex items-center">
-                            <input
-                                type="checkbox"
-                                id="isMainGateway"
-                                checked={enhancedDevice.isMainGateway || false}                                onChange={(e) => {
-                                    setEnhancedDevice((prev) => ({
-                                        ...prev,
-                                        isMainGateway: e.target.checked
-                                    }));
-                                }}
-                                className="mr-2 h-4 w-4"
-                            />
-                            <label htmlFor="isMainGateway" className="text-sm text-gray-300">
-                                Set as Main Gateway
-                            </label>
-                        </div>
-                        <p className="text-xs text-gray-400 ml-6 mt-1">
-                            Main gateways serve as the root nodes for network hierarchy and can connect to sub-gateways
-                        </p>
-                    </div>
-                )}                {/* Network Topology Section */}
-                <div className="mb-4">
-                    <NetworkTopologyVisualization
-                        className="border border-gray-700"
-                        maxHeight="300px"
-                        showControls={true}
-                    />
-                </div>
-
-                {/* Legacy Connection Sections */}                {/* 1. Gateway Connections - only shown for switches, routers, and other gateways */}
-                {['switch', 'router', 'gateway'].includes(enhancedDevice?.networkRole) && (
-                    <div className="mb-4">
-                        <label className="block text-sm text-gray-300 mb-1">
-                            Connected to Gateway(s)
-                        </label>
-                        
-                        <div>
-                            {/* Show important debug info about current connections */}
-                            <div className="text-xs text-gray-400 mb-2">
-                                {Array.isArray(enhancedDevice?.connectedGateways) && enhancedDevice.connectedGateways.length > 0 ? 
-                                    `Connected to ${enhancedDevice.connectedGateways.length} gateway(s)` : 
-                                    enhancedDevice?.parentGateway ? 
-                                        `Currently connected to gateway: ${enhancedDevice.parentGateway}` :
-                                        'Not connected to any gateway'
-                                }
-                            </div>
-                              {/* List of gateways with checkboxes */}
-                            <div className="max-h-32 overflow-y-auto bg-gray-700 rounded p-2 mb-2">
-                                {typeof window !== 'undefined' && 
-                                    Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
-                                        .filter(([ip, props]) => ['gateway'].includes(props.networkRole) && ip !== enhancedDevice?.ip)
-                                        .map(([ip, props]) => {
-                                            // Check if gateway is in the connectedGateways array or is the parentGateway (for backward compatibility)
-                                            const isConnected = 
-                                                (Array.isArray(enhancedDevice?.connectedGateways) && 
-                                                 enhancedDevice.connectedGateways.includes(ip)) ||
-                                                enhancedDevice?.parentGateway === ip;
-                                            
-                                            return (
-                                                <div key={ip} className="flex items-center py-1 border-b border-gray-600 last:border-b-0">
-                                                    <input
-                                                        type="checkbox"
-                                                        id={`gateway-${ip}`}
-                                                        checked={isConnected}
-                                                        onChange={(e) => {
-                                                            // Initialize connectedGateways if needed
-                                                            const currentConnections = 
-                                                                Array.isArray(enhancedDevice?.connectedGateways) ? 
-                                                                [...enhancedDevice.connectedGateways] : 
-                                                                enhancedDevice?.parentGateway ? [enhancedDevice.parentGateway] : [];
-                                                            
-                                                            let newConnections;
-                                                            if (e.target.checked) {
-                                                                // Add to connections if not already present
-                                                                if (!currentConnections.includes(ip)) {
-                                                                    newConnections = [...currentConnections, ip];
-                                                                } else {
-                                                                    newConnections = currentConnections;
-                                                                }
-                                                            } else {
-                                                                // Remove from connections
-                                                                newConnections = currentConnections.filter(conn => conn !== ip);
-                                                            }
-                                                            
-                                                            console.log(`Updating ${enhancedDevice.networkRole} ${enhancedDevice.ip} gateway connections:`, newConnections);
-                                                              // Keep the first gateway as parentGateway for backward compatibility
-                                                            const newParentGateway = newConnections.length > 0 ? newConnections[0] : null;
-                                                            
-                                                            setEnhancedDevice((prev) => ({
-                                                                ...prev, 
-                                                                connectedGateways: newConnections,
-                                                                parentGateway: newParentGateway
-                                                            }));
-                                                        }}
-                                                        className="mr-2 h-4 w-4"
-                                                    />
-                                                    <label htmlFor={`gateway-${ip}`} className="flex-1 text-sm">
-                                                        {props.name || ip} (Gateway)
-                                                    </label>
-                                                </div>
-                                            );
-                                        })
-                                }
-                            </div>
-                              {typeof window !== 'undefined' && 
-                                Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
-                                    .filter(([ip, props]) => ['gateway'].includes(props.networkRole) && ip !== enhancedDevice?.ip).length === 0 && (
-                                <div className="text-center text-gray-500 py-2">
-                                    No gateways available. Create a gateway first.
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                )}                {/* 2. Switch Connections - shown for regular devices, switches, routers, and gateways */}
-                <div className="mb-4">                    <label className="block text-sm text-gray-300 mb-1">
-                        {['switch', 'gateway', 'router'].includes(enhancedDevice?.networkRole)
-                            ? 'Connected to Switch(es)' 
-                            : 'Connected to Switch'}
-                    </label>
                     
-                    {['switch', 'gateway', 'router'].includes(enhancedDevice?.networkRole) ? (
-                        /* For switches and gateways - allow multiple switch connections */
-                        <div>
-                            {/* Show current connections info */}
-                            <div className="text-xs text-gray-400 mb-2">
-                                {Array.isArray(enhancedDevice?.connectedSwitches) && enhancedDevice.connectedSwitches.length > 0 ? 
-                                    `Connected to ${enhancedDevice.connectedSwitches.length} switch(es)` : 
-                                    enhancedDevice?.parentSwitch ? 
-                                        `Currently connected to switch: ${enhancedDevice.parentSwitch}` :
-                                        'Not connected to any switch'
-                                }
-                            </div>
+                    {/* Collaboration indicators */}
+                    {isCollaborative && (
+                        <div className="flex items-center space-x-2">
+                            <CollaborationIndicator 
+                                isConnected={collaboration?.isConnected}
+                                collaborators={collaboration?.collaborators || []}
+                                className="text-xs"
+                            />
                             
-                            {/* List of switches with checkboxes */}                            <div className="max-h-32 overflow-y-auto bg-gray-700 rounded p-2 mb-2">
-                                {typeof window !== 'undefined' && 
-                                    Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
-                                        .filter(([ip, props]) => ['switch'].includes(props.networkRole) && ip !== enhancedDevice?.ip)
-                                        .map(([ip, props]) => {
-                                            // Check if switch is in the connectedSwitches array or is the parentSwitch
-                                            const isConnected = 
-                                                (Array.isArray(enhancedDevice?.connectedSwitches) && 
-                                                 enhancedDevice.connectedSwitches.includes(ip)) ||
-                                                enhancedDevice?.parentSwitch === ip;
-                                            
-                                            return (
-                                                <div key={ip} className="flex items-center py-1 border-b border-gray-600 last:border-b-0">
-                                                    <input
-                                                        type="checkbox"
-                                                        id={`switch-${ip}`}
-                                                        checked={isConnected}
-                                                        onChange={(e) => {
-                                                            // Initialize connectedSwitches if needed
-                                                            const currentConnections = 
-                                                                Array.isArray(enhancedDevice?.connectedSwitches) ? 
-                                                                [...enhancedDevice.connectedSwitches] : 
-                                                                enhancedDevice?.parentSwitch ? [enhancedDevice.parentSwitch] : [];
-                                                            
-                                                            let newConnections;
-                                                            if (e.target.checked) {
-                                                                // Add to connections if not already present
-                                                                if (!currentConnections.includes(ip)) {
-                                                                    newConnections = [...currentConnections, ip];
-                                                                } else {
-                                                                    newConnections = currentConnections;
-                                                                }
-                                                            } else {
-                                                                // Remove from connections
-                                                                newConnections = currentConnections.filter(conn => conn !== ip);
-                                                            }
-                                                            
-                                                            console.log(`Updating ${enhancedDevice.networkRole} ${enhancedDevice.ip} switch connections:`, newConnections);
-                                                              // Keep the first switch as parentSwitch for backward compatibility
-                                                            const newParentSwitch = newConnections.length > 0 ? newConnections[0] : null;
-                                                            
-                                                            setEnhancedDevice((prev) => ({
-                                                                ...prev, 
-                                                                connectedSwitches: newConnections,
-                                                                parentSwitch: newParentSwitch
-                                                            }));
-                                                        }}
-                                                        className="mr-2 h-4 w-4"
-                                                    />
-                                                    <label htmlFor={`switch-${ip}`} className="flex-1 text-sm">
-                                                        {props.name || ip} (Switch)
-                                                    </label>
-                                                </div>
-                                            );
-                                        })
-                                }
-                            </div>                              {typeof window !== 'undefined' && 
-                                Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
-                                    .filter(([ip, props]) => ['switch'].includes(props.networkRole) && ip !== enhancedDevice?.ip).length === 0 && (
-                                <div className="text-center text-gray-500 py-2">
-                                    No switches available. Create a switch first.
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        /* For regular devices - single switch connection */
-                        <div>
-                            {/* Show important debug info about current connections */}
-                            <div className="text-xs text-gray-400 mb-2">
-                                {enhancedDevice?.parentSwitch ? 
-                                    `Currently connected to switch: ${enhancedDevice.parentSwitch}` : 
-                                    'Not connected to any switch'
-                                }
-                            </div>
-                            <select
-                                value={enhancedDevice?.parentSwitch || ""}                                onChange={(e) => {
-                                    const selectedValue = e.target.value;
-                                    console.log(`Setting device ${enhancedDevice.ip} parent switch to: "${selectedValue}"`);
-                                    setEnhancedDevice((prev) => ({
-                                        ...prev, 
-                                        parentSwitch: selectedValue === "" ? null : selectedValue,
-                                        parentGateway: null
-                                    }));
-                                }}
-                                className="w-full bg-gray-700 text-white px-3 py-2 rounded"
-                            >                                <option value="">Not connected to a switch</option>
-                                {typeof window !== 'undefined' &&                                 Object.entries(JSON.parse(localStorage.getItem("customDeviceProperties") || "{}"))
-                                    .filter(([ip, props]) => 
-                                        ['switch'].includes(props.networkRole) && ip !== enhancedDevice?.ip
-                                    )
-                                    .map(([ip, props]) => (
-                                        <option key={ip} value={ip}>
-                                            {props.name || ip} (Switch)
-                                        </option>
-                                    ))
-                                }
-                            </select>
+                            <DeviceLockIndicator 
+                                deviceId={deviceId}
+                                lock={lock}
+                                isLockedByMe={isLockedByMe}
+                                isLockedByOther={isLockedByOther}
+                                onUnlock={handleToggleEdit}
+                                className="text-xs" 
+                            />
                         </div>
                     )}
                 </div>
+            } 
+            size="lg"
+        >
+            {enhancedDevice && (
+                <div className="flex flex-col space-y-6 p-1" ref={formRef}>
+                    {/* Collaboration typing indicators */}
+                    {isCollaborative && (
+                        <TypingIndicator 
+                            indicators={collaboration?.getTypingIndicators(deviceId) || []}
+                            className="mb-2"
+                        />
+                    )}
 
-                {/* Notes Section */}
-                <div className="mb-4">
-                    <div className="bg-gray-800 p-3 rounded">
-                        <h4 className="font-medium mb-2">Notes</h4>
-                        
-                        {/* Add New Note */}
-                        <div className="mb-3 flex">
-                            <input
-                                type="text"
-                                value={newNote}
-                                onChange={(e) => setNewNote(e.target.value)}
-                                className="flex-1 bg-gray-700 text-white border border-gray-600 rounded-l px-2 py-1"
-                                placeholder="Add a note about this device..."
-                                onKeyUp={(e) => {
-                                    if (e.key === 'Enter') handleAddNote();
-                                }}
-                            />
-                            <button
-                                onClick={handleAddNote}
-                                className="bg-blue-600 hover:bg-blue-700 text-white rounded-r px-3"
-                                title="Add note"
-                            >
-                                <FaPlus />
-                            </button>
+                    {/* Device information section */}
+                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-medium text-gray-800">Device Information</h3>
+                            
+                            <div className="flex space-x-2 items-center">
+                                {/* Display read-only notification if applicable */}
+                                {readOnly && (
+                                    <div className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs flex items-center">
+                                        <FaEye className="mr-1 w-3 h-3" /> View Only
+                                    </div>
+                                )}
+                                
+                                {!readOnly && (
+                                    <button 
+                                        onClick={handleToggleEdit} 
+                                        disabled={readOnly || isLockedByOther}
+                                        className={`px-3 py-1 rounded-full text-white text-sm flex items-center ${
+                                            isEditing ? 'bg-green-600 hover:bg-green-700' : 'bg-blue-600 hover:bg-blue-700'
+                                        } ${
+                                            (readOnly || isLockedByOther) ? 'opacity-50 cursor-not-allowed' : ''
+                                        }`}
+                                    >
+                                        {isEditing ? (
+                                            <>
+                                                <FaSave className="mr-1" /> Save
+                                            </>
+                                        ) : (
+                                            <>
+                                                <FaEdit className="mr-1" /> {isCollaborative ? 'Lock & Edit' : 'Edit'}
+                                            </>
+                                        )}
+                                    </button>
+                                )}
+                                
+                                {/* SSH Button if provided */}
+                                {onStartSSH && (
+                                    <button 
+                                        onClick={() => onStartSSH(enhancedDevice)}
+                                        className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-full text-sm flex items-center"
+                                    >
+                                        <span className="mr-1">🔒</span> SSH
+                                    </button>
+                                )}
+                            </div>
                         </div>
                         
-                        {/* Notes List */}
-                        {(!enhancedDevice?.notes || enhancedDevice.notes.length === 0) ? (
-                            <div className="text-center text-gray-500 py-3">
-                                No notes yet. Add notes to track important information about this device.
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Left column - Basic information */}
+                            <div className="space-y-4">
+                                {/* IP Address */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">IP Address</label>
+                                    <input
+                                        type="text"
+                                        disabled={true}  // IP addresses are always read-only
+                                        value={enhancedDevice?.ip || ''}
+                                        className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                                    />
+                                </div>
+                                
+                                {/* Hostname/Name */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Name / Hostname
+                                    </label>
+                                    <input
+                                        type="text"
+                                        disabled={!isEditing}
+                                        value={enhancedDevice?.name || ''}
+                                        onChange={(e) => handleFieldChange('name', e.target.value)}
+                                        onFocus={(e) => handleFieldFocus('name', e)}
+                                        onBlur={() => handleFieldBlur('name')}
+                                        onKeyDown={() => handleTyping('name')}
+                                        placeholder={enhancedDevice?.hostname || 'Set a name for this device'}
+                                        className={`w-full p-2 border rounded-md ${
+                                            isEditing ? 'border-blue-300 bg-white' : 'border-gray-300 bg-gray-50'
+                                        }`}
+                                    />
+                                </div>
+                                
+                                {/* MAC Address */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">MAC Address</label>
+                                    <input
+                                        type="text"
+                                        disabled={true}
+                                        value={formatWithFallback(enhancedDevice?.mac)}
+                                        className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                                    />
+                                </div>
+                                
+                                {/* Vendor */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
+                                    <input
+                                        type="text"
+                                        disabled={true}
+                                        value={formatWithFallback(enhancedDevice?.vendor)}
+                                        className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                                    />
+                                </div>
+                                
+                                {/* Last Seen */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Seen</label>
+                                    <input
+                                        type="text"
+                                        disabled={true}
+                                        value={enhancedDevice?.lastSeen ? formatDate(enhancedDevice.lastSeen) : '-'}
+                                        className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                                    />
+                                </div>
+
+                                {/* Uptime if available */}
+                                {enhancedDevice?.uptime && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Device Uptime</label>
+                                        <input
+                                            type="text"
+                                            disabled={true}
+                                            value={enhancedDevice.uptime}
+                                            className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                                        />
+                                    </div>
+                                )}
                             </div>
-                        ) : (
-                            <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
-                                {enhancedDevice.notes.map(note => (
-                                    <div key={note.id} className="bg-gray-700 p-2 rounded">
-                                        <div className="flex items-center justify-between">
-                                            <div className="text-xs text-gray-400">
+                            
+                            {/* Right column - Network information */}
+                            <div className="space-y-4">
+                                {/* Device Type / Network Role */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Device Type</label>
+                                    <DeviceTypeSelector
+                                        networkRole={enhancedDevice?.networkRole}
+                                        onChange={(value) => handleFieldChange('networkRole', value)}
+                                        disabled={!isEditing}
+                                        onFocus={(e) => handleFieldFocus('networkRole', e)}
+                                        onBlur={() => handleFieldBlur('networkRole')}
+                                        onKeyDown={() => handleTyping('networkRole')}
+                                        className={`w-full ${
+                                            isEditing ? 'border-blue-300 bg-white' : 'border-gray-300 bg-gray-50'
+                                        }`}
+                                    />
+                                </div>
+                                
+                                {/* Parent Device */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Parent Device</label>
+                                    <ParentDeviceSelector
+                                        value={enhancedDevice?.parentDevice}
+                                        networkRole={enhancedDevice?.networkRole}
+                                        onChange={(value) => handleFieldChange('parentDevice', value)}
+                                        disabled={!isEditing}
+                                        onFocus={(e) => handleFieldFocus('parentDevice', e)}
+                                        onBlur={() => handleFieldBlur('parentDevice')}
+                                        onKeyDown={() => handleTyping('parentDevice')}
+                                        className={`w-full ${
+                                            isEditing ? 'border-blue-300 bg-white' : 'border-gray-300 bg-gray-50'
+                                        }`}
+                                    />
+                                </div>
+                                
+                                {/* Open Ports if available */}
+                                {enhancedDevice?.openPorts && enhancedDevice.openPorts.length > 0 && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Open Ports</label>
+                                        <input
+                                            type="text"
+                                            disabled={true}
+                                            value={enhancedDevice.openPorts.join(', ')}
+                                            className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                                        />
+                                    </div>
+                                )}
+                                
+                                {/* OS if available */}
+                                {enhancedDevice?.os && (
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1">Operating System</label>
+                                        <input
+                                            type="text"
+                                            disabled={true}
+                                            value={enhancedDevice.os}
+                                            className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    {/* Notes Section */}
+                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                        <h3 className="text-lg font-medium text-gray-800 mb-4">Notes</h3>
+                        
+                        {/* Existing notes */}
+                        <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
+                            {enhancedDevice.notes && enhancedDevice.notes.length > 0 ? (
+                                enhancedDevice.notes.map((note) => (
+                                    <div key={note.id} className="flex space-x-2 bg-gray-50 p-3 rounded-md">
+                                        <div className="flex-grow">
+                                            <p className="text-gray-800">{note.text}</p>
+                                            <p className="text-xs text-gray-500 mt-1">
                                                 {formatDate(note.timestamp)}
-                                            </div>
+                                            </p>
+                                        </div>
+                                        {isEditing && (
                                             <button
                                                 onClick={() => handleDeleteNote(note.id)}
-                                                className="p-1 text-red-400 hover:text-red-300"
+                                                className="text-red-500 hover:text-red-700"
                                                 title="Delete note"
                                             >
-                                                <FaTrash size={12} />
+                                                <FaTrash size={14} />
                                             </button>
-                                        </div>
-                                        <div className="text-sm mt-1">
-                                            {note.text}
-                                        </div>
+                                        )}
                                     </div>
-                                ))}
+                                ))
+                            ) : (
+                                <p className="text-gray-500 italic">No notes for this device.</p>
+                            )}
+                        </div>
+                        
+                        {/* Add new note */}
+                        {isEditing && (
+                            <div className="flex space-x-2">
+                                <input
+                                    type="text"
+                                    value={newNote}
+                                    onChange={(e) => setNewNote(e.target.value)}
+                                    onFocus={(e) => handleFieldFocus('notes', e)}
+                                    onBlur={() => handleFieldBlur('notes')}
+                                    onKeyDown={(e) => {
+                                        handleTyping('notes');
+                                        if (e.key === 'Enter' && newNote.trim()) {
+                                            handleAddNote();
+                                        }
+                                    }}
+                                    placeholder="Add a note about this device..."
+                                    className="flex-grow p-2 border border-gray-300 rounded-md"
+                                />
+                                <button
+                                    onClick={handleAddNote}
+                                    disabled={!newNote.trim()}
+                                    className={`px-3 py-2 rounded-md text-white flex items-center ${
+                                        newNote.trim() ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400'
+                                    }`}
+                                >
+                                    <FaPlus className="mr-1" /> Add
+                                </button>
                             </div>
                         )}
                     </div>
-                </div>
-
-                {/* Device History Section */}
-                <div className="mb-4">
-                    <div className="bg-gray-800 p-3 rounded">
-                        <h4 className="font-medium mb-2">Device History</h4>
-                        
-                        {/* History List */}
-                        {(!deviceHistory || deviceHistory.length === 0) ? (
-                            <div className="text-center text-gray-500 py-3">
-                                No history records yet. Changes to device properties will be recorded here.
-                            </div>
-                        ) : (
-                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">                                {deviceHistory.map((record, index) => (                                    
-                                    <div key={index} className="bg-gray-700 p-2 rounded">
+                    
+                    {/* History Section */}
+                    {deviceHistory.length > 0 && (
+                        <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                            <h3 className="text-lg font-medium text-gray-800 mb-4">History</h3>
+                            
+                            <div className="space-y-3 max-h-60 overflow-y-auto">
+                                {deviceHistory.map((item, index) => (
+                                    <div 
+                                        key={index} 
+                                        className="border border-gray-200 rounded-md overflow-hidden"
+                                    >
                                         <div 
-                                            className="flex justify-between mb-2 cursor-pointer hover:bg-gray-600 p-1 rounded"
                                             onClick={() => toggleHistoryItemExpansion(index)}
+                                            className="flex justify-between items-center p-3 bg-gray-50 cursor-pointer hover:bg-gray-100"
                                         >
-                                            <div className="text-xs text-gray-400">
-                                                {formatDate(record.timestamp)}
-                                            </div>
-                                            <div className="flex items-center">
-                                                <div className="text-xs text-green-400 font-medium mr-2">
-                                                    {generateChangeSummary(record.changes)}
-                                                </div>
-                                                <div className="text-xs text-gray-400">
-                                                    {expandedHistoryItems.includes(index) ? '▼' : '►'}
-                                                </div>
-                                            </div>
+                                            <span className="text-sm font-medium">
+                                                {formatDate(item.timestamp)}
+                                            </span>
+                                            <span className="text-xs text-gray-600">
+                                                {expandedHistoryItems.includes(index) ? 'Hide Details' : 'Show Details'}
+                                            </span>
                                         </div>
-                                          {expandedHistoryItems.includes(index) && (
-                                            <div className="text-sm border-t border-gray-600 pt-2 mt-1">
-                                                {/* Track the changes that were made */}
-                                                {(!record.changes || Object.keys(record.changes).length === 0) ? (
-                                                    <div className="text-gray-400">No changes detected</div>
-                                                ) : (
-                                                <>
-                                                    {record.changes.name !== undefined && (
-                                                        <div><span className="text-blue-300">Name:</span> {record.changes.name}</div>
-                                                    )}
-                                                    {record.changes.category !== undefined && (
-                                                        <div><span className="text-blue-300">Category:</span> {record.changes.category}</div>
-                                                    )}                                                    {record.changes.networkRole !== undefined && (
-                                                        <div>
-                                                            <span className="text-blue-300">Device Type:</span> 
-                                                            {record.changes.networkRole || 'Regular Device'}
-                                                        </div>
-                                                    )}
-                                                    {record.changes.parentDevice !== undefined && (
-                                                        <div>
-                                                            <span className="text-blue-300">Parent Device:</span> 
-                                                            {record.changes.parentDevice || <span className="text-gray-400">None</span>}
-                                                        </div>
-                                                    )}
-                                                    {record.changes.parentGateway !== undefined && (
-                                                        <div>
-                                                            <span className="text-blue-300">Parent Gateway:</span> 
-                                                            {record.changes.parentGateway || <span className="text-gray-400">None</span>}
-                                                        </div>
-                                                    )}
-                                                    {record.changes.parentSwitch !== undefined && (
-                                                        <div>
-                                                            <span className="text-blue-300">Parent Switch:</span> 
-                                                            {record.changes.parentSwitch || <span className="text-gray-400">None</span>}
-                                                        </div>
-                                                    )}
-                                                    {record.changes.connectedGateways !== undefined && (
-                                                        <div>
-                                                            <span className="text-blue-300">Connected Gateways:</span> 
-                                                            {record.changes.connectedGateways && record.changes.connectedGateways.length > 0 
-                                                                ? record.changes.connectedGateways.join(', ') 
-                                                                : <span className="text-gray-400">None</span>}
-                                                        </div>
-                                                    )}
-                                                    {record.changes.connectedSwitches !== undefined && (
-                                                        <div>
-                                                            <span className="text-blue-300">Connected Switches:</span> 
-                                                            {record.changes.connectedSwitches && record.changes.connectedSwitches.length > 0 
-                                                                ? record.changes.connectedSwitches.join(', ') 
-                                                                : <span className="text-gray-400">None</span>}
-                                                        </div>
-                                                    )}
-                                                    {record.changes.notes !== undefined && (
-                                                        <div>
-                                                            <span className="text-blue-300">Notes:</span> 
-                                                            {record.changes.notes && record.changes.notes.length > 0
-                                                                ? <span className="text-gray-400">Updated ({record.changes.notes.length} notes)</span>
-                                                                : <span className="text-gray-400">Removed</span>}
-                                                        </div>                                            )}
-                                                </>
-                                            )}
-                                        </div>
+                                        
+                                        {expandedHistoryItems.includes(index) && (
+                                            <div className="p-3 text-sm space-y-2">
+                                                {Object.entries(item.changes).map(([key, value]) => (
+                                                    <div key={key}>
+                                                        <span className="font-medium">{key}: </span>
+                                                        <span className="text-gray-700">
+                                                            {Array.isArray(value) 
+                                                                ? value.join(', ') || 'none'
+                                                                : value || 'none'
+                                                            }
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
                                         )}
                                     </div>
                                 ))}
                             </div>
+                        </div>
+                    )}
+                    
+                    {/* Network visualization section for the device */}
+                    <NetworkTopologyVisualization
+                        device={enhancedDevice}
+                        activeSection={determineActiveSection()}
+                    />
+
+                    {/* Actions row */}
+                    <div className="flex justify-end space-x-3 border-t pt-4 mt-4">
+                        <button
+                            onClick={handleCloseModal}
+                            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                        >
+                            Close
+                        </button>
+                        
+                        {!readOnly && (isEditing || hasUnsavedChanges) && (
+                            <button
+                                onClick={handleSave}
+                                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 flex items-center"
+                                disabled={isCollaborative && isLockedByOther}
+                            >
+                                <FaSave className="mr-2" /> Save Changes
+                            </button>
                         )}
                     </div>
                 </div>
-
-                {/* Action Buttons */}
-                <div className="flex justify-end gap-2 sticky bottom-0 bg-gray-800 py-3">                    <button
-                        onClick={handleCloseModal}
-                        className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded"
-                    >
-                        Cancel
-                    </button><button
-                        onClick={() => {
-                            handleSave();
-                            setTimeout(() => {
-                                debugParentRelationships();
-                            }, 500);
-                        }}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-                    >
-                        Save
-                    </button>
-                </div>
-            </div>
+            )}
+            
+            {/* Display cursor positions from other users */}
+            {isCollaborative && collaboration?.cursorPositions && Array.from(collaboration.cursorPositions.values()).map((cursor, index) => (
+                cursor.deviceId === deviceId && cursor.userId !== collaboration.user?.userId && (
+                    <CursorPosition 
+                        key={`cursor-${index}`}
+                        cursor={cursor}
+                    />
+                )
+            ))}
         </Modal>
     );
-};
-
-// Function to manually check parent relationships and connections
-const debugParentRelationships = () => {
-    try {
-        const devices = JSON.parse(localStorage.getItem("customDeviceProperties") || "{}");
-        
-        console.log("========== NETWORK RELATIONSHIP DEBUG ==========");        // Check all switches
-        const switches = Object.entries(devices).filter(([_, props]) => 
-            props.networkRole === 'switch'
-        );
-        console.log(`Found ${switches.length} switches`);
-        
-        switches.forEach(([ip, props]) => {
-            console.log(`\nSwitch: ${ip}, Name: ${props.name || ip}`);
-            
-            // Check for both legacy parentGateway and new connectedGateways array
-            const parentGateway = props.parentGateway || 'None';
-            const connectedGateways = Array.isArray(props.connectedGateways) ? props.connectedGateways : [];
-            
-            console.log(`  Parent Gateway: ${parentGateway}`);
-            
-            // Display the connectedGateways array if it exists
-            if (connectedGateways.length > 0) {
-                console.log(`  Connected to ${connectedGateways.length} gateway(s):`, connectedGateways);
-            }
-            
-            // Validate that parentGateway matches first entry in connectedGateways
-            if (parentGateway !== 'None' && connectedGateways.length > 0) {
-                if (parentGateway !== connectedGateways[0]) {
-                    console.warn(`  ⚠️ Warning: parentGateway (${parentGateway}) doesn't match first connectedGateway (${connectedGateways[0]})`);
-                }
-            }
-            
-            // Check for switch-to-switch connections
-            const parentSwitch = props.parentSwitch || 'None';
-            const connectedSwitches = Array.isArray(props.connectedSwitches) ? props.connectedSwitches : [];
-            
-            console.log(`  Parent Switch: ${parentSwitch}`);
-            
-            if (connectedSwitches.length > 0) {
-                console.log(`  Connected to ${connectedSwitches.length} switch(es):`, connectedSwitches);
-            }
-            
-            // Validate that parentSwitch matches first entry in connectedSwitches
-            if (parentSwitch !== 'None' && connectedSwitches.length > 0) {
-                if (parentSwitch !== connectedSwitches[0]) {
-                    console.warn(`  ⚠️ Warning: parentSwitch (${parentSwitch}) doesn't match first connectedSwitch (${connectedSwitches[0]})`);
-                }
-            }            // Find switches that connect to this switch
-            const switchesConnectingToThis = Object.entries(devices)
-                .filter(([_, p]) => 
-                    p.networkRole === 'switch' && 
-                    (p.parentSwitch === ip || 
-                     (Array.isArray(p.connectedSwitches) && p.connectedSwitches.includes(ip)))
-                )
-                .map(([connIp]) => connIp);
-                
-            if (switchesConnectingToThis.length > 0) {
-                console.log(`  Switches connected to this switch: ${switchesConnectingToThis.length}`, switchesConnectingToThis);
-            }
-        });
-        
-        // Check all gateways
-        const gateways = Object.entries(devices).filter(([_, props]) => props.networkRole === 'gateway');
-        console.log(`\nFound ${gateways.length} gateways`);
-        
-        gateways.forEach(([ip, props]) => {
-            console.log(`\nGateway: ${ip}, Name: ${props.name || ip}`);
-            
-            // Find all devices that reference this gateway (using both old and new methods)
-            const legacyConnections = Object.entries(devices).filter(([_, p]) => p.parentGateway === ip);
-            const newConnections = Object.entries(devices).filter(([_, p]) => 
-                Array.isArray(p.connectedGateways) && p.connectedGateways.includes(ip)
-            );
-            
-            // Combine both sets, removing duplicates
-            const allConnectedSwitchIPs = new Set([
-                ...legacyConnections.map(([connIp]) => connIp),
-                ...newConnections.map(([connIp]) => connIp)
-            ]);
-            
-            console.log(`  Connected switches: ${allConnectedSwitchIPs.size}`);
-            if (allConnectedSwitchIPs.size > 0) {
-                console.log(`  Connected switch IPs:`, Array.from(allConnectedSwitchIPs));
-            }
-            
-            // Check for gateway-to-gateway connections
-            const parentGateway = props.parentGateway || 'None';
-            const connectedGateways = Array.isArray(props.connectedGateways) ? props.connectedGateways : [];
-            
-            console.log(`  Parent Gateway: ${parentGateway}`);
-            
-            if (connectedGateways.length > 0) {
-                console.log(`  Connected to ${connectedGateways.length} gateway(s):`, connectedGateways);
-            }
-            
-            // Check for gateway-to-switch connections
-            const parentSwitch = props.parentSwitch || 'None';
-            const connectedSwitches = Array.isArray(props.connectedSwitches) ? props.connectedSwitches : [];
-            
-            console.log(`  Parent Switch: ${parentSwitch}`);
-            
-            if (connectedSwitches.length > 0) {
-                console.log(`  Connected to ${connectedSwitches.length} switch(es):`, connectedSwitches);
-            }
-            
-            // Find gateways that connect to this gateway
-            const gatewaysConnectingToThis = Object.entries(devices)
-                .filter(([_, p]) => 
-                    p.networkRole === 'gateway' && 
-                    (p.parentGateway === ip || 
-                     (Array.isArray(p.connectedGateways) && p.connectedGateways.includes(ip)))
-                )
-                .map(([connIp]) => connIp);
-                
-            if (gatewaysConnectingToThis.length > 0) {
-                console.log(`  Gateways connected to this gateway: ${gatewaysConnectingToThis.length}`, gatewaysConnectingToThis);
-            }
-        });
-        
-        console.log("\n==============================================");
-    } catch (error) {
-        console.error("Debug error:", error);
-    }
 };
 
 export default UnifiedDeviceModal;

@@ -4,7 +4,6 @@ import { useState, lazy, Suspense, useEffect, useRef } from "react";
 import TopologyMap from "./networktopology";
 import SharedScansBrowser from "./SharedScansBrowser";
 import UnifiedDeviceModal from "../../components/UnifiedDeviceModal";
-import { CollaborativeDeviceModal } from "../../components/collaboration/CollaborativeDeviceModal";
 import NetworkControlModal from "../../components/NetworkControlModal";
 import { useNetworkControlModal } from "../../components/useNetworkControlModal";
 import { useCollaboration } from "../../hooks/useCollaboration";
@@ -787,35 +786,23 @@ export default function NetworkDashboard() {
                         }}
                     />
                 </div>
-            )}            {/* Device Modal - Use CollaborativeDeviceModal when in collaborative mode */}
-            {collaborativeMode ? (
-                <CollaborativeDeviceModal
-                    device={modalDevice}
-                    isOpen={!!modalDevice}
-                    onSave={handleCollaborativeDeviceSave}
-                    onClose={() => {
-                        if (modalDevice) {
-                            handleCollaborativeModalClose(modalDevice);
-                        }
-                        setModalDevice(null);
-                    }}
-                    onStartSSH={(device) => {
-                        setSSHTarget(device);
-                        setSSHModalVisible(true);
-                    }}
-                    scanId={scanId}
-                />
-            ) : (
-                <UnifiedDeviceModal
-                    modalDevice={modalDevice}
-                    setModalDevice={setModalDevice}
-                    onSave={handleSaveDevice}
-                    onStartSSH={(device) => {
-                        setSSHTarget(device);
-                        setSSHModalVisible(true);
-                    }}
-                />
-            )}
+            )}            {/* Enhanced UnifiedDeviceModal now handles both solo and collaborative modes */}
+            <UnifiedDeviceModal
+                modalDevice={modalDevice}
+                setModalDevice={(device) => {
+                    if (collaborativeMode && modalDevice) {
+                        handleCollaborativeModalClose(modalDevice);
+                    }
+                    setModalDevice(null);
+                }}
+                onSave={collaborativeMode ? handleCollaborativeDeviceSave : handleSaveDevice}
+                onStartSSH={(device) => {
+                    setSSHTarget(device);
+                    setSSHModalVisible(true);
+                }}
+                scanId={collaborativeMode ? scanId : null}
+                isCollaborative={collaborativeMode}
+            />
             
             {/* SSH Modal */}
             {sshModalVisible && sshTarget && (

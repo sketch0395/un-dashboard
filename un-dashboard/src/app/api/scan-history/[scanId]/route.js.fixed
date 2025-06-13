@@ -31,9 +31,8 @@ export async function GET(request, { params }) {
 
     const user = authData.user;
 
-    // Await params before accessing it
-    const resolvedParams = await params;
-    const scanId = resolvedParams.scanId;
+    // Await params before destructuring to avoid the error
+    const scanId = params?.scanId;
     
     if (!scanId) {
       return NextResponse.json({ error: 'Scan ID is required' }, { status: 400 });
@@ -78,19 +77,21 @@ export async function PUT(request, { params }) {
       headers: {
         authorization: `Bearer ${token}`
       }
-    };    // Verify authentication
+    };
+
+    // Verify authentication
     const authData = await AuthService.verifyAuth(mockReq);
     if (!authData || !authData.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }    
+    }
+
     const user = authData.user;
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Await params before accessing it
-    const resolvedParams = await params;
-    const scanId = resolvedParams.scanId;
+    // Await params before destructuring to avoid the error
+    const scanId = params?.scanId;
     const body = await request.json();
     
     if (!scanId) {
@@ -159,16 +160,18 @@ export async function DELETE(request, { params }) {
       headers: {
         authorization: `Bearer ${token}`
       }
-    };    // Verify authentication
+    };
+
+    // Verify authentication
     const authData = await AuthService.verifyAuth(mockReq);
     if (!authData || !authData.user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }    
+    }
+
     const user = authData.user;
 
-    // Await params before accessing it
-    const resolvedParams = await params;
-    const scanId = resolvedParams.scanId;
+    // Await params before destructuring to avoid the error
+    const scanId = params?.scanId;
     
     if (!scanId) {
       return NextResponse.json({ error: 'Scan ID is required' }, { status: 400 });

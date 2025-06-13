@@ -10,12 +10,13 @@ import { useScanHistory } from "../../contexts/ScanHistoryContext";
 
 const UnifiedDeviceModal = lazy(() => import("../../components/UnifiedDeviceModal"));
 const SSHTerminal = lazy(() => import("../../components/sshterminal"));
-const MemoizedDeviceList = lazy(() => import("../../components/MemoizedDeviceList"));
 const NetworkScanExportImport = lazy(() => import("./NetworkScanExportImport"));
 const NetworkScanSharingModal = lazy(() => import("./NetworkScanSharingModal"));
 
 // Use regular import instead of lazy to avoid chunk loading issues
 import ScanHistorySyncStatus from "../../components/ScanHistorySyncStatus";
+// Use regular import for MemoizedDeviceList to avoid chunk loading issues
+import MemoizedDeviceList from "../../components/MemoizedDeviceList";
 
 export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData }) {
     const { scanHistory, saveScanHistory, deleteScan, updateScanName, clearHistory, updateDeviceInHistory, updateScanData } = useScanHistory();
