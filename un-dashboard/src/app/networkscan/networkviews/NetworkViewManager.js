@@ -3,6 +3,7 @@ import * as d3 from "d3";
 import CircularNetworkView from './CircularNetworkView';
 import HierarchicalNetworkView from './HierarchicalNetworkView';
 import NetworkLegend from '../components/NetworkLegend';
+import TopologyDebugger from '../../components/TopologyDebugger';
 import { processDeviceData, groupDevicesBySubnet, isSSHAvailable, validateNetworkRelationships } from './NetworkViewUtils';
 import { FaCircle, FaSitemap } from 'react-icons/fa';
 import { FaTimes, FaFilter, FaChevronDown, FaCheck } from 'react-icons/fa';
@@ -377,13 +378,21 @@ const NetworkViewManager = forwardRef(({
             default:
                 return <CircularNetworkView {...viewProps} />;
         }
-    };
-
-    return (
+    };    return (
         <div className="relative w-full h-full overflow-hidden" 
              ref={containerRef}
              style={{ height: "100%" }}
         >
+            {/* Debug component - will only show in development */}
+            <TopologyDebugger 
+                devices={filteredDevices}
+                customNames={customNames}
+                dimensions={dimensions}
+                collaborativeMode={collaborativeMode}
+                scanId={scanId}
+                isConnected={isConnected}
+            />
+            
             {/* Grouping controls with dropdown */}
             <div className="absolute top-4 left-4 z-10 bg-gray-800 bg-opacity-80 p-2 rounded shadow-lg">
                 <div className="flex flex-col gap-2">

@@ -8,6 +8,17 @@ const fetch = require('node-fetch');
 const { AuthService } = require('./middleware/auth');
 const dbConnection = require('./lib/db');
 
+// Add global error handlers to prevent process crashes
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Promise Rejection:', reason);
+  console.error('Promise:', promise);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  // Don't exit - try to continue running
+});
+
 class CollaborationServer {
   constructor() {
     this.clients = new Map(); // scanId -> Set of clients
@@ -15,7 +26,6 @@ class CollaborationServer {
     this.userPresence = new Map(); // scanId -> Map of userId -> user info
     this.dbConnected = false;
   }
-
   async initialize(server) {
     try {
       // Ensure database connection before initializing WebSocket server
@@ -36,7 +46,19 @@ class CollaborationServer {
 
     this.wss.on('connection', (ws, request) => {
       console.log('New collaboration connection');
-      this.handleConnection(ws, request);
+      this.handleConnection(ws, request).catch(error => {
+        console.error('❌ Error in handleConnection:', error);
+        try {
+          ws.close(1011, 'Server error');
+        } catch (closeError) {
+          console.error('❌ Error closing WebSocket:', closeError);
+        }
+      });
+    });
+
+    // Add global error handlers to prevent unhandled rejections
+    this.wss.on('error', (error) => {
+      console.error('❌ WebSocket Server error:', error);
     });
 
     // Start heartbeat mechanism
@@ -109,20 +131,47 @@ class CollaborationServer {
 
       console.log('🤝 Adding client to scan session');
       // Add client to scan session
-      this.addClientToScan(ws);
-
-      // Set up message handlers
+      this.addClientToScan(ws);      // Set up message handlers
       ws.on('message', (message) => {
         console.log('📨 Received message:', message.toString());
-        this.handleMessage(ws, message);
+        try {
+          this.handleMessage(ws, message);
+        } catch (error) {
+          console.error('❌ Error handling message:', error);
+          try {
+            ws.send(JSON.stringify({
+              type: 'error',
+              message: 'Message handling failed'
+            }));
+          } catch (sendError) {
+            console.error('❌ Error sending error message:', sendError);
+          }
+        }
       });
 
-      ws.on('close', () => {
-        console.log('🔌 Client disconnected');
-        this.removeClientFromScan(ws);
+      ws.on('close', (code, reason) => {
+        console.log(`🔌 Client disconnected - Code: ${code}, Reason: ${reason ? reason.toString() : 'None'}`);
+        if (code === 1006) {
+          console.log('⚠️ Abnormal closure detected - likely network or heartbeat issue');
+        }
+        try {
+          this.removeClientFromScan(ws);
+        } catch (error) {
+          console.error('❌ Error removing client from scan:', error);
+        }
+      });
+
+      ws.on('error', (error) => {
+        console.error('❌ WebSocket error:', error);
+        try {
+          this.removeClientFromScan(ws);
+        } catch (removeError) {
+          console.error('❌ Error removing client after WebSocket error:', removeError);
+        }
       });
 
       ws.on('pong', () => {
+        console.log('🏓 Received pong from client - marking as alive');
         ws.isAlive = true;
       });
 
@@ -345,10 +394,15 @@ class CollaborationServer {
 
         case 'typing_indicator':
           this.handleTypingIndicator(ws, data);
+          break;        case 'ping':
+          console.log('🏓 Received application-level ping from client - marking as alive');
+          ws.isAlive = true;
+          ws.send(JSON.stringify({ type: 'pong', timestamp: new Date() }));
           break;
 
-        case 'ping':
-          ws.send(JSON.stringify({ type: 'pong', timestamp: new Date() }));
+        case 'server_pong':
+          console.log('🏓 Received server pong response from client - marking as alive');
+          ws.isAlive = true;
           break;
 
         default:
@@ -604,22 +658,32 @@ class CollaborationServer {
       console.error(`Failed to persist device ${deviceId} changes:`, error);
       throw error;
     }
-  }
-
-  startHeartbeat() {
+  }  startHeartbeat() {
+    console.log('🏓 Starting collaboration server heartbeat (15 second intervals)');
     const interval = setInterval(() => {
+      console.log(`🏓 Heartbeat check - ${this.wss.clients.size} clients connected`);
       this.wss.clients.forEach(ws => {
         if (ws.isAlive === false) {
+          console.log('💀 Terminating unresponsive client');
           this.removeClientFromScan(ws);
           return ws.terminate();
         }
 
         ws.isAlive = false;
-        ws.ping();
+        console.log('🏓 Sending server-side ping to client');
+        try {
+          // Send application-level ping instead of WebSocket protocol ping
+          ws.send(JSON.stringify({ type: 'server_ping', timestamp: new Date() }));
+        } catch (error) {
+          console.error('❌ Error sending ping:', error);
+          this.removeClientFromScan(ws);
+          ws.terminate();
+        }
       });
-    }, 30000); // 30 seconds
+    }, 15000); // Reduced to 15 seconds to prevent connection drops
 
     this.wss.on('close', () => {
+      console.log('🏓 Stopping heartbeat - WebSocket server closed');
       clearInterval(interval);
     });
   }

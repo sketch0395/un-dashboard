@@ -140,6 +140,57 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
     }
   };
   
+  // Load scan directly to topology map without downloading file
+  const handleLoadToTopology = async (scan) => {
+    try {
+      showToast('info', 'Loading scan to topology...', 'Please wait while we load the scan data');
+      
+      // Fetch the full scan data
+      const response = await fetch(`/api/scans/shared/${scan._id}`, {
+        credentials: 'include'
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const scanData = data.data;
+        
+        console.log('Loading scan to topology:', scanData.name);
+        
+        // Transform scan data to topology-compatible format
+        const topologyData = {
+          scanId: scanData.originalScanId || scanData._id,
+          name: scanData.name,
+          ipRange: scanData.metadata?.ipRange || 'Unknown Range',
+          deviceCount: scanData.metadata?.deviceCount || 0,
+          scanData: scanData.scanData,
+          metadata: scanData.metadata,
+          isFromSharedScan: true,
+          sharedScanId: scanData._id
+        };
+        
+        // Call the topology visualization function
+        if (onScanSelect) {
+          // Pass the scan data to parent component for topology visualization
+          onScanSelect(topologyData);
+          showToast('success', 'Scan loaded to topology!', 'The scan has been loaded into the topology view');
+        } else {
+          // Fallback: navigate to topology page with scan data
+          window.location.href = `/networkscan?scanId=${encodeURIComponent(topologyData.scanId)}`;
+        }
+        
+        // Update view count
+        fetchSharedScans();
+        
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to load scan data');
+      }
+    } catch (error) {
+      console.error('Error loading scan to topology:', error);
+      showToast('error', 'Failed to load scan to topology', error.message);
+    }
+  };
+  
   // Enhanced collaborative device grid
   const renderCollaborativeDeviceGrid = () => {
     if (!selectedScan?.scanData?.devices) return null;
@@ -296,15 +347,12 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
           <p className="text-gray-400">No shared scans available.</p>
         </div>
       );
-    }
-
-    return (
+    }    return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {sharedScans.map(scan => (
           <div 
             key={scan._id} 
-            className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden hover:border-blue-500 transition-colors cursor-pointer"
-            onClick={() => handleScanSelect(scan)}
+            className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden hover:border-blue-500 transition-colors"
           >
             <div className="p-4">
               <div className="flex justify-between items-start">
@@ -324,6 +372,29 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
                 <div className="text-xs text-gray-500">
                   {new Date(scan.createdAt).toLocaleDateString()}
                 </div>
+              </div>
+              
+              {/* Action buttons */}
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleScanSelect(scan);
+                  }}
+                  className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm transition-colors"
+                >
+                  View Details
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleLoadToTopology(scan);
+                  }}
+                  className="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm transition-colors"
+                  title="Load scan directly to topology map"
+                >
+                  🗺️ Topology
+                </button>
               </div>
             </div>
           </div>
@@ -416,8 +487,7 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
                 </div>
               </div>
             </div>
-            
-            <div className="flex flex-wrap gap-3 mb-6">
+              <div className="flex flex-wrap gap-3 mb-6">
               <button
                 className={`px-4 py-2 rounded ${
                   collaborativeMode ? 'bg-purple-600 text-white' : 'bg-gray-700 text-gray-300'
@@ -425,6 +495,14 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
                 onClick={() => setCollaborativeMode(!collaborativeMode)}
               >
                 {collaborativeMode ? '✓ Collaborative Mode' : 'Enable Collaboration'}
+              </button>
+              
+              <button
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                onClick={() => handleLoadToTopology(selectedScan)}
+                title="Load scan directly to topology visualization"
+              >
+                🗺️ Load to Topology
               </button>
               
               {selectedScan.collaboration?.allowModification && (

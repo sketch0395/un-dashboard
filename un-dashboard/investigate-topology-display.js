@@ -1,0 +1,235 @@
+console.log('🔍 TOPOLOGY DISPLAY INVESTIGATION');
+console.log('='.repeat(50));
+
+// Test the topology display by examining the actual component behavior
+// This script will help us understand why topology isn't showing in collaboration mode
+
+const fs = require('fs');
+
+async function investigateTopologyDisplay() {
+    console.log('🔬 Investigating topology display issues...\n');
+    
+    // Let's create a simple browser automation script to check topology rendering
+    const browserScript = `
+    // Browser-side script to check topology display
+    console.log('🌐 BROWSER TOPOLOGY INVESTIGATION');
+    console.log('Current URL:', window.location.href);
+    
+    // Check if we're on the network scan page
+    const isNetworkScanPage = window.location.pathname.includes('/networkscan');
+    console.log('On Network Scan page:', isNetworkScanPage);
+    
+    // Check for topology-related DOM elements
+    const topologyElements = {
+        topologyMap: document.querySelector('[class*="topology"], [id*="topology"]'),
+        svgElements: document.querySelectorAll('svg'),
+        networkVisualization: document.querySelector('[class*="network"], [class*="visualization"]'),
+        circularView: document.querySelector('[class*="circular"]'),
+        hierarchicalView: document.querySelector('[class*="hierarchical"]'),
+        collaborationIndicators: document.querySelector('[class*="collaboration"], [class*="collab"]')
+    };
+    
+    console.log('🎯 Topology DOM Elements Found:');
+    Object.entries(topologyElements).forEach(([name, element]) => {
+        if (element) {
+            if (element.length !== undefined) {
+                console.log('  ✅', name + ':', element.length, 'elements');
+            } else {
+                console.log('  ✅', name + ':', 'Present');
+                console.log('    - Classes:', element.className);
+                if (element.tagName === 'SVG') {
+                    console.log('    - SVG Size:', element.getAttribute('width'), 'x', element.getAttribute('height'));
+                    console.log('    - Child elements:', element.children.length);
+                }
+            }
+        } else {
+            console.log('  ❌', name + ':', 'Not found');
+        }
+    });
+    
+    // Check React DevTools info if available
+    if (window.React) {
+        console.log('  ✅ React available');
+    }
+    
+    if (window.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
+        console.log('  ✅ React DevTools available');
+    }
+    
+    // Check for collaboration state
+    const collaborationState = {
+        collaborativeMode: window.localStorage.getItem('collaborativeMode'),
+        scanId: window.localStorage.getItem('currentScanId'),
+        websocketConnected: window.WebSocket ? 'WebSocket supported' : 'WebSocket not supported'
+    };
+    
+    console.log('🤝 Collaboration State:');
+    Object.entries(collaborationState).forEach(([key, value]) => {
+        console.log('  -', key + ':', value || 'null');
+    });
+    
+    // Check for device data
+    const deviceData = {
+        customDeviceProperties: window.localStorage.getItem('customDeviceProperties'),
+        scanHistory: window.localStorage.getItem('scanHistory')
+    };
+    
+    console.log('📱 Device Data:');
+    if (deviceData.customDeviceProperties) {
+        try {
+            const parsed = JSON.parse(deviceData.customDeviceProperties);
+            console.log('  ✅ Custom Device Properties:', Object.keys(parsed).length, 'devices');
+        } catch (e) {
+            console.log('  ❌ Custom Device Properties: Invalid JSON');
+        }
+    } else {
+        console.log('  ❌ Custom Device Properties: Not found');
+    }
+    
+    if (deviceData.scanHistory) {
+        try {
+            const parsed = JSON.parse(deviceData.scanHistory);
+            console.log('  ✅ Scan History:', parsed.length, 'scans');
+        } catch (e) {
+            console.log('  ❌ Scan History: Invalid JSON');  
+        }
+    } else {
+        console.log('  ❌ Scan History: Not found');
+    }
+    
+    // Check for errors in console
+    console.log('🚨 Check browser console for any JavaScript errors');
+    console.log('🔧 Next steps:');
+    console.log('  1. Load a scan with network topology data');
+    console.log('  2. Check if devices appear in scan history');
+    console.log('  3. Try switching between circular and hierarchical views');
+    console.log('  4. Check if collaboration mode affects topology rendering');
+    console.log('  5. Look for any error messages in Network tab');
+    `;
+    
+    // Create an HTML file that will run our investigation
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Topology Display Investigation</title>
+        <style>
+            body { 
+                font-family: Arial, sans-serif; 
+                background: #1f2937; 
+                color: white; 
+                padding: 20px; 
+            }
+            .container { 
+                max-width: 800px; 
+                margin: 0 auto; 
+            }
+            .step { 
+                background: #374151; 
+                padding: 15px; 
+                margin: 10px 0; 
+                border-radius: 8px; 
+            }
+            .button {
+                background: #3b82f6;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                margin: 5px;
+            }
+            .button:hover { background: #2563eb; }
+            pre { 
+                background: #111827; 
+                padding: 10px; 
+                border-radius: 5px; 
+                overflow-x: auto; 
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>🔍 Topology Display Investigation</h1>
+            <p>This tool helps investigate why the topology map might not be displaying in collaboration mode.</p>
+            
+            <div class="step">
+                <h3>Step 1: Open Network Scan Page</h3>
+                <button class="button" onclick="window.open('http://localhost:3000/networkscan', '_blank')">
+                    Open Network Scan Page
+                </button>
+            </div>
+            
+            <div class="step">
+                <h3>Step 2: Run Topology Investigation</h3>
+                <button class="button" onclick="runInvestigation()">
+                    Investigate Topology Elements
+                </button>
+                <pre id="results">Results will appear here...</pre>
+            </div>
+            
+            <div class="step">
+                <h3>Step 3: Manual Checks</h3>
+                <ol>
+                    <li>Load a scan with network topology data</li>
+                    <li>Check if the topology visualization appears</li>
+                    <li>Try switching between circular and hierarchical views</li>
+                    <li>Start collaboration mode and check if topology still works</li>
+                    <li>Check browser console for errors</li>
+                </ol>
+            </div>
+        </div>
+        
+        <script>
+            function runInvestigation() {
+                const resultsElement = document.getElementById('results');
+                resultsElement.textContent = 'Opening network scan page and running investigation...';
+                
+                // Open the network scan page and run investigation
+                const newWindow = window.open('http://localhost:3000/networkscan', '_blank');
+                
+                // Wait for the page to load, then run investigation
+                setTimeout(() => {
+                    try {
+                        // Try to run the investigation in the new window
+                        newWindow.eval(\`${browserScript}\`);
+                        resultsElement.textContent = 'Investigation running in new window. Check the browser console in that window for results.';
+                    } catch (error) {
+                        resultsElement.textContent = 'Could not run investigation automatically. Please manually check the network scan page and browser console.';
+                    }
+                }, 3000);
+            }
+        </script>
+    </body>
+    </html>
+    `;
+    
+    // Write the investigation HTML file
+    fs.writeFileSync('./topology-investigation.html', htmlContent);
+    console.log('✅ Created topology investigation tool: topology-investigation.html');
+    console.log('🌐 Open this file in your browser to investigate the topology display issue');
+    
+    console.log('\n📋 MANUAL INVESTIGATION STEPS:');
+    console.log('1. Open topology-investigation.html in your browser');
+    console.log('2. Click "Open Network Scan Page" to open the app');
+    console.log('3. In the network scan page:');
+    console.log('   - Check if any scans are visible in scan history');
+    console.log('   - Try loading a scan to see if topology appears');
+    console.log('   - Look for any error messages or blank areas');
+    console.log('   - Check browser console (F12) for JavaScript errors');
+    console.log('   - Try starting collaboration mode to see if it affects topology');
+    
+    console.log('\n🔍 KEY AREAS TO CHECK:');
+    console.log('- Are SVG elements being created for the topology?');
+    console.log('- Are there any React component errors?');
+    console.log('- Does collaboration mode change the component props?');
+    console.log('- Are device data and customNames being passed correctly?');
+    console.log('- Check if NetworkViewManager is receiving collaboration props');
+    console.log('- Verify CircularNetworkView and HierarchicalNetworkView render correctly');
+    
+    return true;
+}
+
+investigateTopologyDisplay();

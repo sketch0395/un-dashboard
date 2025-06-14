@@ -595,12 +595,47 @@ export default function NetworkDashboard() {
             setShowScanSelector(true);
         }
     };    // Handle scan selection for collaboration
-    const handleScanSelect = (selectedScan) => {
+    const handleScanSelect = async (selectedScan) => {
         const collaborationScanId = selectedScan.scanId || selectedScan._id;
         setScanId(collaborationScanId);
         setCollaborativeMode(true);
         setShowScanSelector(false);
+        
         console.log(`✅ Collaboration mode enabled for scan: ${selectedScan.name} (${collaborationScanId}) from ${selectedScan.source}`);
+        
+        // Load scan data to topology if it has device data
+        if (selectedScan.source === 'shared' && selectedScan._id) {
+            try {
+                console.log('🔄 Loading shared scan topology data...');
+                
+                // Fetch the full scan data from the shared scans API
+                const response = await fetch(`/api/scans/shared/${selectedScan._id}`, {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const scanData = data.data;
+                    
+                    if (scanData && scanData.scanData && scanData.scanData.devices) {
+                        console.log('📊 Loading scan devices to topology:', Object.keys(scanData.scanData.devices));
+                        setDevices(scanData.scanData.devices);
+                        setActiveTab('topology');
+                    }
+                } else {
+                    console.warn('Failed to load shared scan data:', response.status);
+                }
+            } catch (error) {
+                console.error('Error loading shared scan data:', error);
+            }
+        } else if (selectedScan.source === 'history' && selectedScan.scanData) {
+            // For scan history items, load the devices directly
+            console.log('📊 Loading scan history devices to topology:', Object.keys(selectedScan.scanData.devices || {}));
+            if (selectedScan.scanData.devices) {
+                setDevices(selectedScan.scanData.devices);
+                setActiveTab('topology');
+            }
+        }
     };
 
     // Handle manual scan ID entry

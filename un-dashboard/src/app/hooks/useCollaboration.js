@@ -11,11 +11,11 @@ export function useCollaboration(scanId) {
   const [typingIndicators, setTypingIndicators] = useState(new Map());
   const [cursorPositions, setCursorPositions] = useState(new Map());
   const [connectionError, setConnectionError] = useState(null);  const [sessionVersion, setSessionVersion] = useState(1);
-  
-  const ws = useRef(null);
+    const ws = useRef(null);
   const reconnectAttempts = useRef(0);
   const maxReconnectAttempts = 5;
   const reconnectDelay = useRef(1000);
+  const keepaliveInterval = useRef(null);
   const pendingLockRequests = useRef(new Map());
   const connect = useCallback(async () => {
     if (!scanId || !user || ws.current?.readyState === WebSocket.OPEN) {
@@ -57,17 +57,21 @@ export function useCollaboration(scanId) {
       }
       
       console.log('🔗 Attempting WebSocket connection to:', wsUrl.replace(/token=[^&]+/, 'token=***'));
-      ws.current = new WebSocket(wsUrl);
-
-      ws.current.onopen = () => {
+      ws.current = new WebSocket(wsUrl);      ws.current.onopen = () => {
         console.log('🤝 Collaboration connected for scan:', scanId);
         setIsConnected(true);
         setConnectionError(null);
         reconnectAttempts.current = 0;
         reconnectDelay.current = 1000;
-      };
-
-      ws.current.onmessage = (event) => {
+        
+        // Start client-side keepalive (send ping every 10 seconds)
+        keepaliveInterval.current = setInterval(() => {
+          if (ws.current?.readyState === WebSocket.OPEN) {
+            console.log('🏓 Sending client-side ping to keep connection alive');
+            ws.current.send(JSON.stringify({ type: 'ping', timestamp: new Date() }));
+          }
+        }, 10000);
+      };ws.current.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
           console.log('📨 Received collaboration message:', data.type, data);
@@ -76,7 +80,14 @@ export function useCollaboration(scanId) {
           console.error('Error parsing collaboration message:', error);
         }
       };      ws.current.onclose = (event) => {
-        console.log('🔌 Collaboration disconnected:', event.code, event.reason);        setIsConnected(false);
+        console.log('🔌 Collaboration disconnected:', event.code, event.reason);
+        setIsConnected(false);
+        
+        // Clear client-side keepalive
+        if (keepaliveInterval.current) {
+          clearInterval(keepaliveInterval.current);
+          keepaliveInterval.current = null;
+        }
         
         // Resolve any pending lock requests with failure (connection lost)
         for (const [deviceId, resolver] of pendingLockRequests.current.entries()) {
@@ -103,8 +114,13 @@ export function useCollaboration(scanId) {
       console.error('Failed to connect to collaboration server:', error);
       setConnectionError(error.message);
     }
-  }, [scanId, user]);
-  const disconnect = useCallback(() => {
+  }, [scanId, user]);  const disconnect = useCallback(() => {
+    // Clear client-side keepalive
+    if (keepaliveInterval.current) {
+      clearInterval(keepaliveInterval.current);
+      keepaliveInterval.current = null;
+    }
+    
     if (ws.current) {
       ws.current.close(1000);
       ws.current = null;
@@ -253,11 +269,20 @@ export function useCollaboration(scanId) {
         window.dispatchEvent(new CustomEvent('collaborationLockFailed', {
           detail: data
         }));
-        break;
-
-      case 'error':
+        break;      case 'error':
         console.error('Collaboration error:', data.message);
         setConnectionError(data.message);
+        break;
+
+      case 'server_ping':
+        console.log('🏓 Received server ping - responding with pong');
+        if (ws.current?.readyState === WebSocket.OPEN) {
+          ws.current.send(JSON.stringify({ type: 'server_pong', timestamp: new Date() }));
+        }
+        break;
+
+      case 'pong':
+        console.log('🏓 Received pong response from server');
         break;
 
       default:
