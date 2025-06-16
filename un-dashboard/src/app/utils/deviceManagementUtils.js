@@ -67,7 +67,10 @@ export const updateDeviceProperties = (device) => {
             category: device.category,
             networkRole: device.networkRole,
             
-            // FIXED: Preserve parent relationships correctly based on device role
+            // NEW: Unified parent device field
+            parentDevice: device.parentDevice || null,
+            
+            // LEGACY: Preserve existing parent relationships for backward compatibility
             // All devices can have a parentSwitch (regular devices, switches, gateways, routers)
             parentSwitch: device.parentSwitch || null,            // Only switches, gateways, and routers can have a parentGateway
             parentGateway: (device.networkRole === 'switch' || device.networkRole === 'gateway' || 
@@ -86,6 +89,14 @@ export const updateDeviceProperties = (device) => {
             isMainGateway: device.isMainGateway || false,
             history: device.history || []
         };        // Additional debug validation checks
+        
+        // Validate unified parentDevice field
+        if (device.parentDevice && customProps[device.ip].parentDevice !== device.parentDevice) {
+            console.error(`ERROR: Failed to save parentDevice "${device.parentDevice}" for ${device.ip}`);
+            // Force it to be correct
+            customProps[device.ip].parentDevice = device.parentDevice;
+        }
+        
         if (['switch', 'gateway', 'router'].includes(device.networkRole)) {
             // Verify the gateway connections were saved correctly
             if (device.parentGateway && customProps[device.ip].parentGateway !== device.parentGateway) {

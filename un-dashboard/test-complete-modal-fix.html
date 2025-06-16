@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Modal Fix Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        .test-button:hover {
+            background: #0056b3;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .test-results {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+        iframe {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Complete Modal Fix Test</h1>
+    <p>This test verifies that the UnifiedDeviceModal opens correctly when right-clicking on devices in the network topology.</p>
+
+    <div class="test-container">
+        <h2>Test Environment</h2>
+        <iframe id="appFrame" src="http://localhost:3000/networkscan" title="Network Scan Application"></iframe>
+    </div>
+
+    <div class="test-container">
+        <h2>Manual Tests</h2>
+        <p>Follow these steps to test the modal functionality:</p>
+        <ol>
+            <li>Navigate to the Network Scan page in the iframe above</li>
+            <li>Run a network scan to populate devices</li>
+            <li>Switch to the Network Topology view</li>
+            <li>Right-click on any device in the topology</li>
+            <li>Verify that the UnifiedDeviceModal opens correctly</li>
+            <li>Check that the device icon displays properly (no React component errors)</li>
+            <li>Test both solo and collaborative modes if available</li>
+        </ol>
+    </div>
+
+    <div class="test-container">
+        <h2>Automated Tests</h2>
+        <button class="test-button" onclick="testModalFunctionality()">Test Modal Functionality</button>
+        <button class="test-button" onclick="testRightClickHandler()">Test Right-Click Handler</button>
+        <button class="test-button" onclick="testDeviceIconRendering()">Test Device Icon Rendering</button>
+        <button class="test-button" onclick="testCollaborativeMode()">Test Collaborative Mode</button>
+        <button class="test-button" onclick="runAllTests()">Run All Tests</button>
+        
+        <div id="testResults" class="test-results"></div>
+    </div>
+
+    <div class="test-container">
+        <h2>Console Output</h2>
+        <div id="consoleOutput" class="test-results"></div>
+        <button class="test-button" onclick="clearConsole()">Clear Console</button>
+    </div>
+
+    <script>
+        let testResults = [];
+        let consoleMessages = [];
+
+        // Capture console messages
+        const originalConsole = {
+            log: console.log,
+            error: console.error,
+            warn: console.warn,
+            info: console.info
+        };
+
+        function logToConsole(type, message) {
+            consoleMessages.push(`[${new Date().toLocaleTimeString()}] ${type.toUpperCase()}: ${message}`);
+            updateConsoleDisplay();
+            originalConsole[type](message);
+        }
+
+        console.log = (...args) => logToConsole('log', args.join(' '));
+        console.error = (...args) => logToConsole('error', args.join(' '));
+        console.warn = (...args) => logToConsole('warn', args.join(' '));
+        console.info = (...args) => logToConsole('info', args.join(' '));
+
+        function updateConsoleDisplay() {
+            document.getElementById('consoleOutput').textContent = consoleMessages.join('\n');
+        }
+
+        function clearConsole() {
+            consoleMessages = [];
+            updateConsoleDisplay();
+        }
+
+        function addTestResult(testName, success, message) {
+            testResults.push({
+                test: testName,
+                success: success,
+                message: message,
+                timestamp: new Date().toLocaleTimeString()
+            });
+            updateTestDisplay();
+        }
+
+        function updateTestDisplay() {
+            const resultsDiv = document.getElementById('testResults');
+            resultsDiv.innerHTML = testResults.map(result => 
+                `[${result.timestamp}] ${result.test}: ${result.success ? '✅ PASS' : '❌ FAIL'} - ${result.message}`
+            ).join('\n');
+        }
+
+        async function testModalFunctionality() {
+            console.log('Testing modal functionality...');
+            try {
+                const appFrame = document.getElementById('appFrame');
+                const appWindow = appFrame.contentWindow;
+                
+                // Test if the modal can be opened programmatically
+                if (appWindow.postMessage) {
+                    appWindow.postMessage({
+                        type: 'TEST_MODAL_FIX',
+                        testDevice: {
+                            ip: '192.168.1.100',
+                            hostname: 'test-device',
+                            networkRole: 'server',
+                            name: 'Test Server'
+                        }
+                    }, '*');
+                    
+                    // Wait for response
+                    await new Promise(resolve => {
+                        const messageHandler = (event) => {
+                            if (event.data.type === 'MODAL_TEST_RESULT') {
+                                window.removeEventListener('message', messageHandler);
+                                if (event.data.success) {
+                                    addTestResult('Modal Functionality', true, 'Modal opened successfully');
+                                } else {
+                                    addTestResult('Modal Functionality', false, event.data.error || 'Unknown error');
+                                }
+                                resolve();
+                            }
+                        };
+                        window.addEventListener('message', messageHandler);
+                        setTimeout(() => {
+                            window.removeEventListener('message', messageHandler);
+                            addTestResult('Modal Functionality', false, 'Timeout - no response from app');
+                            resolve();
+                        }, 5000);
+                    });
+                } else {
+                    addTestResult('Modal Functionality', false, 'Cannot communicate with app frame');
+                }
+            } catch (error) {
+                addTestResult('Modal Functionality', false, `Error: ${error.message}`);
+            }
+        }
+
+        async function testRightClickHandler() {
+            console.log('Testing right-click handler...');
+            try {
+                const appFrame = document.getElementById('appFrame');
+                const appWindow = appFrame.contentWindow;
+                
+                if (appWindow.postMessage) {
+                    appWindow.postMessage({
+                        type: 'SIMULATE_RIGHT_CLICK',
+                        deviceId: 'test-device-001',
+                        coordinates: { x: 100, y: 100 }
+                    }, '*');
+                    
+                    await new Promise(resolve => {
+                        const messageHandler = (event) => {
+                            if (event.data.type === 'RIGHT_CLICK_TEST_RESULT') {
+                                window.removeEventListener('message', messageHandler);
+                                if (event.data.success) {
+                                    addTestResult('Right-Click Handler', true, 'Right-click handled correctly');
+                                } else {
+                                    addTestResult('Right-Click Handler', false, event.data.error || 'Right-click failed');
+                                }
+                                resolve();
+                            }
+                        };
+                        window.addEventListener('message', messageHandler);
+                        setTimeout(() => {
+                            window.removeEventListener('message', messageHandler);
+                            addTestResult('Right-Click Handler', false, 'Timeout - no response from app');
+                            resolve();
+                        }, 5000);
+                    });
+                } else {
+                    addTestResult('Right-Click Handler', false, 'Cannot communicate with app frame');
+                }
+            } catch (error) {
+                addTestResult('Right-Click Handler', false, `Error: ${error.message}`);
+            }
+        }
+
+        async function testDeviceIconRendering() {
+            console.log('Testing device icon rendering...');
+            try {
+                const appFrame = document.getElementById('appFrame');
+                const appWindow = appFrame.contentWindow;
+                
+                if (appWindow.postMessage) {
+                    appWindow.postMessage({
+                        type: 'TEST_DEVICE_ICON_RENDERING',
+                        deviceTypes: ['server', 'switch', 'router', 'gateway', 'unknown']
+                    }, '*');
+                    
+                    await new Promise(resolve => {
+                        const messageHandler = (event) => {
+                            if (event.data.type === 'ICON_RENDERING_TEST_RESULT') {
+                                window.removeEventListener('message', messageHandler);
+                                if (event.data.success) {
+                                    addTestResult('Device Icon Rendering', true, `All icons rendered correctly: ${event.data.testedTypes.join(', ')}`);
+                                } else {
+                                    addTestResult('Device Icon Rendering', false, event.data.error || 'Icon rendering failed');
+                                }
+                                resolve();
+                            }
+                        };
+                        window.addEventListener('message', messageHandler);
+                        setTimeout(() => {
+                            window.removeEventListener('message', messageHandler);
+                            addTestResult('Device Icon Rendering', false, 'Timeout - no response from app');
+                            resolve();
+                        }, 5000);
+                    });
+                } else {
+                    addTestResult('Device Icon Rendering', false, 'Cannot communicate with app frame');
+                }
+            } catch (error) {
+                addTestResult('Device Icon Rendering', false, `Error: ${error.message}`);
+            }
+        }
+
+        async function testCollaborativeMode() {
+            console.log('Testing collaborative mode...');
+            try {
+                const appFrame = document.getElementById('appFrame');
+                const appWindow = appFrame.contentWindow;
+                
+                if (appWindow.postMessage) {
+                    appWindow.postMessage({
+                        type: 'TEST_COLLABORATIVE_MODE',
+                        testScenario: 'device_click'
+                    }, '*');
+                    
+                    await new Promise(resolve => {
+                        const messageHandler = (event) => {
+                            if (event.data.type === 'COLLABORATIVE_MODE_TEST_RESULT') {
+                                window.removeEventListener('message', messageHandler);
+                                if (event.data.success) {
+                                    addTestResult('Collaborative Mode', true, 'Collaborative mode functions correctly');
+                                } else {
+                                    addTestResult('Collaborative Mode', false, event.data.error || 'Collaborative mode failed');
+                                }
+                                resolve();
+                            }
+                        };
+                        window.addEventListener('message', messageHandler);
+                        setTimeout(() => {
+                            window.removeEventListener('message', messageHandler);
+                            addTestResult('Collaborative Mode', false, 'Timeout - no response from app');
+                            resolve();
+                        }, 5000);
+                    });
+                } else {
+                    addTestResult('Collaborative Mode', false, 'Cannot communicate with app frame');
+                }
+            } catch (error) {
+                addTestResult('Collaborative Mode', false, `Error: ${error.message}`);
+            }
+        }
+
+        async function runAllTests() {
+            console.log('Running all tests...');
+            testResults = [];
+            updateTestDisplay();
+            
+            await testModalFunctionality();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testRightClickHandler();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testDeviceIconRendering();
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            
+            await testCollaborativeMode();
+            
+            console.log('All tests completed!');
+            
+            const passedTests = testResults.filter(r => r.success).length;
+            const totalTests = testResults.length;
+            
+            if (passedTests === totalTests) {
+                console.log(`✅ All tests passed! (${passedTests}/${totalTests})`);
+            } else {
+                console.log(`⚠️ ${passedTests}/${totalTests} tests passed`);
+            }
+        }
+
+        // Listen for messages from the app
+        window.addEventListener('message', (event) => {
+            if (event.origin !== 'http://localhost:3000') return;
+            
+            console.log('Received message from app:', event.data);
+        });
+
+        // Initialize
+        console.log('Modal fix test page loaded');
+        console.log('Ready to test the UnifiedDeviceModal fix');
+    </script>
+</body>
+</html>

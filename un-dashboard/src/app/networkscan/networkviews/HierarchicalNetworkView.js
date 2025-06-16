@@ -379,6 +379,8 @@ const HierarchicalNetworkView = ({
                     data: switchDevice,
                     children: []
                 };
+                  // Check unified parentDevice field first (new approach)
+                const parentDeviceIP = customNames?.[switchDevice.ip]?.parentDevice;
                 
                 // Check for connected gateways from the new array format
                 const connectedGateways = customNames?.[switchDevice.ip]?.connectedGateways || [];
@@ -387,17 +389,18 @@ const HierarchicalNetworkView = ({
                 const parentGatewayIP = customNames?.[switchDevice.ip]?.parentGateway;
                 
                 // Log the relationships for debugging
-                console.log(`CONNECTIONS CHECK: Switch ${switchDevice.ip} gateway connections:`, 
-                           Array.isArray(connectedGateways) && connectedGateways.length > 0 
-                               ? connectedGateways 
-                               : `Legacy parent: ${parentGatewayIP || "none"}`);
+                console.log(`CONNECTIONS CHECK: Switch ${switchDevice.ip}:`);
+                console.log(`- parentDevice: ${parentDeviceIP || "none"}`);
+                console.log(`- connectedGateways: ${Array.isArray(connectedGateways) && connectedGateways.length > 0 ? connectedGateways : "none"}`);
+                console.log(`- legacy parentGateway: ${parentGatewayIP || "none"}`);
                 
                 // Determine the primary parent node for hierarchy visualization
-                // We'll pick the first connected gateway, fallback to parentGateway, or null
+                // Priority: parentDevice > first connected gateway > legacy parentGateway
                 const primaryGatewayIP = 
-                    (Array.isArray(connectedGateways) && connectedGateways.length > 0)
+                    parentDeviceIP ||
+                    (Array.isArray(connectedGateways) && connectedGateways.length > 0 
                         ? connectedGateways[0]
-                        : (parentGatewayIP === "" ? null : parentGatewayIP);
+                        : (parentGatewayIP === "" ? null : parentGatewayIP));
                 
                 // Find the primary gateway node
                 const primaryGatewayNode = primaryGatewayIP ? nodeMap.get(primaryGatewayIP) : null;
@@ -450,19 +453,24 @@ const HierarchicalNetworkView = ({
             const remainingDevices = filteredDevices.filter(device => 
                 !gatewayDevices.some(g => g.ip === device.ip) && 
                 !switchDevices.some(s => s.ip === device.ip)
-            );
-
-            remainingDevices.forEach(device => {
-                // Check if device has an assigned parent switch
+            );            remainingDevices.forEach(device => {
+                // Check unified parentDevice field first (new approach)
+                const parentDeviceIP = customNames?.[device.ip]?.parentDevice;
+                const parentDeviceNode = parentDeviceIP ? nodeMap.get(parentDeviceIP) : null;
+                
+                // Check if device has an assigned parent switch (legacy)
                 const parentSwitchIP = customNames?.[device.ip]?.parentSwitch;
                 const parentSwitchNode = parentSwitchIP ? nodeMap.get(parentSwitchIP) : null;
                 
-                // If no parent switch, check for parent gateway
+                // If no parent switch, check for parent gateway (legacy)
                 const parentGatewayIP = customNames?.[device.ip]?.parentGateway;
                 const parentGatewayNode = parentGatewayIP ? nodeMap.get(parentGatewayIP) : null;
                 
-                // Add device to its parent, or to root if no parent found
-                if (parentSwitchNode) {
+                // Priority: parentDevice > parentSwitch > parentGateway > root
+                if (parentDeviceNode) {
+                    console.log(`Device ${device.ip} using unified parentDevice: ${parentDeviceIP}`);
+                    addDeviceToHierarchy(device, parentDeviceNode);
+                } else if (parentSwitchNode) {
                     addDeviceToHierarchy(device, parentSwitchNode);
                 } else if (parentGatewayNode) {
                     addDeviceToHierarchy(device, parentGatewayNode);
@@ -1019,11 +1027,13 @@ const HierarchicalNetworkView = ({
                 iconContainer.style.pointerEvents = 'none';
                 iconContainer.style.color = 'white';                // Use the device type icon and color we already determined
                 const iconComponent = deviceIconData.iconComponent;
-                const nodeColor = deviceIconData.color;if (iconComponent) {
+                const nodeColor = deviceIconData.color;
+
+                if (iconComponent) {
                     const root = createRoot(iconContainer);
                     root.render(React.createElement(iconComponent, { 
                         size: iconSize,
-                        style: { color: nodeColor }
+                        style: { color: 'white' } // White icons on colored background for visibility
                     }));
 
                     const foreignObject = node.append('foreignObject')

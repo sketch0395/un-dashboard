@@ -115,11 +115,28 @@ const parseNmapOutput = (output) => {
                 // Process the device before adding it to enhance SSH detection
                 if (currentDevice.ports) {
                     // Explicitly check and mark if SSH is available on this device
-                    currentDevice.sshAvailable = currentDevice.ports.some(port => 
-                        port.includes('22/tcp') && 
-                        (port.includes('open') || port.includes('filtered')) && 
-                        port.includes('ssh')
-                    );
+                    currentDevice.sshAvailable = currentDevice.ports.some(port => {
+                        // Handle string format: "22/tcp open ssh"
+                        if (typeof port === 'string') {
+                            return port.includes('22/tcp') && 
+                                   (port.includes('open') || port.includes('filtered')) && 
+                                   port.includes('ssh');
+                        }
+                        // Handle object format: { port: 22, state: "open", service: "ssh" }
+                        if (typeof port === 'object' && port !== null) {
+                            const portNumber = port.port || port.number;
+                            const state = port.state || port.status;
+                            const service = port.service || '';
+                            return (portNumber === 22 || portNumber === '22') &&
+                                   (state === 'open' || state === 'filtered') &&
+                                   (service.toLowerCase().includes('ssh') || portNumber === 22);
+                        }
+                        // Handle number format: just port 22
+                        if (typeof port === 'number') {
+                            return port === 22;
+                        }
+                        return false;
+                    });
                 }
                 devices.push(currentDevice);
             }
@@ -273,11 +290,28 @@ const parseNmapOutput = (output) => {
         // Process the device before adding it
         if (currentDevice.ports) {
             // Explicitly check and mark if SSH is available on this device
-            currentDevice.sshAvailable = currentDevice.ports.some(port => 
-                port.includes('22/tcp') && 
-                (port.includes('open') || port.includes('filtered')) && 
-                port.includes('ssh')
-            );
+            currentDevice.sshAvailable = currentDevice.ports.some(port => {
+                // Handle string format: "22/tcp open ssh"
+                if (typeof port === 'string') {
+                    return port.includes('22/tcp') && 
+                           (port.includes('open') || port.includes('filtered')) && 
+                           port.includes('ssh');
+                }
+                // Handle object format: { port: 22, state: "open", service: "ssh" }
+                if (typeof port === 'object' && port !== null) {
+                    const portNumber = port.port || port.number;
+                    const state = port.state || port.status;
+                    const service = port.service || '';
+                    return (portNumber === 22 || portNumber === '22') &&
+                           (state === 'open' || state === 'filtered') &&
+                           (service.toLowerCase().includes('ssh') || portNumber === 22);
+                }
+                // Handle number format: just port 22
+                if (typeof port === 'number') {
+                    return port === 22;
+                }
+                return false;
+            });
         }
         devices.push(currentDevice);
     }// Filter to only include devices that are actually online

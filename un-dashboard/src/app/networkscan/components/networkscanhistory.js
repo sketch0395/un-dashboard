@@ -56,14 +56,12 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
                 localStorage.setItem("customDeviceProperties", JSON.stringify(persistentCustomNames));
             }
         }
-    }, [persistentCustomNames]);
-
-    useEffect(() => {
+    }, [persistentCustomNames]);    useEffect(() => {
         if (scanHistoryData) {
             const { data, ipRange } = scanHistoryData;
             saveScanHistory(data, ipRange);
         }
-    }, [scanHistoryData]);
+    }, [scanHistoryData, saveScanHistory]);
 
     const handleCheckboxChange = (index) => {
         setSelectedScans((prev) =>
@@ -483,26 +481,66 @@ export default function NetworkScanHistory({ addZonesToTopology, scanHistoryData
         }
 
         return false;
-    };
-
-    // Add clearDeviceHistory function to handle clearing all scan history and device customizations
-    const clearDeviceHistory = () => {
-        // Clear scan history through context
-        clearHistory();
-        
-        // Clear custom device properties
-        setPersistentCustomNames({});
-        localStorage.removeItem("customDeviceProperties");
-        
-        // Clear the topology map
-        addZonesToTopology({
-            devices: [],
-            vendorColors: {},
-            customNames: {}
-        });
-        
-        // Close the confirmation modal
-        setShowConfirmClear(false);
+    };    // Add clearDeviceHistory function to handle clearing all scan history and device customizations
+    const clearDeviceHistory = async () => {
+        try {
+            // First, clear server data if there are any scans
+            if (scanHistory.length > 0) {
+                const scanIds = scanHistory.map(scan => scan.id);
+                console.log('🗑️ Clearing server scan history:', scanIds);
+                
+                const response = await fetch('/api/scan-history', {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ scanIds })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    console.error('❌ Failed to clear server scan history:', errorData);
+                    throw new Error(errorData.error || 'Failed to clear server scan history');
+                } else {
+                    const result = await response.json();
+                    console.log('✅ Successfully cleared server scan history:', result);
+                }
+            }
+            
+            // Clear scan history through context (local state and localStorage)
+            clearHistory();
+            
+            // Clear custom device properties
+            setPersistentCustomNames({});
+            localStorage.removeItem("customDeviceProperties");
+            
+            // Clear the topology map
+            addZonesToTopology({
+                devices: [],
+                vendorColors: {},
+                customNames: {}
+            });
+            
+            console.log('✅ Cleared all scan history and device data (local and server)');
+            
+        } catch (error) {
+            console.error('❌ Error clearing scan history:', error);
+            // Still clear local data even if server clearing fails
+            clearHistory();
+            setPersistentCustomNames({});
+            localStorage.removeItem("customDeviceProperties");
+            addZonesToTopology({
+                devices: [],
+                vendorColors: {},
+                customNames: {}
+            });
+            
+            // Show user feedback about the error
+            alert(`Warning: Failed to clear server data (${error.message}), but local data has been cleared.`);
+        } finally {
+            // Close the confirmation modal
+            setShowConfirmClear(false);
+        }
     };
 
     const handleKeyPress = (e) => {

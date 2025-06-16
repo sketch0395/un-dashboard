@@ -96,23 +96,13 @@ const UnifiedDeviceModal = ({
                 isMainGateway: savedDeviceData.isMainGateway || modalDevice.isMainGateway || false,
                 color: savedDeviceData.color || modalDevice.color,
                 icon: savedDeviceData.icon || modalDevice.icon
-            };
-            
+            };            
             setEnhancedDevice(mergedDevice);
             setDeviceHistory(savedDeviceData.history || []);
         } else {
-            setEnhancedDevice(null);
-            setDeviceHistory([]);
+            setEnhancedDevice(null);            setDeviceHistory([]);
         }    
     }, [modalDevice]);
-
-    useEffect(() => {
-        if (enhancedDevice?.ip && typeof window !== 'undefined') {
-            const savedCustomProperties = JSON.parse(localStorage.getItem("customDeviceProperties")) || {};
-            const deviceData = savedCustomProperties[enhancedDevice.ip] || {};
-            setDeviceHistory(deviceData.history || []);
-        }
-    }, [enhancedDevice?.ip]);
 
     // Listen for collaboration updates if in collaborative mode
     useEffect(() => {
@@ -144,34 +134,10 @@ const UnifiedDeviceModal = ({
 
         return () => {
             window.removeEventListener('collaborationDeviceUpdate', handleDeviceUpdate);
-            window.removeEventListener('collaborationLockFailed', handleLockFailed);
-        };
-    }, [deviceId, collaboration, isCollaborative]);    // Auto-save changes with debouncing in collaboration mode
-    useEffect(() => {
-        if (!isCollaborative || !hasUnsavedChanges || !isLockedByMe || !collaboration) return;
+            window.removeEventListener('collaborationLockFailed', handleLockFailed);        };
+    }, [deviceId, collaboration, isCollaborative]);    
 
-        if (saveTimeoutRef.current) {
-            clearTimeout(saveTimeoutRef.current);
-        }
-
-        saveTimeoutRef.current = setTimeout(() => {
-            // Call handleSave inline instead of depending on it
-            if (enhancedDevice) {
-                // Auto-save implementation - call handleSave indirectly
-                onSave(enhancedDevice);
-                if (isCollaborative && collaboration) {
-                    collaboration.updateDevice(deviceId, enhancedDevice, collaboration.sessionVersion);
-                }
-                setHasUnsavedChanges(false);
-            }
-        }, 2000); // Auto-save after 2 seconds of inactivity
-
-        return () => {
-            if (saveTimeoutRef.current) {
-                clearTimeout(saveTimeoutRef.current);
-            }
-        };
-    }, [enhancedDevice, hasUnsavedChanges, isLockedByMe, isCollaborative, collaboration, deviceId, onSave]);// Cleanup on unmount for collaboration
+    // Cleanup on unmount for collaboration
     useEffect(() => {
         return () => {
             if (isCollaborative && isLockedByMe && collaboration) {
@@ -183,110 +149,19 @@ const UnifiedDeviceModal = ({
             if (saveTimeoutRef.current) {
                 clearTimeout(saveTimeoutRef.current);
             }
-        };
-    }, [deviceId, isLockedByMe, isCollaborative, collaboration]);// Handle toggling edit mode with collaboration lock support
-    const handleToggleEdit = useCallback(async () => {
-        if (readOnly) return;
-        
-        if (!isEditing) {
-            // Starting edit mode
-            if (isCollaborative) {
-                if (isLockedByOther) {
-                    alert(`This device is currently being edited by ${lock?.username || 'another user'}`);
-                    return;
-                }
-                
-                if (!isLockedByMe && collaboration) {
-                    await collaboration.lockDevice(deviceId);
-                }
-            }
-            setIsEditing(true);        } else {
-            // Ending edit mode
-            if (isCollaborative && isLockedByMe && collaboration) {
-                // Save any pending changes before unlocking
-                if (hasUnsavedChanges && enhancedDevice) {
-                    // Inline save implementation instead of calling handleSave
-                    onSave(enhancedDevice);
-                    if (isCollaborative && collaboration) {
-                        collaboration.updateDevice(deviceId, enhancedDevice, collaboration.sessionVersion);
-                    }
-                    setHasUnsavedChanges(false);
-                }
-                collaboration.unlockDevice(deviceId);
-            }
-            setIsEditing(false);
-            setFocusedField(null);
+        };    }, [deviceId, isLockedByMe, isCollaborative, collaboration]);
+
+    const handleCloseModal = useCallback(() => {
+        // If in collaborative mode and we have the lock, release it
+        if (isCollaborative && isLockedByMe) {
+            collaboration.unlockDevice(deviceId);
         }
-    }, [readOnly, isEditing, isCollaborative, isLockedByOther, isLockedByMe, deviceId, lock, hasUnsavedChanges, enhancedDevice, onSave, collaboration]);// Handle field focus and cursor position for collaboration
-    const handleFieldFocus = useCallback((field, event) => {
-        setFocusedField(field);
-        
-        // Send cursor position for collaboration
-        if (isCollaborationConnected && event?.target && collaboration) {
-            const rect = event.target.getBoundingClientRect();
-            collaboration.setCursorPosition(deviceId, {
-                x: rect.left + rect.width / 2,
-                y: rect.top,
-                field
-            });
-        }
-    }, [deviceId, isCollaborationConnected, collaboration]);
-
-    // Handle field blur and typing indicator
-    const handleFieldBlur = useCallback((field) => {
-        setFocusedField(null);
-        
-        // Stop typing indicator for collaboration
-        if (isCollaborationConnected && collaboration) {
-            collaboration.setTypingIndicator(deviceId, field, false);
-        }
-    }, [deviceId, isCollaborationConnected, collaboration]);
-
-    // Handle typing indicator for collaboration
-    const handleTyping = useCallback((field) => {
-        if (!isCollaborationConnected || !isLockedByMe || !collaboration) return;
-
-        // Send typing indicator
-        collaboration.setTypingIndicator(deviceId, field, true);
-
-        // Clear previous timeout
-        if (typingTimeoutRef.current) {
-            clearTimeout(typingTimeoutRef.current);
-        }
-
-        // Stop typing indicator after delay
-        typingTimeoutRef.current = setTimeout(() => {
-            collaboration.setTypingIndicator(deviceId, field, false);
-        }, 1000);
-    }, [deviceId, isCollaborationConnected, isLockedByMe, collaboration]);
-
-    // Handle field change with support for collaboration
-    const handleFieldChange = useCallback((field, value) => {
-        if (!canEdit) return;
-
-        setEnhancedDevice(prev => ({
-            ...prev,
-            [field]: value
-        }));
-        setHasUnsavedChanges(true);
-        
-        if (isCollaborationConnected) {
-            handleTyping(field);
-        }
-    }, [canEdit, isCollaborationConnected, handleTyping]);
-    
-    // Handle main device save
-    const handleSave = () => {
+          setModalDevice(null);
+        setIsEditing(false);
+    }, [isCollaborative, isLockedByMe, collaboration, deviceId, setModalDevice, setIsEditing]);    // Handle main device save
+    const handleSave = useCallback(() => {
         if (enhancedDevice) {
-            console.log("Saving device with the following relationships:", {
-                ip: enhancedDevice.ip,
-                networkRole: enhancedDevice.networkRole,
-                parentGateway: enhancedDevice.parentGateway,
-                parentSwitch: enhancedDevice.parentSwitch,
-                connectedGateways: enhancedDevice.connectedGateways,
-                connectedSwitches: enhancedDevice.connectedSwitches
-            });
-              // Add to history if there were changes
+            // Add to history if there were changes
             const newHistory = [...deviceHistory];            // Get the previous history entry to compare changes
             const previousEntry = deviceHistory.length > 0 ? deviceHistory[0] : null;
             const previousChanges = (previousEntry && previousEntry.changes) ? previousEntry.changes : {};
@@ -344,26 +219,17 @@ const UnifiedDeviceModal = ({
                     timestamp: new Date().toISOString(),
                     changes: changes
                 });
-            }            // DEBUG: Check connections
-            if (['switch', 'gateway', 'router'].includes(enhancedDevice.networkRole)) {
-                console.log(`DEBUG - ${enhancedDevice.networkRole} parentGateway before save: "${enhancedDevice.parentGateway}"`);
-                console.log(`DEBUG - ${enhancedDevice.networkRole} connected gateways before save:`, enhancedDevice.connectedGateways);
-                console.log(`DEBUG - ${enhancedDevice.networkRole} parentSwitch before save: "${enhancedDevice.parentSwitch}"`);
-                console.log(`DEBUG - ${enhancedDevice.networkRole} connected switches before save:`, enhancedDevice.connectedSwitches);
             }
-
-            // DO NOT modify or nullify the parent relationships that are already set in the enhancedDevice
-            // Instead, use them directly
             
             // Add history to the device without overriding parent connections
             const deviceToSave = {
                 ...enhancedDevice,
                 history: newHistory
-                // DO NOT explicitly set parentGateway/parentSwitch here, as they are already in enhancedDevice
-            };
-
-            // Update device properties in localStorage
+            };            // Update device properties in localStorage
             updateDeviceProperties(deviceToSave);
+            
+            // Update local history state to reflect the saved changes
+            setDeviceHistory(newHistory);
             
             // If in collaborative mode, update through the collaboration API
             if (isCollaborative && collaboration) {
@@ -381,7 +247,113 @@ const UnifiedDeviceModal = ({
                 handleCloseModal();
             }
         }
-    };    
+    }, [enhancedDevice, deviceHistory, isCollaborative, collaboration, deviceId, onSave, handleCloseModal]);
+
+    // Handle toggling edit mode with collaboration lock support
+    const handleToggleEdit = useCallback(async () => {
+        if (readOnly) return;
+        
+        if (!isEditing) {
+            // Starting edit mode
+            if (isCollaborative) {
+                if (isLockedByOther) {
+                    alert(`This device is currently being edited by ${lock?.username || 'another user'}`);
+                    return;
+                }
+                
+                if (!isLockedByMe && collaboration) {
+                    await collaboration.lockDevice(deviceId);
+                }
+            }
+            setIsEditing(true);        } else {
+            // Ending edit mode - call the full save function
+            if (hasUnsavedChanges && enhancedDevice) {
+                handleSave();
+            }
+            
+            if (isCollaborative && isLockedByMe && collaboration) {
+                collaboration.unlockDevice(deviceId);
+            }
+            setIsEditing(false);
+            setFocusedField(null);
+        }
+    }, [readOnly, isEditing, isCollaborative, isLockedByOther, isLockedByMe, deviceId, lock, hasUnsavedChanges, enhancedDevice, collaboration, handleSave]);// Handle field focus and cursor position for collaboration
+    const handleFieldFocus = useCallback((field, event) => {
+        setFocusedField(field);
+        
+        // Send cursor position for collaboration
+        if (isCollaborationConnected && event?.target && collaboration) {
+            const rect = event.target.getBoundingClientRect();
+            collaboration.setCursorPosition(deviceId, {
+                x: rect.left + rect.width / 2,
+                y: rect.top,
+                field
+            });
+        }
+    }, [deviceId, isCollaborationConnected, collaboration]);
+
+    // Handle field blur and typing indicator
+    const handleFieldBlur = useCallback((field) => {
+        setFocusedField(null);
+        
+        // Stop typing indicator for collaboration
+        if (isCollaborationConnected && collaboration) {
+            collaboration.setTypingIndicator(deviceId, field, false);
+        }
+    }, [deviceId, isCollaborationConnected, collaboration]);
+
+    // Handle typing indicator for collaboration
+    const handleTyping = useCallback((field) => {
+        if (!isCollaborationConnected || !isLockedByMe || !collaboration) return;
+
+        // Send typing indicator
+        collaboration.setTypingIndicator(deviceId, field, true);
+
+        // Clear previous timeout
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+        }
+
+        // Stop typing indicator after delay
+        typingTimeoutRef.current = setTimeout(() => {
+            collaboration.setTypingIndicator(deviceId, field, false);
+        }, 1000);
+    }, [deviceId, isCollaborationConnected, isLockedByMe, collaboration]);
+
+    // Handle field change with support for collaboration
+    const handleFieldChange = useCallback((field, value) => {
+        if (!canEdit) return;
+
+        setEnhancedDevice(prev => ({
+            ...prev,
+            [field]: value
+        }));
+        setHasUnsavedChanges(true);        
+        if (isCollaborationConnected) {
+            handleTyping(field);
+        }    }, [canEdit, isCollaborationConnected, handleTyping]);
+    
+    // Auto-save changes with debouncing in collaboration mode
+    useEffect(() => {
+        if (!isCollaborative || !hasUnsavedChanges || !isLockedByMe || !collaboration) return;
+
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+        }
+
+        saveTimeoutRef.current = setTimeout(() => {
+            // Auto-save implementation - call the full save logic including history
+            if (enhancedDevice) {
+                handleSave();
+            }
+        }, 2000); // Auto-save after 2 seconds of inactivity
+
+        return () => {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+            }
+        };
+    }, [enhancedDevice, hasUnsavedChanges, isLockedByMe, isCollaborative, collaboration, deviceId, onSave, handleSave]);
 
     // Note management
     const handleAddNote = () => {
@@ -421,19 +393,8 @@ const UnifiedDeviceModal = ({
             
             return `${year}-${month}-${day} ${hours}:${minutes}`;
         } catch (e) {
-            console.error("Invalid date string:", isoString);
-            return "Invalid date";
+            console.error("Invalid date string:", isoString);            return "Invalid date";
         }
-    };
-
-    const handleCloseModal = () => {
-        // If in collaborative mode and we have the lock, release it
-        if (isCollaborative && isLockedByMe) {
-            collaboration.unlockDevice(deviceId);
-        }
-        
-        setModalDevice(null);
-        setIsEditing(false);
     };
 
     // Format string with separator and fallback
@@ -441,12 +402,14 @@ const UnifiedDeviceModal = ({
         if (!str || str.length === 0) return fallback;
         if (Array.isArray(str)) return str.join(separator) || fallback;
         return str;
-    };
-
-    // Get device icon
+    };    // Get device icon
     const getDeviceIcon = (networkRole) => {
         const deviceType = getDeviceTypeById(networkRole || 'unknown');
-        return deviceType ? deviceType.icon : '🖥️';
+        if (deviceType && deviceType.icon) {
+            const IconComponent = deviceType.icon;
+            return <IconComponent />;
+        }
+        return '🖥️';
     };
 
     // Determine active section for visualization targeting
@@ -568,9 +531,7 @@ const UnifiedDeviceModal = ({
                                         value={enhancedDevice?.ip || ''}
                                         className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
                                     />
-                                </div>
-                                
-                                {/* Hostname/Name */}
+                                </div>                                {/* Hostname/Name */}
                                 <div>
                                     <label className="block text-sm font-medium text-gray-700 mb-1">
                                         Name / Hostname
@@ -638,34 +599,30 @@ const UnifiedDeviceModal = ({
                             </div>
                             
                             {/* Right column - Network information */}
-                            <div className="space-y-4">
-                                {/* Device Type / Network Role */}
+                            <div className="space-y-4">                                {/* Device Type / Network Role */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Device Type</label>
-                                    <DeviceTypeSelector
-                                        networkRole={enhancedDevice?.networkRole}
-                                        onChange={(value) => handleFieldChange('networkRole', value)}
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Device Type</label>                                    <DeviceTypeSelector
+                                        value={enhancedDevice?.category || enhancedDevice?.networkRole}
+                                        onChange={(value) => {
+                                            handleFieldChange('category', value);
+                                            handleFieldChange('networkRole', value); // Keep backward compatibility
+                                        }}
                                         disabled={!isEditing}
-                                        onFocus={(e) => handleFieldFocus('networkRole', e)}
-                                        onBlur={() => handleFieldBlur('networkRole')}
-                                        onKeyDown={() => handleTyping('networkRole')}
+                                        onFocus={(e) => handleFieldFocus('category', e)}
+                                        onBlur={() => handleFieldBlur('category')}
+                                        onKeyDown={() => handleTyping('category')}
                                         className={`w-full ${
                                             isEditing ? 'border-blue-300 bg-white' : 'border-gray-300 bg-gray-50'
                                         }`}
                                     />
                                 </div>
-                                
-                                {/* Parent Device */}
+                                  {/* Parent Device */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Parent Device</label>
-                                    <ParentDeviceSelector
-                                        value={enhancedDevice?.parentDevice}
-                                        networkRole={enhancedDevice?.networkRole}
-                                        onChange={(value) => handleFieldChange('parentDevice', value)}
-                                        disabled={!isEditing}
-                                        onFocus={(e) => handleFieldFocus('parentDevice', e)}
-                                        onBlur={() => handleFieldBlur('parentDevice')}
-                                        onKeyDown={() => handleTyping('parentDevice')}
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Parent Device</label>                                    <ParentDeviceSelector
+                                        deviceType={enhancedDevice?.category || enhancedDevice?.networkRole}
+                                        currentParent={enhancedDevice?.parentDevice}
+                                        onParentChange={(value) => handleFieldChange('parentDevice', value)}
+                                        excludeDeviceId={enhancedDevice?.ip}
                                         className={`w-full ${
                                             isEditing ? 'border-blue-300 bg-white' : 'border-gray-300 bg-gray-50'
                                         }`}
@@ -762,12 +719,13 @@ const UnifiedDeviceModal = ({
                             </div>
                         )}
                     </div>
-                    
-                    {/* History Section */}
-                    {deviceHistory.length > 0 && (
-                        <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                            <h3 className="text-lg font-medium text-gray-800 mb-4">History</h3>
-                            
+                      {/* History Section - Always show for debugging */}
+                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                        <h3 className="text-lg font-medium text-gray-800 mb-4">
+                            History ({deviceHistory.length} entries)
+                        </h3>
+                        
+                        {deviceHistory.length > 0 ? (
                             <div className="space-y-3 max-h-60 overflow-y-auto">
                                 {deviceHistory.map((item, index) => (
                                     <div 
@@ -797,15 +755,18 @@ const UnifiedDeviceModal = ({
                                                                 : value || 'none'
                                                             }
                                                         </span>
-                                                    </div>
-                                                ))}
+                                                    </div>                                                ))}
                                             </div>
                                         )}
                                     </div>
                                 ))}
                             </div>
-                        </div>
-                    )}
+                        ) : (
+                            <div className="text-gray-500 italic">
+                                No history entries yet. Make some changes to see them here.
+                            </div>
+                        )}
+                    </div>
                     
                     {/* Network visualization section for the device */}
                     <NetworkTopologyVisualization

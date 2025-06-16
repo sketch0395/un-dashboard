@@ -78,21 +78,30 @@ export const ScanHistoryProvider = ({ children }) => {
                         name: dbEntry.name,
                         timestamp: format(new Date(dbEntry.createdAt), "yyyy-MM-dd HH:mm:ss")
                     }
-                }));
-
-                // Remove duplicates
+                }));                // Remove duplicates by combining existing local scans with database scans
+                const currentLocal = scanHistory.filter(scan => !scan.isFromDatabase);
+                const allScans = [...convertedHistory, ...currentLocal];
+                
                 const uniqueHistory = [];
                 const seenIds = new Set();
-                convertedHistory.forEach(scan => {
-                    if (!seenIds.has(scan.id)) {
+                const seenSignatures = new Set(); // Additional deduplication by content
+                
+                allScans.forEach(scan => {
+                    const signature = `${scan.ipRange}-${scan.devices}-${scan.timestamp}`;
+                    if (!seenIds.has(scan.id) && !seenSignatures.has(signature)) {
                         seenIds.add(scan.id);
+                        seenSignatures.add(signature);
                         uniqueHistory.push(scan);
+                    } else if (seenIds.has(scan.id)) {
+                        console.log(`🚫 Skipping duplicate scan ID: ${scan.id}`);
+                    } else {
+                        console.log(`🚫 Skipping duplicate scan signature: ${signature}`);
                     }
                 });
 
                 setScanHistory(uniqueHistory);
                 setLastSyncTime(new Date());
-                console.log(`Loaded ${uniqueHistory.length} unique scans from database`);
+                console.log(`Loaded ${uniqueHistory.length} unique scans from database (${convertedHistory.length} from DB, ${currentLocal.length} local)`);
 
                 // Update localStorage as cache
                 const storageKey = getScanHistoryKey();
@@ -124,16 +133,40 @@ export const ScanHistoryProvider = ({ children }) => {
             setSyncError(null);
         }
         
-        setIsLoading(false);
-    };
-
-    // Main save scan history function
-    const saveScanHistory = async (data, ipRange) => {
+        setIsLoading(false);    };    // Main save scan history function
+    const saveScanHistory = useCallback(async (data, ipRange) => {
         console.log("saveScanHistory called with:", { data: typeof data, ipRange });
         
         // For now, just log to verify the function is working
         if (!isAuthenticated || !user) {
             console.log("Cannot save scan history: user not authenticated");
+            return;
+        }
+        
+        // Calculate device count correctly for vendor-grouped format
+        let deviceCount = 0;
+        if (Array.isArray(data)) {
+            deviceCount = data.length;
+        } else if (data && typeof data === 'object') {
+            // Handle vendor-grouped format: { "vendor1": [devices], "vendor2": [devices] }
+            deviceCount = Object.values(data).reduce((total, vendorDevices) => {
+                return total + (Array.isArray(vendorDevices) ? vendorDevices.length : 0);
+            }, 0);
+        }
+          console.log(`📊 Calculated device count: ${deviceCount} from data type: ${typeof data}`);
+        
+        // Check for recent duplicate saves (within last 5 seconds)
+        const now = Date.now();
+        const recentThreshold = 5000; // 5 seconds
+        const recentDuplicate = scanHistory.find(scan => {
+            const scanTime = new Date(scan.timestamp).getTime();
+            return (now - scanTime) < recentThreshold && 
+                   scan.ipRange === ipRange && 
+                   scan.devices === deviceCount;
+        });
+        
+        if (recentDuplicate) {
+            console.log("🚫 Skipping duplicate scan save - similar scan saved recently");
             return;
         }
         
@@ -145,15 +178,14 @@ export const ScanHistoryProvider = ({ children }) => {
             id: scanId,
             timestamp,
             ipRange,
-            devices: Array.isArray(data) ? data.length : 0,
+            devices: deviceCount,
             data: data || {},
             name: `Network Scan ${format(new Date(), 'MMM dd, yyyy HH:mm')}`,
             isFromDatabase: false
         };
-        
-        setScanHistory(prev => [...prev, newEntry]);
+          setScanHistory(prev => [...prev, newEntry]);
         console.log("Added scan to history:", scanId);
-    };    // Update scan data function
+    }, [isAuthenticated, user, scanHistory]);    // Update scan data function
     const updateScanData = useCallback((scanId, newData) => {
         setScanHistory(prev => prev.map(scan => 
             scan.id === scanId 
@@ -247,9 +279,14 @@ export const ScanHistoryProvider = ({ children }) => {
     }, []);
 
     // Manual sync function - push localStorage scans to database
-    const syncToDatabase = useCallback(async () => {
-        if (!isAuthenticated || !user) {
+    const syncToDatabase = useCallback(async () => {        if (!isAuthenticated || !user) {
             console.log("Cannot sync: user not authenticated");
+            return false;
+        }
+        
+        // Prevent duplicate sync operations
+        if (isSyncing) {
+            console.log("🚫 Sync already in progress, skipping");
             return false;
         }
         
@@ -320,18 +357,85 @@ export const ScanHistoryProvider = ({ children }) => {
             setIsSyncing(false);
             return false;
         }
-    }, [scanHistory, isAuthenticated, user]);
-
-    // Refresh from database
+    }, [scanHistory, isAuthenticated, user]);    // Refresh from database
     const refreshFromDatabase = useCallback(async () => {
         if (!isAuthenticated || !user) {
             return false;
         }
         
         setIsLoading(true);
-        await loadScanHistory();
-        return true;
-    }, [isAuthenticated, user]);
+        
+        try {
+            console.log('Refreshing from database...');
+            const response = await fetch('/api/scan-history', {
+                method: 'GET',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                const dbHistory = data.scanHistory || [];
+                
+                // Convert database format to component format
+                const convertedHistory = dbHistory.map(dbEntry => ({
+                    id: dbEntry.scanId,
+                    timestamp: format(new Date(dbEntry.createdAt), "yyyy-MM-dd HH:mm:ss"),
+                    ipRange: dbEntry.ipRange,
+                    devices: dbEntry.deviceCount,
+                    data: {}, // Leave empty - will be fetched on demand
+                    name: dbEntry.name,
+                    settings: dbEntry.settings,
+                    metadata: dbEntry.metadata,
+                    _dbId: dbEntry._id,
+                    isFromDatabase: true,
+                    scanSource: {
+                        id: dbEntry.scanId,
+                        name: dbEntry.name,
+                        timestamp: format(new Date(dbEntry.createdAt), "yyyy-MM-dd HH:mm:ss")
+                    }
+                }));                // Merge with existing scans and deduplicate more thoroughly
+                const currentLocal = scanHistory.filter(scan => !scan.isFromDatabase);
+                const allScans = [...convertedHistory, ...currentLocal];
+                
+                const uniqueHistory = [];
+                const seenIds = new Set();
+                const seenSignatures = new Set(); // Additional deduplication by content
+                
+                allScans.forEach(scan => {
+                    const signature = `${scan.ipRange}-${scan.devices}-${scan.timestamp}`;
+                    if (!seenIds.has(scan.id) && !seenSignatures.has(signature)) {
+                        seenIds.add(scan.id);
+                        seenSignatures.add(signature);
+                        uniqueHistory.push(scan);
+                    } else if (seenIds.has(scan.id)) {
+                        console.log(`🚫 Skipping duplicate scan ID: ${scan.id}`);
+                    } else {
+                        console.log(`🚫 Skipping duplicate scan signature: ${signature}`);
+                    }
+                });
+
+                setScanHistory(uniqueHistory);
+                setLastSyncTime(new Date());
+                console.log(`Refreshed: ${uniqueHistory.length} total scans (${convertedHistory.length} from DB, ${currentLocal.length} local)`);
+                
+                // Update localStorage as cache
+                const storageKey = getScanHistoryKey();
+                localStorage.setItem(storageKey, JSON.stringify(uniqueHistory));
+                
+                setIsLoading(false);
+                return true;
+            } else {
+                throw new Error(`Database refresh failed: ${response.status}`);
+            }
+        } catch (error) {
+            console.error('Error refreshing from database:', error);
+            setIsLoading(false);
+            return false;
+        }
+    }, [isAuthenticated, user, scanHistory, getScanHistoryKey]);
 
     // Clear scan history when user logs out
     useEffect(() => {

@@ -449,14 +449,17 @@ const CircularNetworkView = ({
                 iconContainer.style.display = 'flex';
                 iconContainer.style.justifyContent = 'center';
                 iconContainer.style.alignItems = 'center';
-                iconContainer.style.pointerEvents = 'none';
-                iconContainer.style.color = 'white';                // Use the device type icon and color we already determined
+                iconContainer.style.pointerEvents = 'none';                iconContainer.style.color = 'white';
+
+                // Use the device type icon and color we already determined
                 const iconComponent = deviceIconData.iconComponent;
-                const nodeColor = deviceIconData.color;if (iconComponent) {
+                const nodeColor = deviceIconData.color;
+
+                if (iconComponent) {
                     const root = createRoot(iconContainer);
                     root.render(React.createElement(iconComponent, { 
                         size: iconSize, 
-                        style: { color: nodeColor }
+                        style: { color: 'white' } // White icons on colored background for visibility
                     }));
 
                     const foreignObject = node.append('foreignObject')

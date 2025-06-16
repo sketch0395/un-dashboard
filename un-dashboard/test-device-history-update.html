@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device History Update Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .button { padding: 10px 20px; margin: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        .button:hover { background: #0056b3; }
+        .test-result { margin: 15px 0; padding: 15px; border-radius: 4px; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .info { background: #d1ecf1; border: 1px solid #bee5eb; color: #0c5460; }
+        .device-info { background: #f8f9fa; padding: 10px; margin: 10px 0; border-radius: 4px; border-left: 4px solid #007bff; }
+        .history-entry { background: #fff; border: 1px solid #ddd; margin: 5px 0; padding: 10px; border-radius: 4px; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 4px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Device History Update Test</h1>
+        <p>This test verifies that device history is properly updated when changes are made through the device modal.</p>
+        
+        <div id="status" class="test-result info">Ready to test...</div>
+        
+        <button class="button" onclick="setupTestDevice()">Step 1: Setup Test Device</button>
+        <button class="button" onclick="simulateDeviceUpdate()">Step 2: Simulate Device Update</button>
+        <button class="button" onclick="verifyHistoryUpdate()">Step 3: Verify History Update</button>
+        <button class="button" onclick="clearTestData()">Clear Test Data</button>
+        
+        <div id="device-display"></div>
+        <div id="history-display"></div>
+        <div id="debug-info"></div>
+    </div>
+
+    <script>
+        const testDeviceIP = "192.168.100.200";
+        
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `test-result ${type}`;
+        }
+        
+        function setupTestDevice() {
+            updateStatus('Setting up test device...', 'info');
+            
+            try {
+                // Get existing custom properties
+                const customProps = JSON.parse(localStorage.getItem('customDeviceProperties') || '{}');
+                
+                // Add a test device with initial properties
+                customProps[testDeviceIP] = {
+                    name: "Test Device",
+                    category: "Server", 
+                    networkRole: "device",
+                    notes: [],
+                    parentSwitch: null,
+                    history: []
+                };
+                
+                // Save to localStorage
+                localStorage.setItem('customDeviceProperties', JSON.stringify(customProps));
+                
+                updateStatus('✅ Test device created successfully!', 'success');
+                displayDeviceInfo();
+                
+            } catch (error) {
+                updateStatus(`❌ Error creating test device: ${error.message}`, 'error');
+            }
+        }
+        
+        function simulateDeviceUpdate() {
+            updateStatus('Simulating device update...', 'info');
+            
+            try {
+                // Get existing properties
+                const customProps = JSON.parse(localStorage.getItem('customDeviceProperties') || '{}');
+                const device = customProps[testDeviceIP];
+                
+                if (!device) {
+                    updateStatus('❌ Test device not found. Please run Step 1 first.', 'error');
+                    return;
+                }
+                
+                // Simulate the history update logic from UnifiedDeviceModal
+                const newHistory = [...(device.history || [])];
+                const previousEntry = newHistory.length > 0 ? newHistory[0] : null;
+                const previousChanges = (previousEntry && previousEntry.changes) ? previousEntry.changes : {};
+                
+                // Simulate changes
+                const newName = "Updated Test Device";
+                const newCategory = "Network Infrastructure";
+                const newNetworkRole = "switch";
+                
+                // Track changes
+                const changes = {};
+                if (newName !== (previousChanges.name || device.name)) changes.name = newName;
+                if (newCategory !== (previousChanges.category || device.category)) changes.category = newCategory;
+                if (newNetworkRole !== (previousChanges.networkRole || device.networkRole)) changes.networkRole = newNetworkRole;
+                
+                // Add history entry if there are changes
+                if (Object.keys(changes).length > 0) {
+                    newHistory.unshift({
+                        timestamp: new Date().toISOString(),
+                        changes: changes
+                    });
+                }
+                
+                // Update the device
+                const updatedDevice = {
+                    ...device,
+                    name: newName,
+                    category: newCategory,
+                    networkRole: newNetworkRole,
+                    history: newHistory
+                };
+                
+                customProps[testDeviceIP] = updatedDevice;
+                localStorage.setItem('customDeviceProperties', JSON.stringify(customProps));
+                
+                updateStatus('✅ Device updated successfully!', 'success');
+                displayDeviceInfo();
+                
+            } catch (error) {
+                updateStatus(`❌ Error updating device: ${error.message}`, 'error');
+            }
+        }
+        
+        function verifyHistoryUpdate() {
+            updateStatus('Verifying history update...', 'info');
+            
+            try {
+                // Get device from localStorage
+                const customProps = JSON.parse(localStorage.getItem('customDeviceProperties') || '{}');
+                const device = customProps[testDeviceIP];
+                
+                if (!device) {
+                    updateStatus('❌ Test device not found. Please run Steps 1 & 2 first.', 'error');
+                    return;
+                }
+                
+                const history = device.history || [];
+                
+                if (history.length === 0) {
+                    updateStatus('❌ FAIL: No history entries found. Device history is not being updated!', 'error');
+                    return;
+                }
+                
+                if (history.length > 0) {
+                    const latestEntry = history[0];
+                    const hasValidTimestamp = latestEntry.timestamp && new Date(latestEntry.timestamp);
+                    const hasChanges = latestEntry.changes && Object.keys(latestEntry.changes).length > 0;
+                    
+                    if (hasValidTimestamp && hasChanges) {
+                        updateStatus('✅ SUCCESS: Device history is being updated correctly!', 'success');
+                        displayHistoryDetails(history);
+                    } else {
+                        updateStatus('❌ FAIL: History entry is invalid or missing data.', 'error');
+                    }
+                } else {
+                    updateStatus('❌ FAIL: No history entries created.', 'error');
+                }
+                
+            } catch (error) {
+                updateStatus(`❌ Error verifying history: ${error.message}`, 'error');
+            }
+        }
+        
+        function displayDeviceInfo() {
+            const customProps = JSON.parse(localStorage.getItem('customDeviceProperties') || '{}');
+            const device = customProps[testDeviceIP];
+            
+            const deviceDisplay = document.getElementById('device-display');
+            
+            if (device) {
+                deviceDisplay.innerHTML = `
+                    <div class="device-info">
+                        <h3>📱 Current Device State</h3>
+                        <p><strong>IP:</strong> ${testDeviceIP}</p>
+                        <p><strong>Name:</strong> ${device.name}</p>
+                        <p><strong>Category:</strong> ${device.category}</p>
+                        <p><strong>Network Role:</strong> ${device.networkRole}</p>
+                        <p><strong>History Entries:</strong> ${(device.history || []).length}</p>
+                    </div>
+                `;
+            } else {
+                deviceDisplay.innerHTML = '<div class="device-info">No test device found</div>';
+            }
+        }
+        
+        function displayHistoryDetails(history) {
+            const historyDisplay = document.getElementById('history-display');
+            
+            let historyHTML = '<div class="device-info"><h3>📈 Device History</h3>';
+            
+            if (history.length === 0) {
+                historyHTML += '<p>No history entries found.</p>';
+            } else {
+                history.forEach((entry, index) => {
+                    const date = new Date(entry.timestamp).toLocaleString();
+                    historyHTML += `
+                        <div class="history-entry">
+                            <h4>Entry ${index + 1} - ${date}</h4>
+                            <strong>Changes:</strong>
+                            <ul>
+                    `;
+                    
+                    Object.entries(entry.changes).forEach(([key, value]) => {
+                        historyHTML += `<li><strong>${key}:</strong> ${value}</li>`;
+                    });
+                    
+                    historyHTML += '</ul></div>';
+                });
+            }
+            
+            historyHTML += '</div>';
+            historyDisplay.innerHTML = historyHTML;
+        }
+        
+        function clearTestData() {
+            try {
+                const customProps = JSON.parse(localStorage.getItem('customDeviceProperties') || '{}');
+                delete customProps[testDeviceIP];
+                localStorage.setItem('customDeviceProperties', JSON.stringify(customProps));
+                
+                updateStatus('🧹 Test data cleared', 'info');
+                document.getElementById('device-display').innerHTML = '';
+                document.getElementById('history-display').innerHTML = '';
+                document.getElementById('debug-info').innerHTML = '';
+                
+            } catch (error) {
+                updateStatus(`❌ Error clearing test data: ${error.message}`, 'error');
+            }
+        }
+        
+        // Initialize display
+        displayDeviceInfo();
+    </script>
+</body>
+</html>
