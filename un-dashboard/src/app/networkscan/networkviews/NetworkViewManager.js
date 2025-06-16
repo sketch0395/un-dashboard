@@ -3,7 +3,6 @@ import * as d3 from "d3";
 import CircularNetworkView from './CircularNetworkView';
 import HierarchicalNetworkView from './HierarchicalNetworkView';
 import NetworkLegend from '../components/NetworkLegend';
-import TopologyDebugger from '../../components/TopologyDebugger';
 import { processDeviceData, groupDevicesBySubnet, isSSHAvailable, validateNetworkRelationships } from './NetworkViewUtils';
 import { FaCircle, FaSitemap } from 'react-icons/fa';
 import { FaTimes, FaFilter, FaChevronDown, FaCheck } from 'react-icons/fa';
@@ -307,37 +306,36 @@ const NetworkViewManager = forwardRef(({
             >
                 {content}
             </div>        );
-    };
-
-    // Handle device click
+    };    // Handle device click
     const handleDeviceClick = (device, event) => {
         // Check if this is a right-click (context menu)
         if (event && (event.button === 2 || event.ctrlKey)) {
-            // In collaborative mode, don't show context menu - use collaborative click instead
+            console.log('🖱️ Right-click detected for device:', device.ip);
+            
+            // In collaborative mode, directly open the modal through collaborative click
             if (collaborativeMode && onCollaborativeDeviceClick) {
                 console.log('🔗 Right-click in collaborative mode, using collaborative device click');
                 onCollaborativeDeviceClick(device);
                 return;
             }
             
-            // Show context menu on right-click or ctrl+click in solo mode
-            const clientX = event.clientX || 0;
-            const clientY = event.clientY || 0;
-            
-            setContextMenu({
-                visible: true,
-                device,
-                x: clientX,
-                y: clientY
-            });
+            // In solo mode, directly open the modal on right-click instead of showing context menu
+            if (setModalDevice) {
+                console.log('🔧 Right-click in solo mode, opening device modal directly');
+                setModalDevice(device);
+                return;
+            }
         } else {
-            // Handle regular click
+            // Handle regular click (left-click)
+            console.log('🖱️ Left-click detected for device:', device.ip);
+            
             if (collaborativeMode && onCollaborativeDeviceClick) {
-                console.log('🔗 Regular click in collaborative mode, using collaborative device click');
+                console.log('🔗 Left-click in collaborative mode, using collaborative device click');
                 onCollaborativeDeviceClick(device);
             } else {
                 // Direct open modal on regular click in solo mode
                 if (setModalDevice) {
+                    console.log('🔧 Left-click in solo mode, opening device modal directly');
                     setModalDevice(device);
                 }
             }
@@ -383,16 +381,6 @@ const NetworkViewManager = forwardRef(({
              ref={containerRef}
              style={{ height: "100%" }}
         >
-            {/* Debug component - will only show in development */}
-            <TopologyDebugger 
-                devices={filteredDevices}
-                customNames={customNames}
-                dimensions={dimensions}
-                collaborativeMode={collaborativeMode}
-                scanId={scanId}
-                isConnected={isConnected}
-            />
-            
             {/* Grouping controls with dropdown */}
             <div className="absolute top-4 left-4 z-10 bg-gray-800 bg-opacity-80 p-2 rounded shadow-lg">
                 <div className="flex flex-col gap-2">

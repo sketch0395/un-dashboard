@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { FaNetworkWired, FaSearch, FaCog, FaTerminal } from 'react-icons/fa';
+import { FaNetworkWired, FaSearch, FaCog, FaTerminal, FaEdit } from 'react-icons/fa';
 import { io } from 'socket.io-client';
 import NetworkControlModal from '../components/NetworkControlModal';
+import UnifiedDeviceModal from '../components/UnifiedDeviceModal';
 import { useNetworkControlModal } from '../components/useNetworkControlModal';
 import { getDeviceStatusFromStorage, createStatusUpdateListener } from '../utils/performanceDeviceStatusSync';
 
@@ -11,17 +12,65 @@ import { getDeviceStatusFromStorage, createStatusUpdateListener } from '../utils
  * Enhanced Device Management Page with Network Control Modal Integration
  * This shows how to add the NetworkControlModal to an existing page
  */
-export default function DeviceManagementWithNetworkControl() {
-    // Original page state (simplified for example)
+export default function DeviceManagementWithNetworkControl() {    // Original page state (simplified for example)
     const [devices, setDevices] = useState([]);
     const [filteredDevices, setFilteredDevices] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     
     // State for real-time device status updates
-    const [deviceStatuses, setDeviceStatuses] = useState({});
-
-    // Network Control Modal integration
+    const [deviceStatuses, setDeviceStatuses] = useState({});    // Network Control Modal integration
     const networkModal = useNetworkControlModal();
+    
+    // UnifiedDeviceModal state
+    const [selectedDevice, setSelectedDevice] = useState(null);
+    
+    // Add sample test data for immediate testing
+    useEffect(() => {
+        const sampleDevices = [
+            {
+                id: '192.168.1.1',
+                name: 'Gateway Router',
+                ip: '192.168.1.1',
+                mac: '00:11:22:33:44:55',
+                vendor: 'Cisco',
+                status: 'online',
+                category: 'Network Device',
+                role: 'Gateway',
+                lastSeen: new Date().toISOString(),
+                hasSSH: true,
+                sshPort: 22,
+            },
+            {
+                id: '192.168.1.100',
+                name: 'Desktop PC',
+                ip: '192.168.1.100',
+                mac: '00:AA:BB:CC:DD:EE',
+                vendor: 'Intel',
+                status: 'online',
+                category: 'Computer',
+                role: 'Workstation',
+                lastSeen: new Date().toISOString(),
+                hasSSH: false,
+                sshPort: 22,
+            },
+            {
+                id: '192.168.1.50',
+                name: 'Network Printer',
+                ip: '192.168.1.50',
+                mac: '00:FF:EE:DD:CC:BB',
+                vendor: 'HP',
+                status: 'offline',
+                category: 'Printer',
+                role: 'Peripheral',
+                lastSeen: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+                hasSSH: false,
+                sshPort: 22,
+            }
+        ];
+        
+        setDevices(sampleDevices);
+        setFilteredDevices(sampleDevices);
+    }, []);
     
     // Set up socket connection for real-time device status updates
     useEffect(() => {
@@ -177,6 +226,22 @@ export default function DeviceManagementWithNetworkControl() {
         }
     }, [devices.length]);
 
+    // Filter devices based on search query
+    useEffect(() => {
+        let filtered = devices;
+
+        if (searchQuery) {
+            filtered = devices.filter(device => 
+                device.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                device.ip?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                device.mac?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                device.vendor?.toLowerCase().includes(searchQuery.toLowerCase())
+            );
+        }
+
+        setFilteredDevices(filtered);
+    }, [devices, searchQuery]);
+
     // Handle scan completion - update the device list
     const handleNetworkScanComplete = (scanResults) => {
         console.log("Network scan completed, updating device list:", scanResults);
@@ -238,10 +303,32 @@ export default function DeviceManagementWithNetworkControl() {
 
     const handleQuickNetworkScan = () => {
         networkModal.openModal();
+    };    const handleAdvancedNetworkTools = () => {
+        networkModal.openModal();
+    };    // Handle device click to open edit modal
+    const handleDeviceClick = (device) => {
+        console.log('🔧 Device clicked for editing:', device);
+        setSelectedDevice(device);
     };
 
-    const handleAdvancedNetworkTools = () => {
-        networkModal.openModal();
+    // Handle device modal close
+    const handleDeviceModalClose = () => {
+        setSelectedDevice(null);
+    };
+
+    // Handle device update from modal
+    const handleDeviceUpdate = (updatedDevice) => {
+        setDevices(prevDevices => 
+            prevDevices.map(device => 
+                device.id === updatedDevice.id ? updatedDevice : device
+            )
+        );
+        setFilteredDevices(prevDevices => 
+            prevDevices.map(device => 
+                device.id === updatedDevice.id ? updatedDevice : device
+            )
+        );
+        handleDeviceModalClose();
     };
 
     return (
@@ -347,10 +434,15 @@ export default function DeviceManagementWithNetworkControl() {
                             Scan Network
                         </button>
                     </div>
-                </div>
-
-                {/* Device List */}
+                </div>                {/* Device List */}
                 <div className="bg-gray-800 rounded-lg p-6">
+                    {/* Debug Banner */}
+                    {selectedDevice && (
+                        <div className="mb-4 p-3 bg-blue-600 text-white rounded-lg">
+                            🔧 Modal Debug: Device "{selectedDevice.name}" is selected - Modal should be visible!
+                        </div>
+                    )}
+                    
                     <div className="flex justify-between items-center mb-6">
                         <h2 className="text-xl font-semibold text-white">Network Devices</h2>
                         <button
@@ -386,14 +478,19 @@ export default function DeviceManagementWithNetworkControl() {
                                         <th className="pb-3 text-gray-400 font-medium">Services</th>
                                         <th className="pb-3 text-gray-400 font-medium">Last Seen</th>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredDevices.map((device) => (
-                                        <tr key={device.id} className="border-b border-gray-700 hover:bg-gray-700">
-                                            <td className="py-4">
-                                                <div>
-                                                    <p className="text-white font-medium">{device.name}</p>
-                                                    <p className="text-gray-400 text-sm">{device.mac}</p>
+                                </thead>                                <tbody>
+                                    {filteredDevices.map((device) => (                                        <tr 
+                                            key={device.id} 
+                                            className="border-b border-gray-700 hover:bg-blue-900 hover:border-blue-600 cursor-pointer transition-all duration-200 group"
+                                            onClick={() => handleDeviceClick(device)}
+                                            title="Click to edit device properties"
+                                        >                                            <td className="py-4">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <p className="text-white font-medium">{device.name}</p>
+                                                        <p className="text-gray-400 text-sm">{device.mac}</p>
+                                                    </div>
+                                                    <FaEdit className="text-gray-500 group-hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-all duration-200 ml-2" />
                                                 </div>
                                             </td>
                                             <td className="py-4 text-gray-300">{device.ip}</td>
@@ -421,9 +518,18 @@ export default function DeviceManagementWithNetworkControl() {
                                     ))}
                                 </tbody>
                             </table>
-                        </div>
-                    )}
-                </div>
+                        </div>                    )}
+                </div>                {/* Unified Device Modal */}
+                {selectedDevice && console.log('🎯 UnifiedDeviceModal should be visible with device:', selectedDevice)}
+                <UnifiedDeviceModal
+                    modalDevice={selectedDevice}
+                    setModalDevice={(device) => {
+                        if (device === null) {
+                            handleDeviceModalClose();
+                        }
+                    }}
+                    onSave={handleDeviceUpdate}
+                />
 
                 {/* Network Control Modal */}
                 <NetworkControlModal

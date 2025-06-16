@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Modal Fix</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #1a1a1a;
+            color: white;
+        }
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-section {
+            background-color: #2a2a2a;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            border: 1px solid #444;
+        }
+        .btn {
+            background-color: #0066cc;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .btn:hover {
+            background-color: #0052a3;
+        }
+        .status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #006600;
+        }
+        .error {
+            background-color: #cc0000;
+        }
+        .info {
+            background-color: #0066cc;
+        }
+        pre {
+            background-color: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>Device Modal Right-Click Fix Test</h1>
+        
+        <div class="test-section">
+            <h2>Test Modal Opening</h2>
+            <p>This tool tests whether the UnifiedDeviceModal opens correctly when right-clicking on devices.</p>
+            
+            <div id="status" class="status info">
+                Ready to test...
+            </div>
+            
+            <button class="btn" onclick="testModalFix()">Test Modal Fix</button>
+            <button class="btn" onclick="simulateRightClick()">Simulate Right-Click</button>
+            <button class="btn" onclick="checkModalState()">Check Modal State</button>
+            <button class="btn" onclick="injectTestDevice()">Inject Test Device</button>
+        </div>
+        
+        <div class="test-section">
+            <h2>Instructions</h2>
+            <ol>
+                <li>Open the UN Dashboard at <a href="http://localhost:3000/networkscan" target="_blank">http://localhost:3000/networkscan</a></li>
+                <li>Run a network scan to get some devices</li>
+                <li>Try right-clicking on a device in the topology</li>
+                <li>The UnifiedDeviceModal should open directly (not show a context menu)</li>
+                <li>Use the buttons above to test the fix programmatically</li>
+            </ol>
+        </div>
+        
+        <div class="test-section">
+            <h2>Test Log</h2>
+            <pre id="log"></pre>
+        </div>
+    </div>
+
+    <script>
+        let logElement = document.getElementById('log');
+        let statusElement = document.getElementById('status');
+        
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.textContent += `[${timestamp}] ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+        
+        function updateStatus(message, type = 'info') {
+            statusElement.textContent = message;
+            statusElement.className = `status ${type}`;
+        }
+        
+        function testModalFix() {
+            log('Starting modal fix test...');
+            updateStatus('Testing modal fix...', 'info');
+            
+            // Try to find the main dashboard window
+            const dashboardWindow = findDashboardWindow();
+            if (!dashboardWindow) {
+                log('ERROR: Could not find dashboard window. Please open http://localhost:3000/networkscan first.');
+                updateStatus('Dashboard window not found', 'error');
+                return;
+            }
+            
+            log('Dashboard window found');
+            
+            // Test the modal fix by sending a message to the dashboard
+            try {
+                dashboardWindow.postMessage({
+                    type: 'TEST_MODAL_FIX',
+                    payload: {
+                        testDevice: {
+                            ip: '192.168.1.100',
+                            name: 'Test Device',
+                            mac: '00:11:22:33:44:55',
+                            vendor: 'Test Vendor',
+                            networkRole: 'device',
+                            lastSeen: new Date().toISOString()
+                        }
+                    }
+                }, '*');
+                
+                log('Test message sent to dashboard');
+                updateStatus('Test message sent', 'success');
+                
+                // Wait a bit and check if modal opened
+                setTimeout(() => {
+                    checkModalState();
+                }, 1000);
+                
+            } catch (error) {
+                log(`ERROR: Failed to send test message - ${error.message}`);
+                updateStatus('Test failed', 'error');
+            }
+        }
+        
+        function simulateRightClick() {
+            log('Simulating right-click event...');
+            updateStatus('Simulating right-click...', 'info');
+            
+            const dashboardWindow = findDashboardWindow();
+            if (!dashboardWindow) {
+                log('ERROR: Dashboard window not found');
+                updateStatus('Dashboard window not found', 'error');
+                return;
+            }
+            
+            // Send a message to simulate a right-click on a device
+            dashboardWindow.postMessage({
+                type: 'SIMULATE_RIGHT_CLICK',
+                payload: {
+                    device: {
+                        ip: '192.168.1.100',
+                        name: 'Test Device',
+                        mac: '00:11:22:33:44:55',
+                        vendor: 'Test Vendor',
+                        networkRole: 'device'
+                    }
+                }
+            }, '*');
+            
+            log('Right-click simulation sent');
+            updateStatus('Right-click simulated', 'success');
+        }
+        
+        function checkModalState() {
+            log('Checking modal state...');
+            updateStatus('Checking modal state...', 'info');
+            
+            const dashboardWindow = findDashboardWindow();
+            if (!dashboardWindow) {
+                log('ERROR: Dashboard window not found');
+                updateStatus('Dashboard window not found', 'error');
+                return;
+            }
+            
+            // Send a message to check modal state
+            dashboardWindow.postMessage({
+                type: 'CHECK_MODAL_STATE'
+            }, '*');
+            
+            log('Modal state check sent');
+        }
+        
+        function injectTestDevice() {
+            log('Injecting test device...');
+            updateStatus('Injecting test device...', 'info');
+            
+            const dashboardWindow = findDashboardWindow();
+            if (!dashboardWindow) {
+                log('ERROR: Dashboard window not found');
+                updateStatus('Dashboard window not found', 'error');
+                return;
+            }
+            
+            // Send test device data
+            dashboardWindow.postMessage({
+                type: 'SET_TEST_DEVICES',
+                payload: {
+                    devices: {
+                        'Test Vendor': [{
+                            ip: '192.168.1.100',
+                            name: 'Test Device for Modal',
+                            mac: '00:11:22:33:44:55',
+                            vendor: 'Test Vendor',
+                            networkRole: 'device',
+                            lastSeen: new Date().toISOString(),
+                            hostname: 'test-device'
+                        }]
+                    }
+                }
+            }, '*');
+            
+            log('Test device injected');
+            updateStatus('Test device injected', 'success');
+        }
+        
+        function findDashboardWindow() {
+            // Look for a window with the dashboard URL
+            try {
+                // Check if we can access the opener or parent
+                if (window.opener && window.opener.location.href.includes('localhost:3000')) {
+                    return window.opener;
+                }
+                
+                // Check parent window
+                if (window.parent && window.parent !== window && window.parent.location.href.includes('localhost:3000')) {
+                    return window.parent;
+                }
+                
+                // Try to find by looking at open windows (this won't work due to CORS but we try)
+                return null;
+            } catch (error) {
+                log(`Note: Cannot directly access dashboard window due to CORS. You'll need to manually test.`);
+                return null;
+            }
+        }
+        
+        // Listen for messages from the dashboard
+        window.addEventListener('message', function(event) {
+            if (event.origin !== 'http://localhost:3000') return;
+            
+            log(`Received message: ${JSON.stringify(event.data)}`);
+            
+            switch (event.data.type) {
+                case 'MODAL_STATE_RESPONSE':
+                    const isOpen = event.data.payload.isOpen;
+                    const device = event.data.payload.device;
+                    log(`Modal state: ${isOpen ? 'OPEN' : 'CLOSED'}`);
+                    if (device) {
+                        log(`Modal device: ${JSON.stringify(device)}`);
+                    }
+                    updateStatus(
+                        isOpen ? 'Modal is OPEN ✓' : 'Modal is CLOSED ✗', 
+                        isOpen ? 'success' : 'error'
+                    );
+                    break;
+                    
+                case 'TEST_RESULT':
+                    log(`Test result: ${event.data.payload.message}`);
+                    updateStatus(event.data.payload.message, event.data.payload.success ? 'success' : 'error');
+                    break;
+                    
+                default:
+                    log(`Unknown message type: ${event.data.type}`);
+            }
+        });
+        
+        log('Modal fix test tool loaded');
+        log('Open the dashboard at http://localhost:3000/networkscan and then use the test buttons above');
+    </script>
+</body>
+</html>

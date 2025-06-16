@@ -19,7 +19,22 @@ export default function NetworkDashboard() {
     const [devices, setDevices] = useState({});
     const [vendorColors, setVendorColors] = useState({});
     const [customNames, setCustomNames] = useState({});
-    const [modalDevice, setModalDevice] = useState(null);    const [flattenedDevices, setFlattenedDevices] = useState([]);
+    const [modalDeviceState, setModalDeviceState] = useState(null);
+    
+    // Wrap setModalDevice with debugging
+    const setModalDevice = (device) => {
+        console.log('🎯 setModalDevice called with:', {
+            device: device ? device.ip : null,
+            deviceObject: device,
+            stack: new Error().stack
+        });
+        setModalDeviceState(device);
+    };
+    
+    // Use modalDeviceState as modalDevice everywhere
+    const modalDevice = modalDeviceState;
+    
+    const [flattenedDevices, setFlattenedDevices] = useState([]);
     
     // Tab navigation state
     const [activeTab, setActiveTab] = useState('topology');
@@ -189,6 +204,57 @@ export default function NetworkDashboard() {
             setFlattenedDevices(devicesList);
         }
     }, [devices]);
+
+    // Add message listener for testing and debugging
+    useEffect(() => {
+        const handleMessage = (event) => {
+            console.log('🎯 NetworkDashboard message received:', event.data);
+            
+            switch (event.data.type) {
+                case 'SET_TEST_DEVICES':
+                    console.log('🧪 Setting test devices:', event.data.payload.devices);
+                    setDevices(event.data.payload.devices);
+                    break;
+                    
+                case 'SET_CUSTOM_PROPERTIES':
+                    console.log('🧪 Setting custom properties:', event.data.payload.customProperties);
+                    setCustomNames(event.data.payload.customProperties);
+                    break;
+                    
+                case 'TEST_MODAL_FIX':
+                    console.log('🧪 Testing modal fix with device:', event.data.payload.testDevice);
+                    setModalDevice(event.data.payload.testDevice);
+                    break;
+                    
+                case 'SIMULATE_RIGHT_CLICK':
+                    console.log('🧪 Simulating right-click on device:', event.data.payload.device);
+                    setModalDevice(event.data.payload.device);
+                    break;
+                    
+                case 'CHECK_MODAL_STATE':
+                    console.log('🧪 Checking modal state...');
+                    const isOpen = !!modalDevice;
+                    console.log('🧪 Modal state:', { isOpen, device: modalDevice });
+                    event.source?.postMessage({
+                        type: 'MODAL_STATE_RESPONSE',
+                        payload: {
+                            isOpen,
+                            device: modalDevice
+                        }
+                    }, event.origin);
+                    break;
+                    
+                default:
+                    console.log('❓ Unknown message type:', event.data.type);
+            }
+        };
+        
+        window.addEventListener('message', handleMessage);
+        
+        return () => {
+            window.removeEventListener('message', handleMessage);
+        };
+    }, [modalDevice, setModalDevice]);
 
     // Handle scan completion from modal
     const handleNetworkScanComplete = (scanResults) => {
@@ -822,9 +888,16 @@ export default function NetworkDashboard() {
                     />
                 </div>
             )}            {/* Enhanced UnifiedDeviceModal now handles both solo and collaborative modes */}
+            {console.log('🎯 Rendering UnifiedDeviceModal:', {
+                modalDevice: modalDevice ? modalDevice.ip : null,
+                modalDeviceExists: !!modalDevice,
+                collaborativeMode,
+                scanId
+            })}
             <UnifiedDeviceModal
                 modalDevice={modalDevice}
                 setModalDevice={(device) => {
+                    console.log('🎯 UnifiedDeviceModal setModalDevice called with:', device ? device.ip : null);
                     if (collaborativeMode && modalDevice) {
                         handleCollaborativeModalClose(modalDevice);
                     }

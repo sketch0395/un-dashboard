@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Device Modal Right-Click Test</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            background: #1f2937; 
+            color: white; 
+        }
+        .container { 
+            max-width: 800px; 
+            margin: 0 auto; 
+        }
+        .test-section { 
+            background: #374151; 
+            padding: 20px; 
+            margin: 20px 0; 
+            border-radius: 8px; 
+        }
+        .status { 
+            padding: 10px; 
+            margin: 10px 0; 
+            border-radius: 4px; 
+            font-weight: bold; 
+        }
+        .success { 
+            background: #10b981; 
+            color: white; 
+        }
+        .error { 
+            background: #ef4444; 
+            color: white; 
+        }
+        .info { 
+            background: #3b82f6; 
+            color: white; 
+        }
+        .button { 
+            background: #3b82f6; 
+            color: white; 
+            padding: 10px 20px; 
+            border: none; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            margin: 5px; 
+        }
+        .button:hover { 
+            background: #2563eb; 
+        }
+        pre { 
+            background: #111827; 
+            padding: 10px; 
+            border-radius: 5px; 
+            overflow-x: auto; 
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🖱️ Device Modal Right-Click Test</h1>
+        <p>This tool tests if right-clicking on devices in the topology map correctly opens the UnifiedDeviceModal.</p>
+        
+        <div class="test-section">
+            <h3>Step 1: Open Network Scan Page</h3>
+            <button class="button" onclick="openNetworkScan()">
+                Open Network Scan Page
+            </button>
+            <div id="openStatus" class="status info" style="display: none;">
+                Opening network scan page...
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Step 2: Load Test Device Data</h3>
+            <button class="button" onclick="injectTestData()">
+                Inject Test Device Data
+            </button>
+            <div id="dataStatus" class="status info" style="display: none;">
+                Injecting test data...
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Step 3: Test Right-Click Functionality</h3>
+            <p><strong>Manual Testing Instructions:</strong></p>
+            <ol>
+                <li>Go to the opened network scan page</li>
+                <li>Look for device nodes in the topology visualization</li>
+                <li>Try <strong>right-clicking</strong> on a device node</li>
+                <li>Verify that the UnifiedDeviceModal opens directly (not a context menu)</li>
+                <li>Test both solo mode and collaborative mode</li>
+            </ol>
+            
+            <button class="button" onclick="runAutomatedTest()">
+                Run Automated Right-Click Test
+            </button>
+            <div id="testResults" class="status info" style="display: none;">
+                Test results will appear here...
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>Expected Behavior</h3>
+            <div class="status success">
+                ✅ <strong>Solo Mode:</strong> Right-click should directly open UnifiedDeviceModal
+            </div>
+            <div class="status success">
+                ✅ <strong>Collaborative Mode:</strong> Right-click should attempt to lock device and open modal
+            </div>
+            <div class="status error">
+                ❌ <strong>Incorrect:</strong> Right-click showing context menu instead of opening modal
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let networkScanWindow = null;
+        
+        function openNetworkScan() {
+            networkScanWindow = window.open('http://localhost:3000/networkscan', '_blank');
+            document.getElementById('openStatus').style.display = 'block';
+            document.getElementById('openStatus').innerHTML = 'Network scan page opened. Please wait for it to load...';
+            document.getElementById('openStatus').className = 'status success';
+            
+            // Give time for the page to load
+            setTimeout(() => {
+                document.getElementById('openStatus').innerHTML = 
+                    'Network scan page opened. Now inject test data before testing.';
+            }, 3000);
+        }
+        
+        function injectTestData() {
+            if (!networkScanWindow) {
+                alert('Please open the network scan page first');
+                return;
+            }
+            
+            try {
+                document.getElementById('dataStatus').style.display = 'block';
+                document.getElementById('dataStatus').innerHTML = 'Injecting test device data...';
+                
+                // Inject test device data into the network scan page
+                const testDevices = {
+                    "Cisco": [
+                        {
+                            ip: "192.168.1.1",
+                            hostname: "Test Gateway",
+                            vendor: "Cisco",
+                            mac: "00:11:22:33:44:55",
+                            status: "up",
+                            services: ["ssh", "http", "https"]
+                        }
+                    ],
+                    "HP": [
+                        {
+                            ip: "192.168.1.10",
+                            hostname: "Test Switch",
+                            vendor: "HP",
+                            mac: "00:22:33:44:55:66",
+                            status: "up",
+                            services: ["ssh", "snmp"]
+                        }
+                    ],
+                    "Dell": [
+                        {
+                            ip: "192.168.1.100",
+                            hostname: "Test Computer",
+                            vendor: "Dell",
+                            mac: "00:33:44:55:66:77",
+                            status: "up",
+                            services: ["ssh"]
+                        }
+                    ]
+                };
+                
+                // Set the test data in the network scan page
+                networkScanWindow.postMessage({
+                    type: 'SET_TEST_DEVICES',
+                    devices: testDevices
+                }, '*');
+                
+                // Also set custom device properties for network roles
+                const customProperties = {
+                    "192.168.1.1": {
+                        name: "Test Gateway",
+                        networkRole: "gateway",
+                        isMainGateway: true,
+                        color: "#10b981"
+                    },
+                    "192.168.1.10": {
+                        name: "Test Switch", 
+                        networkRole: "switch",
+                        parentGateway: "192.168.1.1",
+                        color: "#6366f1"
+                    },
+                    "192.168.1.100": {
+                        name: "Test Computer",
+                        networkRole: "device",
+                        parentSwitch: "192.168.1.10",
+                        color: "#f59e0b"
+                    }
+                };
+                
+                networkScanWindow.postMessage({
+                    type: 'SET_CUSTOM_PROPERTIES',
+                    customProperties: customProperties
+                }, '*');
+                
+                document.getElementById('dataStatus').innerHTML = 
+                    'Test data injected successfully! You can now test right-clicking on devices.';
+                document.getElementById('dataStatus').className = 'status success';
+                
+            } catch (error) {
+                console.error('Error injecting test data:', error);
+                document.getElementById('dataStatus').innerHTML = 
+                    'Error injecting test data: ' + error.message;
+                document.getElementById('dataStatus').className = 'status error';
+            }
+        }
+        
+        function runAutomatedTest() {
+            if (!networkScanWindow) {
+                alert('Please open the network scan page first');
+                return;
+            }
+            
+            document.getElementById('testResults').style.display = 'block';
+            document.getElementById('testResults').innerHTML = 'Running automated test...';
+            
+            try {
+                // Send a message to the network scan page to run the test
+                networkScanWindow.postMessage({
+                    type: 'RUN_RIGHT_CLICK_TEST'
+                }, '*');
+                
+                // Listen for test results
+                window.addEventListener('message', function(event) {
+                    if (event.data.type === 'RIGHT_CLICK_TEST_RESULT') {
+                        const result = event.data.result;
+                        let resultHtml = '<h4>Test Results:</h4>';
+                        
+                        if (result.success) {
+                            resultHtml += '<div class="status success">✅ ' + result.message + '</div>';
+                        } else {
+                            resultHtml += '<div class="status error">❌ ' + result.message + '</div>';
+                        }
+                        
+                        if (result.details) {
+                            resultHtml += '<pre>' + JSON.stringify(result.details, null, 2) + '</pre>';
+                        }
+                        
+                        document.getElementById('testResults').innerHTML = resultHtml;
+                    }
+                });
+                
+                setTimeout(() => {
+                    document.getElementById('testResults').innerHTML = 
+                        'Manual testing required. Please right-click on device nodes in the topology to verify the fix.';
+                }, 3000);
+                
+            } catch (error) {
+                document.getElementById('testResults').innerHTML = 
+                    'Error running test: ' + error.message;
+                document.getElementById('testResults').className = 'status error';
+            }
+        }
+    </script>
+</body>
+</html>

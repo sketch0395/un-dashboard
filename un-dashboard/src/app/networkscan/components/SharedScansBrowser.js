@@ -569,42 +569,26 @@ export default function SharedScansBrowser({ onScanSelect, onImportSuccess }) {
           </div>
         )}
       </div>
-      
-      {/* Render the UnifiedDeviceModal with the updated props structure */}
+        {/* Render the UnifiedDeviceModal with the updated props structure */}
       {showDeviceModal && selectedDevice && (
-        <div>
-          {/* Collaboration status banner when in collaborative mode */}
-          {collaborativeMode && (
-            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] max-w-md">
-              <div className="bg-purple-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center space-x-2">
-                <span className="text-sm font-medium">🤝 Collaborative Editing</span>
-                <CollaborationIndicator 
-                  isConnected={isConnected}
-                  collaborators={collaborators}
-                  className="text-xs"
-                />
-              </div>
-            </div>
-          )}
-          <UnifiedDeviceModal
-            modalDevice={selectedDevice}
-            scanId={collaborativeMode ? selectedScan._id : null}
-            isCollaborative={collaborativeMode}
-            setModalDevice={() => {
-              setShowDeviceModal(false);
-              setSelectedDevice(null);
-            }}
-            onSave={async (updatedDevice) => {
-              await handleDeviceSave(updatedDevice);
-              setShowDeviceModal(false);
-              setSelectedDevice(null);
-            }}
-            onStartSSH={(device) => {
-              console.log("SSH requested for device:", device);
-              // SSH functionality can be added here if needed
-            }}
-          />
-        </div>
+        <UnifiedDeviceModal
+          modalDevice={selectedDevice}
+          scanId={collaborativeMode ? selectedScan._id : null}
+          isCollaborative={collaborativeMode}
+          setModalDevice={() => {
+            setShowDeviceModal(false);
+            setSelectedDevice(null);
+          }}
+          onSave={async (updatedDevice) => {
+            await handleDeviceSave(updatedDevice);
+            setShowDeviceModal(false);
+            setSelectedDevice(null);
+          }}
+          onStartSSH={(device) => {
+            console.log("SSH requested for device:", device);
+            // SSH functionality can be added here if needed
+          }}
+        />
       )}
 
       {/* Include your Toast container */}

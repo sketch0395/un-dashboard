@@ -2,8 +2,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import CustomLinks from './components/CustomLinks';
 
-export default function Home() {
-  const dashboardItems = [
+export default function Home() {  const dashboardItems = [
     {
       title: 'Docker Manager',
       description: 'Manage and monitor Docker containers',
@@ -17,6 +16,13 @@ export default function Home() {
       icon: '/globe.svg',
       link: '/networkscan',
       color: 'bg-green-500',
+    },
+    {
+      title: 'Device Manager',
+      description: 'Manage and edit network devices',
+      icon: '/globe.svg',
+      link: '/devicemanager',
+      color: 'bg-orange-500',
     },
     {
       title: 'Performance',
