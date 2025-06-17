@@ -20,7 +20,7 @@ const Modal = ({ isVisible, isOpen, onClose, children, title, size = "md" }) => 
     };
 
     return (
-        <div className="fixed inset-0 bg-amber-300 bg-opacity-75 flex items-center justify-center z-[60]">
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-75 flex items-center justify-center z-[60]">
             <div className={`bg-gray-800 rounded-lg relative max-h-[90vh] overflow-y-auto ${getSizeClasses()}`}>
                 {/* Modal Header */}
                 {title && (

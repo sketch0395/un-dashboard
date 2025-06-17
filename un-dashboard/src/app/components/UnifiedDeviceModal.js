@@ -473,9 +473,9 @@ const UnifiedDeviceModal = ({
                     )}
 
                     {/* Device information section */}
-                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
+                    <div className="bg-gray-800 p-4 rounded-lg border border-gray-900 shadow-sm">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-medium text-gray-800">Device Information</h3>
+                            <h3 className="text-lg font-medium text-gray-200">Device Information</h3>
                             
                             <div className="flex space-x-2 items-center">
                                 {/* Display read-only notification if applicable */}
@@ -524,16 +524,16 @@ const UnifiedDeviceModal = ({
                             <div className="space-y-4">
                                 {/* IP Address */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">IP Address</label>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">IP Address</label>
                                     <input
                                         type="text"
                                         disabled={true}  // IP addresses are always read-only
                                         value={enhancedDevice?.ip || ''}
-                                        className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                                        className="w-full p-2 border border-gray-900 rounded-md bg-gray-800 text-gray-400"
                                     />
                                 </div>                                {/* Hostname/Name */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">
                                         Name / Hostname
                                     </label>
                                     <input
@@ -546,41 +546,41 @@ const UnifiedDeviceModal = ({
                                         onKeyDown={() => handleTyping('name')}
                                         placeholder={enhancedDevice?.hostname || 'Set a name for this device'}
                                         className={`w-full p-2 border rounded-md ${
-                                            isEditing ? 'border-blue-300 bg-white' : 'border-gray-300 bg-gray-50'
+                                            isEditing ? 'border-gray-800 bg-gray-700 text-gray-400' : 'border-gray-900 bg-gray-800'
                                         }`}
                                     />
                                 </div>
                                 
                                 {/* MAC Address */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">MAC Address</label>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">MAC Address</label>
                                     <input
                                         type="text"
                                         disabled={true}
                                         value={formatWithFallback(enhancedDevice?.mac)}
-                                        className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                                        className="w-full p-2 border border-gray-900 rounded-md bg-gray-800 text-gray-400"
                                     />
                                 </div>
                                 
                                 {/* Vendor */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Vendor</label>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Vendor</label>
                                     <input
                                         type="text"
                                         disabled={true}
                                         value={formatWithFallback(enhancedDevice?.vendor)}
-                                        className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                                        className="w-full p-2 border border-gray-900 rounded-md bg-gray-800 text-gray-400"
                                     />
                                 </div>
                                 
                                 {/* Last Seen */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Seen</label>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Last Seen</label>
                                     <input
                                         type="text"
                                         disabled={true}
                                         value={enhancedDevice?.lastSeen ? formatDate(enhancedDevice.lastSeen) : '-'}
-                                        className="w-full p-2 border border-gray-300 rounded-md bg-gray-50 text-gray-500"
+                                        className="w-full p-2 border border-gray-900 rounded-md bg-gray-800 text-gray-400"
                                     />
                                 </div>
 
@@ -601,7 +601,7 @@ const UnifiedDeviceModal = ({
                             {/* Right column - Network information */}
                             <div className="space-y-4">                                {/* Device Type / Network Role */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Device Type</label>                                    <DeviceTypeSelector
+                                                                        <DeviceTypeSelector
                                         value={enhancedDevice?.category || enhancedDevice?.networkRole}
                                         onChange={(value) => {
                                             handleFieldChange('category', value);
@@ -612,19 +612,19 @@ const UnifiedDeviceModal = ({
                                         onBlur={() => handleFieldBlur('category')}
                                         onKeyDown={() => handleTyping('category')}
                                         className={`w-full ${
-                                            isEditing ? 'border-blue-300 bg-white' : 'border-gray-300 bg-gray-50'
+                                            isEditing ? 'border-gray-900 bg-gray-800' : 'border-gray-900 bg-gray-800'
                                         }`}
                                     />
                                 </div>
                                   {/* Parent Device */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-1">Parent Device</label>                                    <ParentDeviceSelector
+                                                                        <ParentDeviceSelector
                                         deviceType={enhancedDevice?.category || enhancedDevice?.networkRole}
                                         currentParent={enhancedDevice?.parentDevice}
                                         onParentChange={(value) => handleFieldChange('parentDevice', value)}
                                         excludeDeviceId={enhancedDevice?.ip}
                                         className={`w-full ${
-                                            isEditing ? 'border-blue-300 bg-white' : 'border-gray-300 bg-gray-50'
+                                            isEditing ? 'border-gray-900 bg-gray-800' : 'border-gray-900 bg-gray-800'
                                         }`}
                                     />
                                 </div>
@@ -659,16 +659,16 @@ const UnifiedDeviceModal = ({
                     </div>
                     
                     {/* Notes Section */}
-                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                        <h3 className="text-lg font-medium text-gray-800 mb-4">Notes</h3>
+                    <div className="bg-gray-800 p-4 rounded-lg border border-gray-900 shadow-sm">
+                        <h3 className="text-lg font-medium text-gray-300 mb-4">Notes</h3>
                         
                         {/* Existing notes */}
                         <div className="space-y-3 mb-4 max-h-60 overflow-y-auto">
                             {enhancedDevice.notes && enhancedDevice.notes.length > 0 ? (
                                 enhancedDevice.notes.map((note) => (
-                                    <div key={note.id} className="flex space-x-2 bg-gray-50 p-3 rounded-md">
+                                    <div key={note.id} className="flex space-x-2 bg-gray-900 p-3 rounded-md">
                                         <div className="flex-grow">
-                                            <p className="text-gray-800">{note.text}</p>
+                                            <p className="text-gray-400">{note.text}</p>
                                             <p className="text-xs text-gray-500 mt-1">
                                                 {formatDate(note.timestamp)}
                                             </p>
@@ -705,13 +705,13 @@ const UnifiedDeviceModal = ({
                                         }
                                     }}
                                     placeholder="Add a note about this device..."
-                                    className="flex-grow p-2 border border-gray-300 rounded-md"
+                                    className="flex-grow p-2 border border-gray-900 rounded-md"
                                 />
                                 <button
                                     onClick={handleAddNote}
                                     disabled={!newNote.trim()}
-                                    className={`px-3 py-2 rounded-md text-white flex items-center ${
-                                        newNote.trim() ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-400'
+                                    className={`px-3 py-2 rounded-md flex items-center ${
+                                        newNote.trim() ? 'bg-green-600 hover:bg-green-700 text-gray-300' : 'bg-gray-700  text-gray-500'
                                     }`}
                                 >
                                     <FaPlus className="mr-1" /> Add
@@ -720,8 +720,8 @@ const UnifiedDeviceModal = ({
                         )}
                     </div>
                       {/* History Section - Always show for debugging */}
-                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                        <h3 className="text-lg font-medium text-gray-800 mb-4">
+                    <div className="bg-gray-800 p-4 rounded-lg border border-gray-900 shadow-sm">
+                        <h3 className="text-lg font-medium text-gray-300 mb-4">
                             History ({deviceHistory.length} entries)
                         </h3>
                         
@@ -730,11 +730,11 @@ const UnifiedDeviceModal = ({
                                 {deviceHistory.map((item, index) => (
                                     <div 
                                         key={index} 
-                                        className="border border-gray-200 rounded-md overflow-hidden"
+                                        className="border border-gray-900 rounded-md overflow-hidden"
                                     >
                                         <div 
                                             onClick={() => toggleHistoryItemExpansion(index)}
-                                            className="flex justify-between items-center p-3 bg-gray-50 cursor-pointer hover:bg-gray-100"
+                                            className="flex justify-between items-center p-3 bg-gray-800 cursor-pointer hover:bg-gray-700"
                                         >
                                             <span className="text-sm font-medium">
                                                 {formatDate(item.timestamp)}
@@ -775,10 +775,10 @@ const UnifiedDeviceModal = ({
                     />
 
                     {/* Actions row */}
-                    <div className="flex justify-end space-x-3 border-t pt-4 mt-4">
+                    <div className="flex justify-end space-x-3 border-t border-gray-900 pt-4 mt-4">
                         <button
                             onClick={handleCloseModal}
-                            className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                            className="px-4 py-2 border border-red-600 rounded-md text-gray-300 bg-red-900 hover:bg-gray-50"
                         >
                             Close
                         </button>

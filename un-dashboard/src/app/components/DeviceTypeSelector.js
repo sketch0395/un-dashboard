@@ -37,12 +37,12 @@ export function DeviceTypeSelector({
   };
 
   return (    <div className={`relative ${className}`}>
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className="block text-sm font-medium text-gray-300 mb-1">
         {label}
       </label>{/* Current Selection */}
       <div 
         className={`w-full border rounded-lg px-3 py-2 cursor-pointer transition-colors ${
-          disabled ? 'opacity-50 cursor-not-allowed bg-gray-50 border-gray-300' : 'bg-white border-gray-300 hover:border-blue-300'
+          disabled ? 'opacity-50 cursor-not-allowed bg-gray-500 border-gray-900' : 'bg-gray-300 border-gray-300 hover:border-blue-300'
         } ${className}`}
         onClick={() => !disabled && setIsOpen(!isOpen)}
       >
@@ -58,7 +58,7 @@ export function DeviceTypeSelector({
                   className="w-2 h-2 rounded-full" 
                   style={{ backgroundColor: selectedType.color }}
                 />
-                <div>                <div className="text-gray-800 text-sm">{selectedType.name}</div>
+                <div>                <div className="text-gray-300 text-sm">{selectedType.name}</div>
                   {showDescription && (
                     <div className="text-gray-500 text-xs">{selectedType.description}</div>
                   )}
@@ -76,8 +76,8 @@ export function DeviceTypeSelector({
         </div>
       </div>      {/* Dropdown */}
       {isOpen && !disabled && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 max-h-80 overflow-hidden">          {/* Search and Filter */}
-          <div className="p-3 border-b border-gray-200 space-y-3">            {/* Search */}
+        <div className="absolute top-full left-0 right-0 mt-1 bg-gray-800 border border-gray-900 rounded-lg shadow-lg z-50 max-h-80 overflow-hidden">          {/* Search and Filter */}
+          <div className="p-3 border-b border-gray-900 space-y-3">            {/* Search */}
             <div className="relative">
               <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-3 h-3" />
               <input
@@ -85,7 +85,7 @@ export function DeviceTypeSelector({
                 placeholder="Search device types..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 bg-white text-gray-800 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-8 pr-3 py-2 bg-gray-800 text-gray-300 text-sm rounded border border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-500"
               />
             </div>
 
@@ -95,7 +95,7 @@ export function DeviceTypeSelector({
                 onClick={() => setSelectedCategory('all')}                className={`px-2 py-1 text-xs rounded ${
                   selectedCategory === 'all' 
                     ? 'bg-blue-500 text-white' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-900'
                 }`}
               >
                 All
@@ -106,7 +106,7 @@ export function DeviceTypeSelector({
                   onClick={() => setSelectedCategory(category.id)}                  className={`px-2 py-1 text-xs rounded ${
                     selectedCategory === category.id 
                       ? 'bg-blue-500 text-white' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-900'
                   }`}
                 >
                   {category.name}
@@ -125,8 +125,8 @@ export function DeviceTypeSelector({
                 {filteredTypes.map((type) => (
                   <div
                     key={type.id}
-                    className={`px-3 py-2 cursor-pointer hover:bg-gray-50 transition-colors ${
-                      value === type.id ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+                    className={`px-3 py-2 cursor-pointer hover:bg-gray-500 transition-colors ${
+                      value === type.id ? 'bg-gray-800 border-l-4 border-blue-900' : ''
                     }`}
                     onClick={() => handleSelect(type.id)}
                   >
@@ -140,8 +140,8 @@ export function DeviceTypeSelector({
                         style={{ backgroundColor: type.color }}
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="text-gray-800 text-sm font-medium">{type.name}</div>
-                        <div className="text-gray-500 text-xs">{type.description}</div>
+                        <div className="text-gray-300 text-sm font-medium">{type.name}</div>
+                        <div className="text-gray-400 text-xs">{type.description}</div>
                       </div>
                       <div className="text-xs text-gray-400 capitalize">
                         {type.category}

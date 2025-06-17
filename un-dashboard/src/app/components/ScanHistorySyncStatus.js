@@ -33,12 +33,12 @@ const ScanHistorySyncStatus = ({ showFullControls = false }) => {
     }
 
     return (
-        <div className="bg-white rounded-lg shadow-sm border p-4 mb-4">
+        <div className="bg-gray-700 rounded-lg shadow-sm border p-4 mb-4">
             <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
                     <FaDatabase className="text-blue-500" />
                     <div>
-                        <h3 className="text-sm font-medium text-gray-900">
+                        <h3 className="text-sm font-medium text-gray-300">
                             Scan History Sync Status
                         </h3>
                         <div className="flex items-center space-x-4 text-xs text-gray-500 mt-1">
