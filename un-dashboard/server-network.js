@@ -7,25 +7,25 @@ const socketIo = require('socket.io');
 const http = require('http');
 const Docker = require('dockerode');
 const SSH2 = require('ssh2');
-// Temporarily disable collaboration server to fix the startup error
-// const { CollaborationServer } = require('./tests/organized/collaboration/collaboration-server');
+// Re-enable collaboration server with correct path
+const { CollaborationServer } = require('./tests/organized/collaboration/collaboration-server');
 
 const app = express();
 const server = http.createServer(app);
 
-// Temporarily disable collaboration server to fix startup error
+// Re-enable collaboration server
 // Initialize collaboration server - make it async
-// const collaborationServer = new CollaborationServer();
+const collaborationServer = new CollaborationServer();
 
-// We'll initialize the collaboration server after the main server setup
-// async function initializeCollaborationServer() {
-//     try {
-//         await collaborationServer.initialize(server);
-//         console.log('✅ Collaboration server initialized successfully');
-//     } catch (error) {
-//         console.error('❌ Failed to initialize collaboration server:', error);
-//     }
-// }
+// Initialize the collaboration server after the main server setup
+async function initializeCollaborationServer() {
+    try {
+        await collaborationServer.initialize(server);
+        console.log('✅ Collaboration server initialized successfully');
+    } catch (error) {
+        console.error('❌ Failed to initialize collaboration server:', error);
+    }
+}
 
 const io = socketIo(server, {
     cors: {
@@ -2126,14 +2126,9 @@ app.use((err, req, res, next) => {
 
 // --- START SERVER ---
 server.listen(4000, '0.0.0.0', async () => {
-    console.log('Server running on http://0.0.0.0:4000');
-    
-    // Temporarily disable collaboration server initialization
+    console.log('Server running on http://0.0.0.0:4000');    
     // Initialize collaboration server
-    // await initializeCollaborationServer();
-    
-    // Start collaboration server heartbeat
-    // collaborationServer.startHeartbeat();
+    await initializeCollaborationServer();
     
     // Test Docker connection on startup
     testDockerConnection().then(success => {

@@ -127,29 +127,43 @@ npm install
 
 ### Running the Application
 
-1. **Start the Next.js development server:**
+1. **Start all servers with the unified development command:**
 
 ```bash
 npm run dev
 ```
 
-2. **Start the network scanning server (in a separate terminal):**
+This will start all required servers concurrently:
+- **Next.js** (port 3000) - Main web application
+- **Network Server** (port 4000) - Network scanning and SSH connections  
+- **Docker Server** (port 4002) - Container management
+- **Collaboration Server** (port 4001) - Real-time collaboration features
+
+2. **Alternative - Start servers individually (if needed):**
 
 ```bash
+# Main web application
+next dev
+
+# Network scanning server
 node server-network.js
+
+# Docker management server  
+node server-docker.js
+
+# Collaboration server
+node collaboration-server-standalone.js
 ```
 
-3. **For Docker management features, start the Docker server (in a separate terminal):**
+3. **Test collaboration server separately:**
 
 ```bash
-node server-docker.js
-# OR for optimized version
-node server-docker-optimized.js
+npm run test:collaboration
 ```
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the dashboard.
 
-> **Important**: Both the Next.js server and the network scanning server must be running for the application to function correctly. If you encounter "xhr poll error" messages, ensure the network scanning server is running.
+> **Important**: All servers (Next.js, Network, Docker, and Collaboration) are now started automatically with `npm run dev`. If you encounter connection issues, check that all servers are running and using the correct ports.
 
 ### Docker Requirements
 
@@ -213,6 +227,16 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
   - Real-time container statistics
   - Docker exec terminal sessions
   - Container creation and configuration
+
+#### 4. Collaboration Server (Port 4001)
+- **File**: `collaboration-server-standalone.js`
+- **Purpose**: Real-time collaboration for shared network scans
+- **Features**:
+  - WebSocket-based real-time collaboration
+  - Multi-user scan sharing and editing
+  - Real-time cursor tracking and user presence
+  - Synchronization of device updates across users
+  - Session management and persistence
 
 ### Container Orchestration
 

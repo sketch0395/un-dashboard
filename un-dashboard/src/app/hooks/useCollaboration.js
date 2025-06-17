@@ -4,7 +4,9 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 export function useCollaboration(scanId) {
+  console.log('🔄 useCollaboration hook called with scanId:', scanId);
   const { user } = useAuth();
+  console.log('👤 Current user:', user ? user.username : 'not authenticated');
   const [isConnected, setIsConnected] = useState(false);
   const [collaborators, setCollaborators] = useState([]);
   const [deviceLocks, setDeviceLocks] = useState(new Map());
@@ -36,28 +38,45 @@ export function useCollaboration(scanId) {
       if (!verifyResponse.ok) {
         throw new Error('Authentication verification failed');
       }      const authData = await verifyResponse.json();
+      console.log('🔍 Auth verification response:', authData);
       if (!authData.authenticated) {
         throw new Error('User not authenticated');
       }
 
       // Get the auth token from cookies to pass to WebSocket
       // Since WebSocket to different port might not include cookies
-      const cookieToken = document.cookie
+      console.log('🍪 All cookies:', document.cookie);
+      let cookieToken = document.cookie
         .split('; ')
         .find(row => row.startsWith('auth-token='))
-        ?.split('=')[1];      console.log('🍪 Cookie token found:', cookieToken ? 'yes' : 'no');      // Connect to the collaboration server on port 4000
+        ?.split('=')[1];      
+
+      // If no cookie token found, try to get it from the auth response
+      // Some authentication setups might include the token in the response
+      if (!cookieToken && authData.token) {
+        console.log('🔑 Using token from auth response');
+        cookieToken = authData.token;
+      }
+
+      console.log('🍪 Cookie token found:', cookieToken ? 'yes' : 'no');
+      if (cookieToken) {
+        console.log('🔑 Token preview:', cookieToken.substring(0, 20) + '...');
+      } else {
+        console.warn('⚠️ No auth token found - WebSocket connection may fail');
+      }// Connect to the collaboration server on the same port as network server
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsHost = window.location.hostname;
-      const wsPort = 4000; // Collaboration server runs on port 4000
-      
-      // Connect to the collaboration WebSocket endpoint
+      const wsPort = 4000; // Collaboration server runs on network server port 4000
+        // Connect to the collaboration WebSocket endpoint
       let wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/collaboration-ws?scanId=${encodeURIComponent(scanId)}`;
       if (cookieToken) {
         wsUrl += `&token=${encodeURIComponent(cookieToken)}`;
+      } else {
+        console.warn('⚠️ Attempting WebSocket connection without auth token - server will likely reject this');
       }
       
       console.log('🔗 Attempting WebSocket connection to:', wsUrl.replace(/token=[^&]+/, 'token=***'));
-      ws.current = new WebSocket(wsUrl);      ws.current.onopen = () => {
+      ws.current = new WebSocket(wsUrl);ws.current.onopen = () => {
         console.log('🤝 Collaboration connected for scan:', scanId);
         setIsConnected(true);
         setConnectionError(null);
@@ -81,6 +100,19 @@ export function useCollaboration(scanId) {
         }
       };      ws.current.onclose = (event) => {
         console.log('🔌 Collaboration disconnected:', event.code, event.reason);
+        
+        // Provide user-friendly error messages for common close codes
+        if (event.code === 1008) {
+          console.error('❌ Collaboration connection rejected: Authentication required or invalid');
+          setConnectionError('Authentication required - please check your login status');
+        } else if (event.code === 1011) {
+          console.error('❌ Collaboration connection rejected: Server error');
+          setConnectionError('Server error - please try again later');
+        } else if (event.code !== 1000) {
+          console.error('❌ Collaboration connection closed unexpectedly:', event.code, event.reason);
+          setConnectionError(`Connection failed: ${event.reason || 'Unknown error'}`);
+        }
+        
         setIsConnected(false);
         
         // Clear client-side keepalive

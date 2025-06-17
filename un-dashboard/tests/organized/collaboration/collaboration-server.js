@@ -5,8 +5,8 @@ require('dotenv').config({ path: '.env' });
 const WebSocket = require('ws');
 const http = require('http');
 const fetch = require('node-fetch');
-const { AuthService } = require('./middleware/auth');
-const dbConnection = require('./lib/db');
+const { AuthService } = require('../../../middleware/auth');
+const dbConnection = require('../../../lib/db');
 
 // Add global error handlers to prevent process crashes
 process.on('unhandledRejection', (reason, promise) => {

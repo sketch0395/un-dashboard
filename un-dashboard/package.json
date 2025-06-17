@@ -1,13 +1,13 @@
 {
   "name": "nexus-control",
   "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "concurrently \"next dev\" \"node server-network.js\" \"node server-docker.js\"",
+  "private": true,  "scripts": {
+    "dev": "concurrently --names \"Next.js,Network,Docker\" --prefix-colors \"cyan,green,yellow\" \"next dev\" \"node server-network.js\" \"node server-docker.js\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
+    "test:collaboration": "node test-collaboration-server.js",
     "test:integration": "node tests/integration/auth-integration.test.js",
     "test:watch": "jest --watch",
     "security:check": "npm audit",

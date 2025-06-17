@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaboration Debug</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .log { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; font-family: monospace; white-space: pre-wrap; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Collaboration Frontend Debug</h1>
+    
+    <div>
+        <button onclick="checkAuth()">1. Check Authentication</button>
+        <button onclick="testWebSocketPath()">2. Test WebSocket Path</button>
+        <button onclick="simulateCollaboration()">3. Simulate Collaboration Hook</button>
+        <button onclick="clearLogs()">Clear Logs</button>
+    </div>
+    
+    <div id="logs"></div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logsDiv = document.getElementById('logs');
+            const logDiv = document.createElement('div');
+            logDiv.className = `log ${type}`;
+            logDiv.textContent = new Date().toLocaleTimeString() + ' - ' + message;
+            logsDiv.appendChild(logDiv);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+            console.log(message);
+        }
+        
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+        
+        async function checkAuth() {
+            log('🔍 Checking authentication status...', 'info');
+            try {
+                const response = await fetch('/api/auth/verify', {
+                    credentials: 'include'
+                });
+                const result = await response.json();
+                
+                if (result.authenticated) {
+                    log('✅ User is authenticated: ' + result.user.username, 'success');
+                    
+                    // Check for auth token in cookies
+                    const authToken = document.cookie
+                        .split('; ')
+                        .find(row => row.startsWith('auth-token='))
+                        ?.split('=')[1];
+                    
+                    if (authToken) {
+                        log('✅ Auth token found in cookies', 'success');
+                        log('Token preview: ' + authToken.substring(0, 20) + '...', 'info');
+                    } else {
+                        log('❌ No auth token found in cookies', 'error');
+                        log('Available cookies: ' + document.cookie, 'info');
+                    }
+                } else {
+                    log('❌ User is not authenticated', 'error');
+                    log('Response: ' + JSON.stringify(result), 'error');
+                }
+            } catch (error) {
+                log('❌ Auth check failed: ' + error.message, 'error');
+            }
+        }
+        
+        function testWebSocketPath() {
+            log('🔌 Testing WebSocket connection path...', 'info');
+            
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsHost = window.location.hostname;
+            const wsPort = 4000;
+            const scanId = 'debug-test-' + Date.now();
+            
+            const authToken = document.cookie
+                .split('; ')
+                .find(row => row.startsWith('auth-token='))
+                ?.split('=')[1];
+            
+            let wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/collaboration-ws?scanId=${encodeURIComponent(scanId)}`;
+            if (authToken) {
+                wsUrl += `&token=${encodeURIComponent(authToken)}`;
+            }
+            
+            log('WebSocket URL: ' + wsUrl.replace(/token=[^&]+/, 'token=***'), 'info');
+            
+            const ws = new WebSocket(wsUrl);
+            
+            let timeoutId = setTimeout(() => {
+                log('⏱️ Connection timeout after 10 seconds', 'error');
+                ws.close();
+            }, 10000);
+            
+            ws.onopen = () => {
+                clearTimeout(timeoutId);
+                log('✅ WebSocket connection successful!', 'success');
+                setTimeout(() => ws.close(), 1000);
+            };
+            
+            ws.onclose = (event) => {
+                clearTimeout(timeoutId);
+                log(`🔌 WebSocket closed: ${event.code} - ${event.reason}`, 'info');
+                if (event.code === 1008) {
+                    log('This indicates authentication issues', 'error');
+                } else if (event.code === 1000) {
+                    log('This is a normal closure', 'success');
+                }
+            };
+            
+            ws.onerror = (error) => {
+                clearTimeout(timeoutId);
+                log('🚨 WebSocket error: ' + error, 'error');
+            };
+        }
+        
+        function simulateCollaboration() {
+            log('🤝 Simulating useCollaboration hook logic...', 'info');
+            
+            // Step 1: Check if we would pass the auth check
+            fetch('/api/auth/verify', { credentials: 'include' })
+                .then(response => response.json())
+                .then(authData => {
+                    if (!authData.authenticated) {
+                        log('❌ Would fail at auth verification step', 'error');
+                        return;
+                    }
+                    
+                    log('✅ Passed auth verification', 'success');
+                    
+                    // Step 2: Check if we have a scanId (collaboration mode requirement)
+                    const scanId = 'test-scan-' + Date.now();
+                    if (!scanId) {
+                        log('❌ No scanId provided (collaboration mode not enabled)', 'error');
+                        return;
+                    }
+                    
+                    log('✅ ScanId provided: ' + scanId, 'success');
+                    
+                    // Step 3: Try to connect like the hook would
+                    log('🔗 Attempting WebSocket connection like useCollaboration hook...', 'info');
+                    testWebSocketPath();
+                })
+                .catch(error => {
+                    log('❌ Auth verification failed: ' + error.message, 'error');
+                });
+        }
+        
+        // Auto-run auth check on load
+        window.onload = () => {
+            log('Collaboration Frontend Debug Started', 'info');
+            checkAuth();
+        };
+    </script>
+</body>
+</html>

@@ -63,8 +63,8 @@ export default function NetworkDashboard() {
     const [loadingScans, setLoadingScans] = useState(false);
     const [scanSelectorFilter, setScanSelectorFilter] = useState('');
     const [scanSourceFilter, setScanSourceFilter] = useState('all'); // 'all', 'shared', 'history'
-    
-    // Initialize collaboration hook when in collaborative mode
+      // Initialize collaboration hook when in collaborative mode
+    console.log('🔍 NetworkDashboard state:', { collaborativeMode, scanId });
     const collaboration = useCollaboration(collaborativeMode ? scanId : null);
     const {
         isConnected,
