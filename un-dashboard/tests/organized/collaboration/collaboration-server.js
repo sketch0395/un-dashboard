@@ -479,15 +479,20 @@ class CollaborationServer {
     console.log('🔄 Device update received:', {
       user: data.user || ws.user?.username,
       deviceId: data.device?.ip || data.deviceId,
-      changes: data.device || data.changes
+      changes: data.device || data.changes,
+      updateId: data.updateId
     });
     
     const { scanId, user } = ws;
-    const { deviceId, changes, version } = data;
-
-    const session = this.scanSessions.get(scanId);
+    const { deviceId, changes, version, updateId } = data;    const session = this.scanSessions.get(scanId);
     if (!session) {
       console.log('❌ No session found for scan:', scanId);
+      ws.send(JSON.stringify({
+        type: 'device_update_failed',
+        deviceId,
+        updateId,
+        reason: 'No active collaboration session'
+      }));
       return;
     }
 
@@ -499,10 +504,10 @@ class CollaborationServer {
         hasLock: !!lock,
         lockOwnerId: lock?.userId,
         currentUserId: user._id
-      });
-      ws.send(JSON.stringify({
+      });      ws.send(JSON.stringify({
         type: 'device_update_failed',
         deviceId,
+        updateId,
         reason: 'Device not locked by user'
       }));
       return;
@@ -530,15 +535,14 @@ class CollaborationServer {
     } catch (error) {
       console.error('❌ Failed to persist device changes to database:', error);
       // Continue with broadcast even if persistence fails
-    }
-
-    console.log('📡 Broadcasting device update to all users...');
+    }    console.log('📡 Broadcasting device update to all users...');
     // Broadcast device update to ALL users (including sender for symmetric collaboration)
     this.broadcastToScan(scanId, {
       type: 'device_updated',
       deviceId,
       changes,
       changeId,
+      updateId, // Include the updateId so the originating client can match this response
       userId: user._id,
       username: user.username,
       version: session.version,

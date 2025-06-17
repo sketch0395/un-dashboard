@@ -16,11 +16,11 @@ export function useCollaboration(scanId) {
   const [cursorPositions, setCursorPositions] = useState(new Map());
   const [connectionError, setConnectionError] = useState(null);  const [sessionVersion, setSessionVersion] = useState(1);
     const ws = useRef(null);
-  const reconnectAttempts = useRef(0);
-  const maxReconnectAttempts = 5;
+  const reconnectAttempts = useRef(0);  const maxReconnectAttempts = 5;
   const reconnectDelay = useRef(1000);
   const keepaliveInterval = useRef(null);
-  const pendingLockRequests = useRef(new Map());  const connect = useCallback(async () => {
+  const pendingLockRequests = useRef(new Map());
+  const pendingUpdateRequests = useRef(new Map());const connect = useCallback(async () => {
     console.warn('🚨 CONNECT FUNCTION CALLED!', { scanId, user: user?.username, timestamp: new Date().toISOString() });
     if (!scanId || !user || ws.current?.readyState === WebSocket.OPEN) {
       console.log('🚫 Connect function early return:', { scanId, user, wsState: ws.current?.readyState });
@@ -236,6 +236,16 @@ export function useCollaboration(scanId) {
         break;      case 'device_updated':
         setSessionVersion(data.version);
         console.log('📱 Received device update from collaboration:', data.deviceId, data.changes);
+        
+        // Resolve pending update request if this was initiated by us
+        if (data.updateId) {
+          const updateResolver = pendingUpdateRequests.current.get(data.updateId);
+          if (updateResolver) {
+            updateResolver.resolve(true);
+            pendingUpdateRequests.current.delete(data.updateId);
+          }
+        }
+        
         // Emit custom event for device updates with the actual changes
         window.dispatchEvent(new CustomEvent('collaborationDeviceUpdate', {
           detail: {
@@ -298,12 +308,27 @@ export function useCollaboration(scanId) {
         if (failedLockResolver) {
           failedLockResolver.resolve(false);
           pendingLockRequests.current.delete(data.deviceId);
-        }
-        // Emit custom event for lock failures
+        }        // Emit custom event for lock failures
         window.dispatchEvent(new CustomEvent('collaborationLockFailed', {
           detail: data
         }));
-        break;      case 'error':
+        break;
+
+      case 'device_update_failed':
+        console.warn('Device update failed:', data.reason);
+        // Resolve pending update request with failure
+        if (data.updateId) {
+          const failedUpdateResolver = pendingUpdateRequests.current.get(data.updateId);
+          if (failedUpdateResolver) {
+            failedUpdateResolver.resolve(false);
+            pendingUpdateRequests.current.delete(data.updateId);
+          }
+        }
+        // Emit custom event for update failures
+        window.dispatchEvent(new CustomEvent('collaborationUpdateFailed', {
+          detail: data
+        }));
+        break;case 'error':
         console.error('Collaboration error:', data.message);
         setConnectionError(data.message);
         break;

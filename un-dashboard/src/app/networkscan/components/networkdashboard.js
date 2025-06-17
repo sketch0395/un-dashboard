@@ -686,12 +686,12 @@ export default function NetworkDashboard() {
 
             // Calculate what changed
             const changes = getDeviceChanges(mergedOriginal, updatedDevice);
-            
-            if (Object.keys(changes).length > 0) {
+              if (Object.keys(changes).length > 0) {
                 console.log('📤 Broadcasting device changes:', changes);
                 
-                // Update device through collaboration system
-                await updateDevice(updatedDevice.ip, changes);
+                // Update device through collaboration system and wait for completion
+                const updateSuccess = await updateDevice(updatedDevice.ip, changes);
+                console.log('🔄 Device update result:', updateSuccess);
                 
                 // Also update local state
                 handleSaveDevice(updatedDevice);
