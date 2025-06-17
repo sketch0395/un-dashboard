@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Collaboration Persistence Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .connected { background-color: #d4edda; color: #155724; }
+        .disconnected { background-color: #f8d7da; color: #721c24; }
+        .test-controls { margin: 20px 0; }
+        button { margin: 5px; padding: 10px 15px; cursor: pointer; }
+        .logs { max-height: 400px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; background-color: #f8f9fa; }
+        .log-entry { margin: 2px 0; font-family: monospace; font-size: 12px; }
+        .log-error { color: red; }
+        .log-success { color: green; }
+        .log-info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>Collaboration Persistence Test</h1>
+    
+    <div id="status" class="status disconnected">
+        Status: Disconnected
+    </div>
+    
+    <div class="test-controls">
+        <button onclick="connectToCollaboration()">Connect to Collaboration</button>
+        <button onclick="testDeviceLock()">Test Device Lock</button>
+        <button onclick="testDeviceUpdate()">Test Device Update</button>
+        <button onclick="testDeviceUnlock()">Test Device Unlock</button>
+        <button onclick="clearLogs()">Clear Logs</button>
+    </div>
+    
+    <div class="logs" id="logs">
+        <div class="log-entry">Logs will appear here...</div>
+    </div>
+
+    <script>
+        let ws = null;
+        let isConnected = false;
+        let testScanId = '6748c12b80389e07c63b0863'; // Use a real scan ID
+        let testDeviceId = '10.5.1.1'; // Use a real device IP
+        let authToken = null;
+
+        function log(message, type = 'info') {
+            const logsDiv = document.getElementById('logs');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logsDiv.appendChild(logEntry);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function updateStatus(connected) {
+            const statusDiv = document.getElementById('status');
+            isConnected = connected;
+            if (connected) {
+                statusDiv.textContent = 'Status: Connected';
+                statusDiv.className = 'status connected';
+            } else {
+                statusDiv.textContent = 'Status: Disconnected';
+                statusDiv.className = 'status disconnected';
+            }
+        }
+
+        async function getAuthToken() {
+            try {
+                const response = await fetch('/api/auth/verify', {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                if (data.authenticated) {
+                    // Extract token from cookie
+                    const cookies = document.cookie.split(';');
+                    for (let cookie of cookies) {
+                        const [name, value] = cookie.trim().split('=');
+                        if (name === 'auth-token') {
+                            authToken = value;
+                            break;
+                        }
+                    }
+                    log(`Auth token obtained: ${authToken ? 'YES' : 'NO'}`, 'success');
+                    return authToken;
+                } else {
+                    log('User not authenticated', 'error');
+                    return null;
+                }
+            } catch (error) {
+                log(`Auth error: ${error.message}`, 'error');
+                return null;
+            }
+        }
+
+        async function connectToCollaboration() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('Already connected', 'info');
+                return;
+            }
+
+            try {
+                log('Getting auth token...', 'info');
+                const token = await getAuthToken();
+                if (!token) {
+                    log('Failed to get auth token', 'error');
+                    return;
+                }                log(`Connecting to collaboration server for scan ${testScanId}...`, 'info');
+                const wsUrl = `ws://localhost:4000/collaboration-ws?scanId=${testScanId}&token=${token}`;
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    log('Connected to collaboration server', 'success');
+                    updateStatus(true);
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        log(`Received: ${data.type} - ${JSON.stringify(data)}`, 'info');
+                        
+                        // Handle specific message types
+                        switch (data.type) {
+                            case 'device_locked':
+                                log(`Device ${data.deviceId} locked by ${data.username}`, 'success');
+                                break;
+                            case 'device_lock_failed':
+                                log(`Device lock failed: ${data.reason}`, 'error');
+                                break;
+                            case 'device_updated':
+                                log(`Device ${data.deviceId} updated`, 'success');
+                                break;
+                            case 'device_update_failed':
+                                log(`Device update failed: ${data.reason}`, 'error');
+                                break;
+                            case 'device_unlocked':
+                                log(`Device ${data.deviceId} unlocked`, 'success');
+                                break;
+                        }
+                    } catch (error) {
+                        log(`Message parse error: ${error.message}`, 'error');
+                    }
+                };
+
+                ws.onclose = (event) => {
+                    log(`Connection closed: ${event.code} - ${event.reason}`, 'error');
+                    updateStatus(false);
+                };
+
+                ws.onerror = (error) => {
+                    log(`WebSocket error: ${error}`, 'error');
+                    updateStatus(false);
+                };
+
+            } catch (error) {
+                log(`Connection error: ${error.message}`, 'error');
+            }
+        }
+
+        function testDeviceLock() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('Not connected to collaboration server', 'error');
+                return;
+            }
+
+            log(`Attempting to lock device ${testDeviceId}...`, 'info');
+            ws.send(JSON.stringify({
+                type: 'device_lock',
+                deviceId: testDeviceId,
+                timestamp: new Date()
+            }));
+        }
+
+        function testDeviceUpdate() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('Not connected to collaboration server', 'error');
+                return;
+            }
+
+            const testChanges = {
+                hostname: `test-hostname-${Date.now()}`,
+                testProperty: `test-value-${Math.random()}`,
+                lastUpdated: new Date().toISOString()
+            };
+
+            log(`Attempting to update device ${testDeviceId} with changes: ${JSON.stringify(testChanges)}`, 'info');
+            ws.send(JSON.stringify({
+                type: 'device_update',
+                deviceId: testDeviceId,
+                changes: testChanges,
+                version: 1,
+                timestamp: new Date()
+            }));
+        }
+
+        function testDeviceUnlock() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('Not connected to collaboration server', 'error');
+                return;
+            }
+
+            log(`Attempting to unlock device ${testDeviceId}...`, 'info');
+            ws.send(JSON.stringify({
+                type: 'device_unlock',
+                deviceId: testDeviceId,
+                timestamp: new Date()
+            }));
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '<div class="log-entry">Logs cleared...</div>';
+        }
+
+        // Auto-connect when page loads
+        window.addEventListener('load', () => {
+            log('Page loaded, ready to test collaboration', 'info');
+        });
+    </script>
+</body>
+</html>

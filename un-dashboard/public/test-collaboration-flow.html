@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaboration Frontend Debug</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #1a1a1a;
+            color: white;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background: #2d5a2d; }
+        .error { background: #5a2d2d; }
+        .info { background: #2d4a5a; }
+        button {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #357abd;
+        }
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        #logs {
+            background: #000;
+            color: #00ff00;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        .form-group {
+            margin: 10px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        input, select {
+            width: 100%;
+            padding: 8px;
+            background: #333;
+            border: 1px solid #666;
+            color: white;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Collaboration Frontend Debug</h1>
+        
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" id="username" value="admin" />
+        </div>
+        
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" id="password" value="admin123" />
+        </div>
+        
+        <div class="form-group">
+            <label for="scanId">Scan ID (manual):</label>
+            <input type="text" id="scanId" placeholder="Enter scan ID for collaboration" />
+        </div>
+        
+        <div class="form-group">
+            <button onclick="login()">1. Login</button>
+            <button onclick="fetchScans()" id="fetchScansBtn" disabled>2. Fetch Available Scans</button>
+            <button onclick="startCollaboration()" id="startCollabBtn" disabled>3. Start Collaboration</button>
+        </div>
+        
+        <div class="form-group">
+            <button onclick="testToken()">Test Token</button>
+            <button onclick="testWebSocket()">Test WebSocket Direct</button>
+            <button onclick="clearLogs()">Clear Logs</button>
+        </div>
+        
+        <div id="status" class="status info">Ready to test collaboration flow</div>
+        
+        <div id="logs"></div>
+        
+        <div id="scans-list" style="margin-top: 20px;"></div>
+    </div>
+
+    <script>
+        let authToken = null;
+        let currentUser = null;
+        let availableScans = [];
+        let ws = null;
+
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('logs');
+            logElement.textContent += `[${timestamp}] ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(message);
+        }
+
+        function setStatus(message, type = 'info') {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+            statusEl.className = `status ${type}`;
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').textContent = '';
+        }
+
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            log(`Attempting login for user: ${username}`);
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await response.json();
+                log(`Login response: ${response.status} - ${JSON.stringify(data)}`);
+
+                if (response.ok) {
+                    authToken = data.token;
+                    currentUser = data.user;
+                    setStatus(`Logged in as: ${currentUser.username}`, 'success');
+                    log(`Auth token received: ${authToken ? 'YES' : 'NO'}`);
+                    
+                    // Enable fetch scans button
+                    document.getElementById('fetchScansBtn').disabled = false;
+                    
+                    return true;
+                } else {
+                    setStatus(`Login failed: ${data.message}`, 'error');
+                    return false;
+                }
+            } catch (error) {
+                log(`Login error: ${error.message}`);
+                setStatus(`Login error: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function fetchScans() {
+            log('Fetching available scans...');
+            
+            try {
+                // Fetch shared scans
+                const sharedResponse = await fetch('/api/scans/shared', {
+                    credentials: 'include'
+                });
+                
+                log(`Shared scans response: ${sharedResponse.status}`);
+                
+                let sharedScans = [];
+                if (sharedResponse.ok) {
+                    const sharedData = await sharedResponse.json();
+                    sharedScans = sharedData.data.map(scan => ({
+                        ...scan,
+                        source: 'shared'
+                    }));
+                    log(`Found ${sharedScans.length} shared scans`);
+                }
+
+                // Fetch scan history
+                const historyResponse = await fetch('/api/scans/history', {
+                    credentials: 'include'
+                });
+                
+                log(`Scan history response: ${historyResponse.status}`);
+                
+                let historyScans = [];
+                if (historyResponse.ok) {
+                    const historyData = await historyResponse.json();
+                    historyScans = historyData.data.map(scan => ({
+                        ...scan,
+                        source: 'history'
+                    }));
+                    log(`Found ${historyScans.length} history scans`);
+                }
+
+                availableScans = [...sharedScans, ...historyScans];
+                log(`Total available scans: ${availableScans.length}`);
+                
+                displayScans();
+                
+                if (availableScans.length > 0) {
+                    document.getElementById('startCollabBtn').disabled = false;
+                    setStatus(`Found ${availableScans.length} scans available for collaboration`, 'success');
+                } else {
+                    setStatus('No scans available for collaboration', 'error');
+                }
+
+            } catch (error) {
+                log(`Error fetching scans: ${error.message}`);
+                setStatus(`Error fetching scans: ${error.message}`, 'error');
+            }
+        }
+
+        function displayScans() {
+            const scansListEl = document.getElementById('scans-list');
+            if (availableScans.length === 0) {
+                scansListEl.innerHTML = '<p>No scans available</p>';
+                return;
+            }
+
+            let html = '<h3>Available Scans:</h3>';
+            availableScans.forEach((scan, index) => {
+                html += `
+                    <div style="background: #333; padding: 10px; margin: 5px 0; border-radius: 5px; cursor: pointer;" 
+                         onclick="selectScan(${index})">
+                        <strong>${scan.name}</strong> (${scan.source})
+                        <br>
+                        <small>ID: ${scan._id || scan.scanId}</small>
+                        <br>
+                        <small>Created: ${new Date(scan.createdAt || scan.timestamp).toLocaleString()}</small>
+                    </div>
+                `;
+            });
+            scansListEl.innerHTML = html;
+        }
+
+        async function selectScan(index) {
+            const scan = availableScans[index];
+            log(`Selected scan: ${scan.name} (${scan._id || scan.scanId})`);
+            
+            const scanId = scan._id || scan.scanId;
+            document.getElementById('scanId').value = scanId;
+            
+            await startCollaboration();
+        }
+
+        async function startCollaboration() {
+            const scanId = document.getElementById('scanId').value;
+            if (!scanId) {
+                setStatus('Please enter a scan ID', 'error');
+                return;
+            }
+
+            if (!authToken) {
+                setStatus('Please login first', 'error');
+                return;
+            }
+
+            log(`Starting collaboration for scan ID: ${scanId}`);
+            setStatus('Connecting to collaboration server...', 'info');
+
+            try {
+                const wsUrl = `ws://localhost:4000/collaboration?token=${encodeURIComponent(authToken)}&scanId=${encodeURIComponent(scanId)}`;
+                log(`WebSocket URL: ${wsUrl}`);
+
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = function(event) {
+                    log('✅ WebSocket connection opened!');
+                    setStatus('Connected to collaboration server!', 'success');
+                };
+
+                ws.onmessage = function(event) {
+                    log(`📨 Received message: ${event.data}`);
+                    try {
+                        const message = JSON.parse(event.data);
+                        log(`📨 Parsed message: ${JSON.stringify(message, null, 2)}`);
+                    } catch (e) {
+                        log(`📨 Raw message: ${event.data}`);
+                    }
+                };
+
+                ws.onclose = function(event) {
+                    log(`❌ WebSocket closed: code=${event.code}, reason=${event.reason}, wasClean=${event.wasClean}`);
+                    if (event.code === 1006) {
+                        setStatus('Connection failed - server may be down', 'error');
+                    } else if (event.code === 1008) {
+                        setStatus('Connection rejected - authentication failed', 'error');
+                    } else {
+                        setStatus(`Connection closed: ${event.reason || 'Unknown reason'}`, 'error');
+                    }
+                };
+
+                ws.onerror = function(error) {
+                    log(`❌ WebSocket error: ${error.message || error}`);
+                    setStatus('WebSocket connection error', 'error');
+                };
+
+                // Test sending a message after connection
+                setTimeout(() => {
+                    if (ws && ws.readyState === WebSocket.OPEN) {
+                        const testMessage = {
+                            type: 'test',
+                            message: 'Hello from frontend debug!'
+                        };
+                        ws.send(JSON.stringify(testMessage));
+                        log(`📤 Sent test message: ${JSON.stringify(testMessage)}`);
+                    }
+                }, 1000);
+
+            } catch (error) {
+                log(`Error starting collaboration: ${error.message}`);
+                setStatus(`Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testToken() {
+            if (!authToken) {
+                log('No auth token available');
+                return;
+            }
+
+            log(`Testing auth token: ${authToken.substring(0, 20)}...`);
+            
+            try {
+                const response = await fetch('/api/auth/verify', {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+                log(`Token verification: ${response.status} - ${JSON.stringify(data)}`);
+            } catch (error) {
+                log(`Token test error: ${error.message}`);
+            }
+        }
+
+        async function testWebSocket() {
+            log('Testing direct WebSocket connection...');
+            
+            try {
+                const testWs = new WebSocket('ws://localhost:4000/collaboration');
+                
+                testWs.onopen = function() {
+                    log('✅ Direct WebSocket connection opened!');
+                    testWs.close();
+                };
+                
+                testWs.onclose = function(event) {
+                    log(`Direct WebSocket closed: code=${event.code}, reason=${event.reason}`);
+                };
+                
+                testWs.onerror = function(error) {
+                    log(`❌ Direct WebSocket error: ${error.message || error}`);
+                };
+                
+            } catch (error) {
+                log(`Direct WebSocket test error: ${error.message}`);
+            }
+        }
+
+        // Initialize
+        log('Collaboration Frontend Debug initialized');
+        log('Ready to test the collaboration flow step by step');
+    </script>
+</body>
+</html>

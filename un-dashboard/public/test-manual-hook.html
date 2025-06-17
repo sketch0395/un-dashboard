@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual Collaboration Hook Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #1a1a1a;
+            color: white;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        #logs {
+            background: #000;
+            color: #00ff00;
+            padding: 10px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            white-space: pre-wrap;
+        }
+        button {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #357abd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Manual Collaboration Hook Test</h1>
+        <p>This page tests if the useCollaboration hook would be called with a scanId</p>
+        
+        <button onclick="testHookCall()">Test Hook Call Logic</button>
+        <button onclick="testWebSocketDirect()">Test Direct WebSocket</button>
+        <button onclick="clearLogs()">Clear Logs</button>
+        
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        function log(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('logs');
+            logElement.textContent += `[${timestamp}] ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(message);
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').textContent = '';
+        }
+
+        // Simulate the same logic as NetworkDashboard
+        async function testHookCall() {
+            log('=== Testing Hook Call Logic ===');
+            
+            // Simulate initial state
+            let collaborativeMode = false;
+            let scanId = null;
+            
+            log(`Initial state: collaborativeMode=${collaborativeMode}, scanId=${scanId}`);
+            log(`Hook would be called with: ${collaborativeMode ? scanId : null}`);
+            
+            // Simulate clicking collaboration toggle
+            log('Simulating collaboration toggle click...');
+            
+            // This would fetch available scans
+            log('Fetching available scans...');
+            
+            try {
+                const response = await fetch('/api/scans/shared?limit=25', {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`Found ${data.data.length} shared scans`);
+                    
+                    if (data.data.length > 0) {
+                        // Simulate selecting the first scan
+                        const selectedScan = data.data[0];
+                        log(`Simulating scan selection: ${selectedScan.name}`);
+                        
+                        scanId = selectedScan._id;
+                        collaborativeMode = true;
+                        
+                        log(`After scan selection: collaborativeMode=${collaborativeMode}, scanId=${scanId}`);
+                        log(`Hook would now be called with: ${collaborativeMode ? scanId : null}`);
+                        
+                        // Now test if this would trigger a WebSocket connection
+                        await testCollaborationConnection(scanId);
+                    } else {
+                        log('No scans available for testing');
+                    }
+                } else {
+                    log(`Failed to fetch scans: ${response.status}`);
+                }
+            } catch (error) {
+                log(`Error fetching scans: ${error.message}`);
+            }
+        }
+
+        async function testCollaborationConnection(scanId) {
+            log('=== Testing Collaboration Connection ===');
+            
+            if (!scanId) {
+                log('No scanId provided');
+                return;
+            }
+            
+            log(`Testing connection for scanId: ${scanId}`);
+            
+            // Test auth verification first
+            try {
+                const verifyResponse = await fetch('/api/auth/verify', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                log(`Auth verification: ${verifyResponse.status}`);
+                
+                if (verifyResponse.ok) {
+                    const authData = await verifyResponse.json();
+                    log(`Auth data: ${JSON.stringify(authData)}`);
+                    
+                    if (authData.authenticated) {
+                        // Test WebSocket connection
+                        log('Auth verified, testing WebSocket connection...');
+                        
+                        // Check for auth token in cookies
+                        log(`All cookies: ${document.cookie}`);
+                        let cookieToken = document.cookie
+                            .split('; ')
+                            .find(row => row.startsWith('auth-token='))
+                            ?.split('=')[1];
+                        
+                        if (!cookieToken && authData.token) {
+                            cookieToken = authData.token;
+                        }
+                        
+                        log(`Auth token found: ${cookieToken ? 'YES' : 'NO'}`);
+                        
+                        // Construct WebSocket URL
+                        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                        const wsHost = window.location.hostname;
+                        const wsPort = 4000;
+                        
+                        let wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/collaboration-ws?scanId=${encodeURIComponent(scanId)}`;
+                        if (cookieToken) {
+                            wsUrl += `&token=${encodeURIComponent(cookieToken)}`;
+                        }
+                        
+                        log(`WebSocket URL: ${wsUrl.replace(/token=[^&]+/, 'token=***')}`);
+                        
+                        // Test WebSocket connection
+                        const ws = new WebSocket(wsUrl);
+                        
+                        ws.onopen = function() {
+                            log('✅ WebSocket connection opened successfully!');
+                            ws.close();
+                        };
+                        
+                        ws.onclose = function(event) {
+                            log(`WebSocket closed: code=${event.code}, reason=${event.reason}, wasClean=${event.wasClean}`);
+                        };
+                        
+                        ws.onerror = function(error) {
+                            log(`❌ WebSocket error: ${error.message || error}`);
+                        };
+                        
+                    } else {
+                        log('❌ User not authenticated');
+                    }
+                } else {
+                    log('❌ Auth verification failed');
+                }
+            } catch (error) {
+                log(`❌ Error in auth verification: ${error.message}`);
+            }
+        }
+
+        async function testWebSocketDirect() {
+            log('=== Testing Direct WebSocket Connection ===');
+            
+            try {
+                const ws = new WebSocket('ws://localhost:4000/collaboration-ws');
+                
+                ws.onopen = function() {
+                    log('✅ Direct WebSocket connection opened!');
+                    ws.close();
+                };
+                
+                ws.onclose = function(event) {
+                    log(`Direct WebSocket closed: code=${event.code}, reason=${event.reason}`);
+                };
+                
+                ws.onerror = function(error) {
+                    log(`❌ Direct WebSocket error: ${error.message || error}`);
+                };
+                
+                // Timeout after 5 seconds
+                setTimeout(() => {
+                    if (ws.readyState === WebSocket.CONNECTING) {
+                        log('Direct WebSocket connection timed out');
+                        ws.close();
+                    }
+                }, 5000);
+                
+            } catch (error) {
+                log(`❌ Direct WebSocket test error: ${error.message}`);
+            }
+        }
+
+        // Initialize
+        log('Manual Collaboration Hook Test initialized');
+        log('Click "Test Hook Call Logic" to simulate the collaboration flow');
+    </script>
+</body>
+</html>

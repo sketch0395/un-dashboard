@@ -5,6 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 
 export function useCollaboration(scanId) {
   console.log('🔄 useCollaboration hook called with scanId:', scanId);
+  console.log('🔄 Hook called from stack:', new Error().stack.split('\n').slice(1, 4).join('\n'));
+  console.warn('⚠️ COLLABORATION HOOK CALLED!', { scanId, timestamp: new Date().toISOString() });
   const { user } = useAuth();
   console.log('👤 Current user:', user ? user.username : 'not authenticated');
   const [isConnected, setIsConnected] = useState(false);
@@ -18,9 +20,10 @@ export function useCollaboration(scanId) {
   const maxReconnectAttempts = 5;
   const reconnectDelay = useRef(1000);
   const keepaliveInterval = useRef(null);
-  const pendingLockRequests = useRef(new Map());
-  const connect = useCallback(async () => {
+  const pendingLockRequests = useRef(new Map());  const connect = useCallback(async () => {
+    console.warn('🚨 CONNECT FUNCTION CALLED!', { scanId, user: user?.username, timestamp: new Date().toISOString() });
     if (!scanId || !user || ws.current?.readyState === WebSocket.OPEN) {
+      console.log('🚫 Connect function early return:', { scanId, user, wsState: ws.current?.readyState });
       return;
     }
 
@@ -66,8 +69,7 @@ export function useCollaboration(scanId) {
       }// Connect to the collaboration server on the same port as network server
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsHost = window.location.hostname;
-      const wsPort = 4000; // Collaboration server runs on network server port 4000
-        // Connect to the collaboration WebSocket endpoint
+      const wsPort = 4000; // Collaboration server runs on network server port 4000        // Connect to the collaboration WebSocket endpoint
       let wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/collaboration-ws?scanId=${encodeURIComponent(scanId)}`;
       if (cookieToken) {
         wsUrl += `&token=${encodeURIComponent(cookieToken)}`;
@@ -373,18 +375,49 @@ export function useCollaboration(scanId) {
       deviceId,
       timestamp: new Date()
     });
-  }, [sendMessage]);
-  const updateDevice = useCallback((deviceId, changes, version) => {
-    if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
-      console.log('🔇 Collaboration disabled - skipping device update');
-      return;
-    }
-    sendMessage({
-      type: 'device_update',
-      deviceId,
-      changes,
-      version,
-      timestamp: new Date()
+  }, [sendMessage]);  const updateDevice = useCallback((deviceId, changes, version) => {
+    return new Promise((resolve, reject) => {
+      if (!ws.current || ws.current.readyState !== WebSocket.OPEN) {
+        console.log('🔇 Collaboration disabled - skipping device update');
+        resolve(true); // Resolve successfully when collaboration is disabled
+        return;
+      }
+
+      console.log('📤 Sending device update for:', deviceId, 'changes:', changes);
+
+      // Create a unique identifier for this update request
+      const updateId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // Set up timeout for the update request
+      const timeout = setTimeout(() => {
+        console.log('⏰ Device update timeout for:', deviceId);
+        pendingUpdateRequests.current.delete(updateId);
+        resolve(true); // Resolve gracefully instead of rejecting
+      }, 10000); // 10 second timeout
+
+      // Store the resolver
+      pendingUpdateRequests.current.set(updateId, {
+        deviceId,
+        resolve: (success) => {
+          clearTimeout(timeout);
+          console.log('✅ Device update resolved for:', deviceId, 'success:', success);
+          resolve(success);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          console.log('❌ Device update rejected for:', deviceId, 'error:', error);
+          resolve(false); // Resolve with false instead of rejecting
+        }
+      });
+
+      sendMessage({
+        type: 'device_update',
+        deviceId,
+        changes,
+        version,
+        updateId, // Include the update ID so the server can respond to this specific request
+        timestamp: new Date()
+      });
     });
   }, [sendMessage]);
 
@@ -421,19 +454,19 @@ export function useCollaboration(scanId) {
 
   const ping = useCallback(() => {
     sendMessage({ type: 'ping' });
-  }, [sendMessage]);
-  // Auto-connect when scan ID changes (temporarily disabled until collaboration server is ready)
+  }, [sendMessage]);  // Auto-connect when scan ID changes
   useEffect(() => {
-    // Temporarily disable auto-connect to prevent WebSocket errors
-    // TODO: Re-enable once collaboration server is properly configured
-    console.log('🔇 Collaboration auto-connect disabled (collaboration server not available)');
-    
-    // if (scanId && user) {
-    //   connect();
-    // }
-    // return () => {
-    //   disconnect();
-    // };
+    console.warn('🔄 USEEFFECT FOR AUTO-CONNECT CALLED!', { scanId, user: user?.username, timestamp: new Date().toISOString() });
+    if (scanId && user) {
+      console.warn('� CONDITIONS MET - CALLING CONNECT!');
+      connect();
+    } else {
+      console.warn('🚫 CONDITIONS NOT MET', { scanId: !!scanId, user: !!user });
+    }
+    return () => {
+      console.warn('🧹 USEEFFECT CLEANUP - CALLING DISCONNECT');
+      disconnect();
+    };
   }, [scanId, user, connect, disconnect]);
 
   // Cleanup on unmount

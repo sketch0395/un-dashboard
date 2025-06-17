@@ -62,9 +62,14 @@ export default function NetworkDashboard() {
     const [availableScans, setAvailableScans] = useState([]);
     const [loadingScans, setLoadingScans] = useState(false);
     const [scanSelectorFilter, setScanSelectorFilter] = useState('');
-    const [scanSourceFilter, setScanSourceFilter] = useState('all'); // 'all', 'shared', 'history'
-      // Initialize collaboration hook when in collaborative mode
+    const [scanSourceFilter, setScanSourceFilter] = useState('all'); // 'all', 'shared', 'history'      // Initialize collaboration hook when in collaborative mode
     console.log('🔍 NetworkDashboard state:', { collaborativeMode, scanId });
+    console.log('🔍 Hook call parameters:', { 
+        scanIdParam: collaborativeMode ? scanId : null,
+        willCallHook: true,
+        collaborativeMode,
+        scanId
+    });
     const collaboration = useCollaboration(collaborativeMode ? scanId : null);
     const {
         isConnected,
@@ -724,6 +729,7 @@ export default function NetworkDashboard() {
         }
     };    // Toggle collaboration mode
     const toggleCollaborationMode = async () => {
+        console.log('🎯 toggleCollaborationMode clicked, current state:', collaborativeMode);
         if (collaborativeMode) {
             // Disable collaboration mode
             setCollaborativeMode(false);
@@ -731,17 +737,27 @@ export default function NetworkDashboard() {
             console.log('❌ Collaboration mode disabled');
         } else {
             // Enable collaboration mode - show scan selector
+            console.log('🔄 Fetching available scans...');
             await fetchAvailableScans();
             setShowScanSelector(true);
+            console.log('📋 Showing scan selector modal');
         }
     };    // Handle scan selection for collaboration
     const handleScanSelect = async (selectedScan) => {
+        console.log('📋 Scan selected for collaboration:', selectedScan);
         const collaborationScanId = selectedScan.scanId || selectedScan._id;
+        console.log('🆔 Using collaboration scan ID:', collaborationScanId);
+        
+        console.log('🔄 Setting state - setScanId and setCollaborativeMode...');
         setScanId(collaborationScanId);
         setCollaborativeMode(true);
         setShowScanSelector(false);
         
         console.log(`✅ Collaboration mode enabled for scan: ${selectedScan.name} (${collaborationScanId}) from ${selectedScan.source}`);
+        console.log('🔄 State should now be:', { 
+            scanId: collaborationScanId, 
+            collaborativeMode: true 
+        });
         
         // Load scan data to topology if it has device data
         if (selectedScan.source === 'shared' && selectedScan._id) {
