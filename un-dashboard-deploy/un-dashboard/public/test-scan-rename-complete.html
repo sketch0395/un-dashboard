@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Complete Scan Rename Authentication Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-step {
+            margin: 15px 0;
+            padding: 10px;
+            border-left: 4px solid #007acc;
+            background-color: #f8f9fa;
+        }
+        .success {
+            border-left-color: #28a745;
+            background-color: #d4edda;
+        }
+        .error {
+            border-left-color: #dc3545;
+            background-color: #f8d7da;
+        }
+        .warning {
+            border-left-color: #ffc107;
+            background-color: #fff3cd;
+        }
+        input, button {
+            padding: 8px 12px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #007acc;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #005a9e;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .log-info { background-color: #e3f2fd; }
+        .log-success { background-color: #e8f5e8; }
+        .log-error { background-color: #ffebee; }
+        .log-warning { background-color: #fff8e1; }
+    </style>
+</head>
+<body>
+    <h1>🔧 Complete Scan Rename Authentication Test</h1>
+    <p>This test verifies that the authentication fix for scan renaming works correctly.</p>
+
+    <div class="test-container">
+        <h2>📝 Test Configuration</h2>
+        <div class="test-step">
+            <label>Test Email:</label>
+            <input type="email" id="testEmail" value="admin@nexuscontrol.com" placeholder="Enter test email">
+        </div>
+        <div class="test-step">
+            <label>Test Password:</label>
+            <input type="password" id="testPassword" value="admin123" placeholder="Enter test password">
+        </div>
+        <div class="test-step">
+            <label>Test Scan ID:</label>
+            <input type="text" id="testScanId" value="test-scan-12345" placeholder="Enter scan ID to test">
+        </div>
+        <div class="test-step">
+            <label>New Scan Name:</label>
+            <input type="text" id="newScanName" value="Updated Test Scan Name" placeholder="Enter new name">
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2>🚀 Test Execution</h2>
+        <button onclick="runCompleteTest()">Run Complete Authentication Test</button>
+        <button onclick="testJustRename()">Test Just Rename (if already logged in)</button>
+        <button onclick="clearLogs()">Clear Logs</button>
+        <button onclick="checkAuthStatus()">Check Auth Status</button>
+    </div>
+
+    <div class="test-container">
+        <h2>📊 Test Results</h2>
+        <div id="testResults"></div>
+    </div>
+
+    <div class="test-container">
+        <h2>📋 Detailed Logs</h2>
+        <div id="logContainer"></div>
+    </div>
+
+    <script>
+        let testResults = [];
+        let logs = [];
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}`;
+            logs.push({ message: logEntry, type });
+            updateLogDisplay();
+            console.log(logEntry);
+        }
+
+        function updateLogDisplay() {
+            const container = document.getElementById('logContainer');
+            container.innerHTML = logs.map(entry => 
+                `<div class="log-entry log-${entry.type}">${entry.message}</div>`
+            ).join('');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function updateResults() {
+            const container = document.getElementById('testResults');
+            container.innerHTML = testResults.map(result => 
+                `<div class="test-step ${result.status}">
+                    <strong>${result.test}:</strong> ${result.message}
+                    ${result.details ? `<pre>${result.details}</pre>` : ''}
+                </div>`
+            ).join('');
+        }
+
+        function addResult(test, status, message, details = null) {
+            testResults.push({ test, status, message, details });
+            updateResults();
+        }
+
+        function clearLogs() {
+            logs = [];
+            testResults = [];
+            updateLogDisplay();
+            updateResults();
+        }
+
+        async function checkAuthStatus() {
+            log('Checking authentication status...', 'info');
+            
+            try {
+                const response = await fetch('/api/user/profile', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const user = await response.json();
+                    log(`✅ Authenticated as: ${user.email}`, 'success');
+                    addResult('Auth Check', 'success', `Logged in as ${user.email}`);
+                    return true;
+                } else {
+                    log(`❌ Not authenticated: ${response.status}`, 'error');
+                    addResult('Auth Check', 'error', `Not authenticated (${response.status})`);
+                    return false;
+                }
+            } catch (error) {
+                log(`❌ Auth check failed: ${error.message}`, 'error');
+                addResult('Auth Check', 'error', `Auth check failed: ${error.message}`);
+                return false;
+            }
+        }
+
+        async function login(email, password) {
+            log(`Attempting login for ${email}...`, 'info');
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    log(`✅ Login successful for ${email}`, 'success');
+                    addResult('Login', 'success', `Successfully logged in as ${email}`);
+                    return true;
+                } else {
+                    log(`❌ Login failed: ${data.error || 'Unknown error'}`, 'error');
+                    addResult('Login', 'error', `Login failed: ${data.error || 'Unknown error'}`, JSON.stringify(data, null, 2));
+                    return false;
+                }
+            } catch (error) {
+                log(`❌ Login request failed: ${error.message}`, 'error');
+                addResult('Login', 'error', `Login request failed: ${error.message}`);
+                return false;
+            }
+        }
+
+        async function testScanRename(scanId, newName) {
+            log(`Testing scan rename for scanId: ${scanId}`, 'info');
+            
+            try {
+                const response = await fetch(`/api/scan-history/${scanId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({ name: newName })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    log(`✅ Scan rename successful!`, 'success');
+                    addResult('Scan Rename', 'success', `Successfully renamed scan to "${newName}"`, JSON.stringify(data, null, 2));
+                    return true;
+                } else {
+                    log(`❌ Scan rename failed: ${response.status} - ${data.error || 'Unknown error'}`, 'error');
+                    addResult('Scan Rename', 'error', `Rename failed (${response.status}): ${data.error || 'Unknown error'}`, JSON.stringify(data, null, 2));
+                    return false;
+                }
+            } catch (error) {
+                log(`❌ Scan rename request failed: ${error.message}`, 'error');
+                addResult('Scan Rename', 'error', `Rename request failed: ${error.message}`);
+                return false;
+            }
+        }
+
+        async function runCompleteTest() {
+            clearLogs();
+            log('🚀 Starting complete authentication test...', 'info');
+            
+            const email = document.getElementById('testEmail').value;
+            const password = document.getElementById('testPassword').value;
+            const scanId = document.getElementById('testScanId').value;
+            const newName = document.getElementById('newScanName').value;
+
+            if (!email || !password || !scanId || !newName) {
+                log('❌ Please fill in all test fields', 'error');
+                addResult('Validation', 'error', 'All fields are required');
+                return;
+            }
+
+            // Step 1: Check initial auth status
+            log('Step 1: Checking initial authentication status...', 'info');
+            const initialAuth = await checkAuthStatus();
+            
+            // Step 2: Login if not authenticated
+            if (!initialAuth) {
+                log('Step 2: Attempting login...', 'info');
+                const loginSuccess = await login(email, password);
+                if (!loginSuccess) {
+                    log('❌ Test failed: Could not authenticate', 'error');
+                    return;
+                }
+            } else {
+                log('Step 2: Already authenticated, skipping login', 'info');
+            }
+
+            // Step 3: Verify authentication after login
+            log('Step 3: Verifying authentication...', 'info');
+            const authAfterLogin = await checkAuthStatus();
+            if (!authAfterLogin) {
+                log('❌ Test failed: Authentication verification failed', 'error');
+                return;
+            }
+
+            // Step 4: Test scan rename
+            log('Step 4: Testing scan rename functionality...', 'info');
+            const renameSuccess = await testScanRename(scanId, newName);
+            
+            // Step 5: Final results
+            log('Step 5: Test completed', 'info');
+            if (renameSuccess) {
+                log('🎉 ALL TESTS PASSED! Authentication fix is working correctly.', 'success');
+                addResult('Overall', 'success', 'All tests passed! The authentication fix is working correctly.');
+            } else {
+                log('❌ TEST FAILED: Scan rename still has issues', 'error');
+                addResult('Overall', 'error', 'Test failed: Scan rename functionality is not working');
+            }
+        }
+
+        async function testJustRename() {
+            log('🔧 Testing just the rename functionality...', 'info');
+            
+            const scanId = document.getElementById('testScanId').value;
+            const newName = document.getElementById('newScanName').value;
+
+            if (!scanId || !newName) {
+                log('❌ Please fill in scan ID and new name', 'error');
+                addResult('Validation', 'error', 'Scan ID and new name are required');
+                return;
+            }
+
+            await testScanRename(scanId, newName);
+        }
+
+        // Initialize
+        log('🔧 Complete Scan Rename Authentication Test initialized', 'info');
+        log('ℹ️ This test verifies the authentication fix for scan renaming', 'info');
+    </script>
+</body>
+</html>

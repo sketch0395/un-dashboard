@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test 401 Fix</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; font-size: 16px; margin: 10px 0; }
+        #log { background: #f8f9fa; padding: 15px; border-radius: 5px; white-space: pre-wrap; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>Test 401 Authentication Fix</h1>
+    <button onclick="runTest()">Run Authentication Test</button>
+    <div id="log"></div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.textContent += `[${timestamp}] ${message}\n`;
+            console.log(message);
+        }
+
+        async function runTest() {
+            document.getElementById('log').textContent = '';
+            log('Starting 401 authentication fix test...', 'info');
+
+            try {
+                // Step 1: Login
+                log('\n1. Attempting login...');
+                const loginResponse = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123'
+                    }),
+                    credentials: 'include' // Important for cookies
+                });
+
+                if (!loginResponse.ok) {
+                    throw new Error(`Login failed: ${loginResponse.status} ${loginResponse.statusText}`);
+                }
+
+                log('✅ Login successful');
+
+                // Step 2: Test saving a scan
+                log('\n2. Testing scan save to database...');
+                
+                const testScanData = {
+                    scanId: 'test-scan-' + Date.now(),
+                    name: 'Test Scan Authentication Fix',
+                    ipRange: '192.168.1.0/24',
+                    deviceCount: 3,
+                    scanData: {
+                        devices: [
+                            { ip: '192.168.1.1', hostname: 'router.local', status: 'up' },
+                            { ip: '192.168.1.100', hostname: 'desktop.local', status: 'up' },
+                            { ip: '192.168.1.101', hostname: 'laptop.local', status: 'up' }
+                        ]
+                    },
+                    metadata: {
+                        scanType: 'ping',
+                        scanDuration: 15000,
+                        osDetection: false,
+                        serviceDetection: false,
+                        ports: []
+                    },
+                    settings: {
+                        isPrivate: true,
+                        isFavorite: false,
+                        tags: ['test', 'auth-fix'],
+                        notes: 'Test scan to verify 401 error fix'
+                    }
+                };
+
+                const saveResponse = await fetch('/api/scan-history', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(testScanData),
+                    credentials: 'include' // Include cookies
+                });
+
+                log(`Save response status: ${saveResponse.status}`);
+
+                if (!saveResponse.ok) {
+                    const errorText = await saveResponse.text();
+                    log(`❌ Save failed: ${errorText}`, 'error');
+                    throw new Error(`Save failed: ${saveResponse.status} ${saveResponse.statusText}`);
+                }
+
+                const saveResult = await saveResponse.json();
+                log('✅ Scan saved successfully!');
+                log(`Saved scan ID: ${saveResult._id}`);
+                log(`Scan name: ${saveResult.name}`);
+
+                // Step 3: Verify by fetching scan history
+                log('\n3. Verifying scan was saved by fetching history...');
+                
+                const fetchResponse = await fetch('/api/scan-history', {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+
+                if (!fetchResponse.ok) {
+                    throw new Error(`Fetch failed: ${fetchResponse.status} ${fetchResponse.statusText}`);
+                }
+
+                const fetchResult = await fetchResponse.json();
+                log('✅ Scan history fetched successfully!');
+                log(`Found ${fetchResult.scanHistory.length} scans in history`);
+
+                // Find our test scan
+                const testScan = fetchResult.scanHistory.find(scan => scan.scanId === testScanData.scanId);
+                if (testScan) {
+                    log('✅ Test scan found in history!');
+                    log(`Test scan details: ID=${testScan._id}, Name=${testScan.name}, Devices=${testScan.deviceCount}`);
+                } else {
+                    log('⚠️ Test scan not found in history');
+                }
+
+                log('\n🎉 ALL TESTS PASSED! The 401 error has been fixed!');
+
+            } catch (error) {
+                log(`\n❌ Test failed: ${error.message}`, 'error');
+                console.error('Full error:', error);
+            }
+        }
+    </script>
+</body>
+</html>

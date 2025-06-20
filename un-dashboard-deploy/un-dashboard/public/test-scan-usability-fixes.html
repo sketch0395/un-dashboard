@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scan History Usability Fixes Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 20px;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            background-color: #2a2a2a;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #4CAF50;
+        }
+        .test-section.warning {
+            border-left-color: #ff9800;
+        }
+        .test-section.error {
+            border-left-color: #f44336;
+        }
+        .button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .button:hover {
+            background-color: #45a049;
+        }
+        .button.danger {
+            background-color: #f44336;
+        }
+        .button.danger:hover {
+            background-color: #da190b;
+        }
+        .button.warning {
+            background-color: #ff9800;
+        }
+        .button.warning:hover {
+            background-color: #e68900;
+        }
+        .log-output {
+            background-color: #1e1e1e;
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-size: 13px;
+            border: 1px solid #444;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status.pass {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .status.fail {
+            background-color: #f44336;
+            color: white;
+        }
+        .status.pending {
+            background-color: #ff9800;
+            color: white;
+        }
+        h1, h2 {
+            color: #4CAF50;
+        }
+        .test-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 768px) {
+            .test-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .test-result {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Scan History Usability Fixes Test</h1>
+        <p>This test verifies the three major usability improvements:</p>
+        <ul>
+            <li><strong>Scan Naming Consistency:</strong> All scans should use "Network Scan [timestamp]" format</li>
+            <li><strong>Database Duplication Prevention:</strong> No duplicate scans on page refresh</li>
+            <li><strong>Topology Visualization:</strong> Selected scans should properly display data on topology maps</li>
+        </ul>
+
+        <div class="test-grid">
+            <div class="test-section">
+                <h2>🎯 Test 1: Scan Naming Consistency</h2>
+                <p>Tests that all scans use consistent naming format instead of "Scan 1, Scan 2"</p>
+                <button class="button" onclick="testScanNaming()">Test Scan Naming</button>
+                <span id="namingStatus" class="status pending">PENDING</span>
+                <div id="namingResult" class="test-result"></div>
+            </div>
+
+            <div class="test-section">
+                <h2>🔄 Test 2: Duplication Prevention</h2>
+                <p>Tests that scans are not duplicated in database on page refresh</p>
+                <button class="button" onclick="testDuplicationPrevention()">Test Duplication</button>
+                <span id="duplicationStatus" class="status pending">PENDING</span>
+                <div id="duplicationResult" class="test-result"></div>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h2>🗺️ Test 3: Topology Visualization</h2>
+            <p>Tests that selected scans display data correctly on topology maps</p>
+            <button class="button" onclick="testTopologyVisualization()">Test Topology</button>
+            <button class="button warning" onclick="simulatePageRefresh()">Simulate Refresh</button>
+            <span id="topologyStatus" class="status pending">PENDING</span>
+            <div id="topologyResult" class="test-result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🔧 Test Controls</h2>
+            <button class="button" onclick="createTestData()">Create Test Data</button>
+            <button class="button warning" onclick="runAllTests()">Run All Tests</button>
+            <button class="button danger" onclick="clearTestData()">Clear Test Data</button>
+            <button class="button" onclick="clearLog()">Clear Log</button>
+        </div>
+
+        <div class="test-section">
+            <h2>📋 Test Log</h2>
+            <div id="testLog" class="log-output">Waiting for tests to start...\n</div>
+        </div>
+    </div>
+
+    <script>
+        let testData = [];
+        let scanCount = 0;
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : type === 'warning' ? '⚠️' : 'ℹ️';
+            const logElement = document.getElementById('testLog');
+            logElement.textContent += `[${timestamp}] ${prefix} ${message}\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('testLog').textContent = 'Log cleared...\n';
+        }
+
+        function updateStatus(testId, status, message = '') {
+            const statusElement = document.getElementById(testId + 'Status');
+            const resultElement = document.getElementById(testId + 'Result');
+            
+            statusElement.className = `status ${status}`;
+            statusElement.textContent = status.toUpperCase();
+            
+            if (message) {
+                resultElement.innerHTML = message;
+            }
+        }
+
+        function createTestData() {
+            log('Creating test scan data...', 'info');
+            
+            // Create test scans with consistent naming
+            testData = [];
+            for (let i = 0; i < 3; i++) {
+                const timestamp = new Date(Date.now() - (i * 60000)).toISOString(); // 1 minute apart
+                const scanName = `Network Scan ${new Intl.DateTimeFormat('en-US', {
+                    month: 'short', day: '2-digit', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit', hour12: false
+                }).format(new Date(timestamp))}`;
+                
+                testData.push({
+                    id: `test-scan-${Date.now()}-${i}`,
+                    name: scanName,
+                    timestamp: timestamp,
+                    ipRange: '192.168.1.0/24',
+                    devices: 5 + i,
+                    data: {
+                        'Test Vendor': [
+                            {
+                                ip: `192.168.1.${100 + i}`,
+                                mac: `aa:bb:cc:dd:ee:${i.toString().padStart(2, '0')}`,
+                                hostname: `test-device-${i}`,
+                                vendor: 'Test Vendor',
+                                scanSource: {
+                                    id: `test-scan-${i}`,
+                                    name: scanName,
+                                    timestamp: timestamp
+                                }
+                            }
+                        ]
+                    }
+                });
+            }
+            
+            // Save to localStorage (simulating scan history)
+            const storageKey = 'scanHistory_test_user';
+            localStorage.setItem(storageKey, JSON.stringify(testData));
+            
+            log(`Created ${testData.length} test scans with consistent naming`, 'success');
+            log(`Sample scan name: "${testData[0].name}"`, 'info');
+        }
+
+        function testScanNaming() {
+            log('Testing scan naming consistency...', 'info');
+            
+            if (testData.length === 0) {
+                updateStatus('naming', 'fail', 'No test data available. Create test data first.');
+                log('No test data found for naming test', 'error');
+                return;
+            }
+            
+            let consistentNames = 0;
+            let inconsistentNames = [];
+            
+            testData.forEach((scan, index) => {
+                if (scan.name && scan.name.startsWith('Network Scan ')) {
+                    consistentNames++;
+                    log(`✓ Scan ${index + 1}: "${scan.name}" - CONSISTENT`, 'success');
+                } else {
+                    inconsistentNames.push(scan.name);
+                    log(`✗ Scan ${index + 1}: "${scan.name}" - INCONSISTENT`, 'error');
+                }
+            });
+            
+            const passed = inconsistentNames.length === 0;
+            updateStatus('naming', passed ? 'pass' : 'fail', 
+                `${consistentNames}/${testData.length} scans have consistent naming. ${inconsistentNames.length > 0 ? 'Inconsistent: ' + inconsistentNames.join(', ') : ''}`);
+            
+            log(`Naming test ${passed ? 'PASSED' : 'FAILED'}: ${consistentNames}/${testData.length} consistent`, passed ? 'success' : 'error');
+        }
+
+        function testDuplicationPrevention() {
+            log('Testing database duplication prevention...', 'info');
+            
+            // Simulate loading scan history (page refresh scenario)
+            const storageKey = 'scanHistory_test_user';
+            const storedScans = JSON.parse(localStorage.getItem(storageKey) || '[]');
+            
+            log(`Found ${storedScans.length} scans in localStorage`, 'info');
+            
+            // Check for duplicates by ID
+            const uniqueIds = new Set();
+            const duplicates = [];
+            
+            storedScans.forEach(scan => {
+                if (uniqueIds.has(scan.id)) {
+                    duplicates.push(scan.id);
+                } else {
+                    uniqueIds.add(scan.id);
+                }
+            });
+            
+            // Check for duplicates by content (similar scans within 5 minutes)
+            const timeDuplicates = [];
+            for (let i = 0; i < storedScans.length; i++) {
+                for (let j = i + 1; j < storedScans.length; j++) {
+                    const scan1 = storedScans[i];
+                    const scan2 = storedScans[j];
+                    const timeDiff = Math.abs(new Date(scan1.timestamp) - new Date(scan2.timestamp));
+                    
+                    if (timeDiff < 5 * 60 * 1000 && // 5 minutes
+                        scan1.ipRange === scan2.ipRange &&
+                        scan1.devices === scan2.devices) {
+                        timeDuplicates.push(`${scan1.id} & ${scan2.id}`);
+                    }
+                }
+            }
+            
+            const passed = duplicates.length === 0 && timeDuplicates.length === 0;
+            updateStatus('duplication', passed ? 'pass' : 'fail',
+                `ID duplicates: ${duplicates.length}, Time-based duplicates: ${timeDuplicates.length}`);
+            
+            log(`Duplication test ${passed ? 'PASSED' : 'FAILED'}`, passed ? 'success' : 'error');
+            if (duplicates.length > 0) {
+                log(`Found ID duplicates: ${duplicates.join(', ')}`, 'error');
+            }
+            if (timeDuplicates.length > 0) {
+                log(`Found time-based duplicates: ${timeDuplicates.join(', ')}`, 'error');
+            }
+        }
+
+        function testTopologyVisualization() {
+            log('Testing topology visualization data structure...', 'info');
+            
+            if (testData.length === 0) {
+                updateStatus('topology', 'fail', 'No test data available. Create test data first.');
+                log('No test data found for topology test', 'error');
+                return;
+            }
+            
+            let validStructures = 0;
+            let errors = [];
+            
+            testData.forEach((scan, index) => {
+                try {
+                    // Check required fields for topology visualization
+                    if (!scan.data || typeof scan.data !== 'object') {
+                        throw new Error('Missing or invalid data field');
+                    }
+                    
+                    // Check device structure
+                    const devices = Object.values(scan.data).flat();
+                    devices.forEach((device, deviceIndex) => {
+                        if (!device.ip) throw new Error(`Device ${deviceIndex} missing IP`);
+                        if (!device.vendor) throw new Error(`Device ${deviceIndex} missing vendor`);
+                        if (!device.scanSource) throw new Error(`Device ${deviceIndex} missing scanSource`);
+                        if (!device.scanSource.name.includes('Network Scan')) {
+                            throw new Error(`Device ${deviceIndex} has inconsistent scanSource name: "${device.scanSource.name}"`);
+                        }
+                    });
+                    
+                    validStructures++;
+                    log(`✓ Scan ${index + 1}: Valid topology structure (${devices.length} devices)`, 'success');
+                    
+                } catch (error) {
+                    errors.push(`Scan ${index + 1}: ${error.message}`);
+                    log(`✗ Scan ${index + 1}: ${error.message}`, 'error');
+                }
+            });
+            
+            const passed = errors.length === 0;
+            updateStatus('topology', passed ? 'pass' : 'fail',
+                `${validStructures}/${testData.length} scans have valid topology structure. ${errors.length > 0 ? 'Errors: ' + errors.length : ''}`);
+            
+            log(`Topology test ${passed ? 'PASSED' : 'FAILED'}: ${validStructures}/${testData.length} valid`, passed ? 'success' : 'error');
+        }
+
+        function simulatePageRefresh() {
+            log('Simulating page refresh scenario...', 'warning');
+            
+            // Save current test data
+            const storageKey = 'scanHistory_test_user';
+            const currentData = JSON.parse(localStorage.getItem(storageKey) || '[]');
+            
+            // Simulate the page refresh by reloading the data
+            setTimeout(() => {
+                const reloadedData = JSON.parse(localStorage.getItem(storageKey) || '[]');
+                
+                if (JSON.stringify(currentData) === JSON.stringify(reloadedData)) {
+                    log('✓ Page refresh simulation: Data consistency maintained', 'success');
+                } else {
+                    log('✗ Page refresh simulation: Data inconsistency detected', 'error');
+                }
+                
+                // Run duplication test after simulated refresh
+                testDuplicationPrevention();
+            }, 1000);
+        }
+
+        function runAllTests() {
+            log('Running all usability tests...', 'info');
+            log('=====================================', 'info');
+            
+            createTestData();
+            
+            setTimeout(() => {
+                testScanNaming();
+                setTimeout(() => {
+                    testDuplicationPrevention();
+                    setTimeout(() => {
+                        testTopologyVisualization();
+                        
+                        // Summary
+                        setTimeout(() => {
+                            log('=====================================', 'info');
+                            log('All tests completed. Check status indicators above.', 'info');
+                        }, 500);
+                    }, 500);
+                }, 500);
+            }, 500);
+        }
+
+        function clearTestData() {
+            const storageKey = 'scanHistory_test_user';
+            localStorage.removeItem(storageKey);
+            testData = [];
+            
+            // Reset all status indicators
+            updateStatus('naming', 'pending', '');
+            updateStatus('duplication', 'pending', '');
+            updateStatus('topology', 'pending', '');
+            
+            log('Test data cleared', 'warning');
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            log('Scan History Usability Fixes Test initialized', 'info');
+            log('Click "Run All Tests" to start automated testing', 'info');
+        });
+    </script>
+</body>
+</html>

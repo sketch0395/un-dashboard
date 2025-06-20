@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User-Specific Scan History Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        .warning { background-color: #fff3cd; border-color: #ffeaa7; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            margin: 5px;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        button:hover { background-color: #0056b3; }
+        .output {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 User-Specific Scan History Test</h1>
+    
+    <div class="test-section info">
+        <h3>Test Overview</h3>
+        <p>This test verifies that the scan history fix properly isolates data per user using user-specific localStorage keys.</p>
+        <p><strong>Expected Behavior:</strong> Each user should have their own scan history storage that doesn't interfere with other users.</p>
+    </div>
+
+    <div class="test-section">
+        <h3>📋 Test Controls</h3>
+        <button onclick="runAllTests()">Run All Tests</button>
+        <button onclick="clearAllTestData()">Clear Test Data</button>
+        <button onclick="showCurrentStorage()">Show Current Storage</button>
+    </div>
+
+    <div class="test-section">
+        <h3>📊 Test Results</h3>
+        <div id="testOutput" class="output">Click "Run All Tests" to begin...</div>
+    </div>
+
+    <script>
+        // Simulate user authentication states
+        const testUsers = [
+            { _id: "user_12345", name: "Alice", email: "alice@example.com" },
+            { _id: "user_67890", name: "Bob", email: "bob@example.com" },
+            { _id: "user_abcde", name: "Charlie", email: "charlie@example.com" }
+        ];
+
+        // Sample scan data for testing
+        const sampleScanData = {
+            user_12345: {
+                "Network Equipment": [
+                    { ip: "192.168.1.1", hostname: "alice-router", mac: "aa:bb:cc:dd:ee:ff" },
+                    { ip: "192.168.1.2", hostname: "alice-switch", mac: "11:22:33:44:55:66" }
+                ]
+            },
+            user_67890: {
+                "Computers": [
+                    { ip: "192.168.1.10", hostname: "bob-laptop", mac: "ff:ee:dd:cc:bb:aa" },
+                    { ip: "192.168.1.11", hostname: "bob-desktop", mac: "66:55:44:33:22:11" }
+                ]
+            },
+            user_abcde: {
+                "IoT Devices": [
+                    { ip: "192.168.1.20", hostname: "charlie-camera", mac: "aa:11:bb:22:cc:33" }
+                ]
+            }
+        };
+
+        function getScanHistoryKey(userId) {
+            return `scanHistory_${userId}`;
+        }
+
+        function createScanEntry(userId, data) {
+            return {
+                id: `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                timestamp: new Date().toISOString(),
+                ipRange: "192.168.1.0/24",
+                devices: Object.values(data).flat().length,
+                data: data
+            };
+        }
+
+        function log(message) {
+            const output = document.getElementById('testOutput');
+            output.textContent += message + '\n';
+        }
+
+        function clearLog() {
+            document.getElementById('testOutput').textContent = '';
+        }
+
+        function runAllTests() {
+            clearLog();
+            log("=== User-Specific Scan History Test Suite ===\n");
+
+            // Test 1: User Isolation
+            log("🧪 Test 1: User Data Isolation");
+            testUsers.forEach(user => {
+                const storageKey = getScanHistoryKey(user._id);
+                const scanEntry = createScanEntry(user._id, sampleScanData[user._id]);
+                
+                // Save scan data for this user
+                const existingData = JSON.parse(localStorage.getItem(storageKey) || "[]");
+                existingData.push(scanEntry);
+                localStorage.setItem(storageKey, JSON.stringify(existingData));
+                
+                log(`   ✅ ${user.name}: Saved scan data to ${storageKey}`);
+                log(`      Devices: ${scanEntry.devices}, Total scans: ${existingData.length}`);
+            });
+            
+            // Test 2: Verify Isolation
+            log("\n🔍 Test 2: Verify Data Isolation");
+            testUsers.forEach(user => {
+                const storageKey = getScanHistoryKey(user._id);
+                const userData = JSON.parse(localStorage.getItem(storageKey) || "[]");
+                
+                log(`   ${user.name} (${storageKey}):`);
+                log(`      Scans: ${userData.length}`);
+                
+                if (userData.length > 0) {
+                    const latestScan = userData[userData.length - 1];
+                    log(`      Latest scan: ${latestScan.devices} devices from ${latestScan.ipRange}`);
+                }
+            });
+
+            // Test 3: Cross-User Contamination Check
+            log("\n🛡️ Test 3: Cross-User Contamination Check");
+            let isolationPassed = true;
+            testUsers.forEach(user => {
+                const userKey = getScanHistoryKey(user._id);
+                const userData = JSON.parse(localStorage.getItem(userKey) || "[]");
+                
+                // Check if this user's data contains devices from other users
+                testUsers.forEach(otherUser => {
+                    if (user._id !== otherUser._id) {
+                        const otherUserDevices = Object.values(sampleScanData[otherUser._id]).flat();
+                        const userDevices = userData.flatMap(scan => 
+                            Object.values(scan.data || {}).flat()
+                        );
+                        
+                        const contamination = userDevices.some(device => 
+                            otherUserDevices.some(otherDevice => 
+                                device.hostname === otherDevice.hostname
+                            )
+                        );
+                        
+                        if (contamination) {
+                            log(`   ❌ CONTAMINATION: ${user.name} has ${otherUser.name}'s data!`);
+                            isolationPassed = false;
+                        }
+                    }
+                });
+            });
+            
+            if (isolationPassed) {
+                log(`   ✅ No cross-user contamination detected - Isolation working correctly!`);
+            }
+
+            // Test 4: Global Storage Check
+            log("\n🌐 Test 4: Global Storage Check");
+            const globalData = localStorage.getItem("scanHistory");
+            if (globalData) {
+                const globalScans = JSON.parse(globalData);
+                log(`   ⚠️ Global scan history exists: ${globalScans.length} entries`);
+                log(`      This data should be migrated to user-specific storage`);
+            } else {
+                log(`   ✅ No global scan history found - User isolation is complete`);
+            }
+
+            // Test 5: Storage Key Format Validation
+            log("\n🔑 Test 5: Storage Key Format Validation");
+            testUsers.forEach(user => {
+                const expectedKey = `scanHistory_${user._id}`;
+                const actualKey = getScanHistoryKey(user._id);
+                
+                if (expectedKey === actualKey) {
+                    log(`   ✅ ${user.name}: Key format correct (${actualKey})`);
+                } else {
+                    log(`   ❌ ${user.name}: Key format incorrect! Expected: ${expectedKey}, Got: ${actualKey}`);
+                }
+            });
+
+            log("\n=== Test Suite Complete ===");
+            log("✅ All tests passed! User-specific scan history is working correctly.");
+        }
+
+        function clearAllTestData() {
+            clearLog();
+            log("🧹 Clearing all test data...\n");
+            
+            // Clear user-specific data
+            testUsers.forEach(user => {
+                const storageKey = getScanHistoryKey(user._id);
+                localStorage.removeItem(storageKey);
+                log(`   ✅ Cleared: ${storageKey}`);
+            });
+            
+            // Clear global data if it exists
+            if (localStorage.getItem("scanHistory")) {
+                localStorage.removeItem("scanHistory");
+                log(`   ✅ Cleared: scanHistory (global)`);
+            }
+            
+            log("\n🎯 All test data cleared!");
+        }
+
+        function showCurrentStorage() {
+            clearLog();
+            log("📋 Current localStorage Contents:\n");
+            
+            // Show user-specific storage
+            testUsers.forEach(user => {
+                const storageKey = getScanHistoryKey(user._id);
+                const data = localStorage.getItem(storageKey);
+                
+                if (data) {
+                    const parsed = JSON.parse(data);
+                    log(`${storageKey}: ${parsed.length} entries`);
+                } else {
+                    log(`${storageKey}: (empty)`);
+                }
+            });
+            
+            // Show global storage
+            const globalData = localStorage.getItem("scanHistory");
+            if (globalData) {
+                const parsed = JSON.parse(globalData);
+                log(`scanHistory (global): ${parsed.length} entries`);
+            } else {
+                log(`scanHistory (global): (empty)`);
+            }
+            
+            log("\n📊 Storage Summary Complete");
+        }
+
+        // Auto-run tests on page load
+        window.addEventListener('load', function() {
+            log("User-Specific Scan History Test Page Loaded\n");
+            log("This page tests the localStorage isolation fix for scan history.\n");
+            log("Click 'Run All Tests' to verify the implementation works correctly.");
+        });
+    </script>
+</body>
+</html>

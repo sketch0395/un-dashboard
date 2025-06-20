@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Scan Rename Functionality</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success { border-color: #4CAF50; background-color: #f8fff8; }
+        .error { border-color: #f44336; background-color: #fff8f8; }
+        .info { border-color: #2196F3; background-color: #f8f9ff; }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #45a049; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        input[type="text"] {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin: 5px;
+            width: 200px;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .log {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Test Scan Rename Functionality</h1>
+        <p>This page tests the complete scan rename workflow including module resolution fixes.</p>
+        
+        <div class="test-section info">
+            <h3>Test Configuration</h3>
+            <label>Scan ID to rename:</label>
+            <input type="text" id="scanId" placeholder="Enter scan ID" value="">
+            <br>
+            <label>New scan name:</label>
+            <input type="text" id="newName" placeholder="Enter new name" value="Renamed Test Scan">
+            <br>
+            <button onclick="runCompleteTest()">Run Complete Test</button>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+
+        <div class="test-section">
+            <h3>Test Steps</h3>
+            <button onclick="testStep1()">1. List Available Scans</button>
+            <button onclick="testStep2()">2. Get Scan Details</button>
+            <button onclick="testStep3()">3. Rename Scan</button>
+            <button onclick="testStep4()">4. Verify Rename</button>
+        </div>
+
+        <div class="test-section">
+            <h3>Test Results</h3>
+            <div id="testResults" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        let availableScans = [];
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logDiv = document.getElementById('testResults');
+            const entry = document.createElement('div');
+            entry.style.color = type === 'error' ? '#f44336' : type === 'success' ? '#4CAF50' : '#333';
+            entry.innerHTML = `<strong>[${timestamp}]</strong> ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function clearLog() {
+            document.getElementById('testResults').innerHTML = '';
+        }
+
+        async function makeAuthenticatedRequest(url, options = {}) {
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    credentials: 'include', // Include cookies
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    }
+                });
+
+                const data = await response.json();
+                return { response, data };
+            } catch (error) {
+                log(`Request failed: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        async function testStep1() {
+            log('🔍 Step 1: Listing available scans...');
+            try {
+                const { response, data } = await makeAuthenticatedRequest('/api/scan-history');
+                
+                if (response.ok) {
+                    availableScans = data.scans || [];
+                    log(`✅ Found ${availableScans.length} scans`, 'success');
+                    
+                    if (availableScans.length > 0) {
+                        log('Available scans:');
+                        availableScans.forEach((scan, index) => {
+                            log(`  ${index + 1}. ID: ${scan.scanId}, Name: "${scan.scanData?.scanName || 'Unnamed'}", Devices: ${scan.deviceCount}`);
+                        });
+                        
+                        // Auto-populate first scan ID if none selected
+                        const scanIdInput = document.getElementById('scanId');
+                        if (!scanIdInput.value && availableScans.length > 0) {
+                            scanIdInput.value = availableScans[0].scanId;
+                            log(`💡 Auto-selected first scan ID: ${availableScans[0].scanId}`);
+                        }
+                    } else {
+                        log('⚠️ No scans found. You may need to create some scans first.', 'error');
+                    }
+                } else {
+                    log(`❌ Failed to fetch scans: ${response.status} - ${data.error}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Error fetching scans: ${error.message}`, 'error');
+            }
+        }
+
+        async function testStep2() {
+            const scanId = document.getElementById('scanId').value;
+            if (!scanId) {
+                log('❌ Please enter a scan ID first', 'error');
+                return;
+            }
+
+            log(`🔍 Step 2: Getting details for scan ID: ${scanId}...`);
+            try {
+                const { response, data } = await makeAuthenticatedRequest(`/api/scan-history/${scanId}`);
+                
+                if (response.ok) {
+                    log('✅ Successfully retrieved scan details', 'success');
+                    log(`Current name: "${data.scanData?.scanName || 'Unnamed'}"`);
+                    log(`Device count: ${data.deviceCount}`);
+                    log(`Created: ${new Date(data.createdAt).toLocaleString()}`);
+                } else {
+                    log(`❌ Failed to get scan details: ${response.status} - ${data.error}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Error getting scan details: ${error.message}`, 'error');
+            }
+        }
+
+        async function testStep3() {
+            const scanId = document.getElementById('scanId').value;
+            const newName = document.getElementById('newName').value;
+            
+            if (!scanId || !newName) {
+                log('❌ Please enter both scan ID and new name', 'error');
+                return;
+            }
+
+            log(`🔧 Step 3: Renaming scan "${scanId}" to "${newName}"...`);
+            try {
+                const { response, data } = await makeAuthenticatedRequest(`/api/scan-history/${scanId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({ scanName: newName })
+                });
+                
+                if (response.ok) {
+                    log('✅ Successfully renamed scan', 'success');
+                    log(`New name confirmed: "${data.scanData?.scanName}"`);
+                } else {
+                    log(`❌ Failed to rename scan: ${response.status} - ${data.error}`, 'error');
+                    if (data.details) {
+                        log(`Details: ${JSON.stringify(data.details, null, 2)}`);
+                    }
+                }
+            } catch (error) {
+                log(`❌ Error renaming scan: ${error.message}`, 'error');
+            }
+        }
+
+        async function testStep4() {
+            const scanId = document.getElementById('scanId').value;
+            if (!scanId) {
+                log('❌ Please enter a scan ID first', 'error');
+                return;
+            }
+
+            log(`🔍 Step 4: Verifying rename was successful...`);
+            try {
+                const { response, data } = await makeAuthenticatedRequest(`/api/scan-history/${scanId}`);
+                
+                if (response.ok) {
+                    const currentName = data.scanData?.scanName || 'Unnamed';
+                    const expectedName = document.getElementById('newName').value;
+                    
+                    if (currentName === expectedName) {
+                        log(`✅ Rename verification successful! Name is now: "${currentName}"`, 'success');
+                    } else {
+                        log(`⚠️ Rename may not have worked. Expected: "${expectedName}", Got: "${currentName}"`, 'error');
+                    }
+                } else {
+                    log(`❌ Failed to verify rename: ${response.status} - ${data.error}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Error verifying rename: ${error.message}`, 'error');
+            }
+        }
+
+        async function runCompleteTest() {
+            log('🚀 Starting complete scan rename test...', 'success');
+            clearLog();
+            
+            await testStep1();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testStep2();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testStep3();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            await testStep4();
+            
+            log('🏁 Complete test finished!', 'success');
+        }
+
+        // Auto-run step 1 on page load
+        window.addEventListener('load', () => {
+            setTimeout(testStep1, 1000);
+        });
+    </script>
+</body>
+</html>

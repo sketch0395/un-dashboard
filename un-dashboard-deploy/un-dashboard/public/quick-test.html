@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Device History Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        button { margin: 10px 5px; padding: 10px 15px; cursor: pointer; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 3px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Device History Fix Test</h1>
+    
+    <div class="test-section">
+        <h3>Test 1: Add Device History</h3>
+        <button onclick="addTestHistory()">Add Test History</button>
+        <div id="add-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 2: Check LocalStorage</h3>
+        <button onclick="checkLocalStorage()">Check localStorage</button>
+        <div id="check-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 3: Simulate Page Reload</h3>
+        <button onclick="simulateReload()">Simulate Device Loading</button>
+        <div id="reload-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h3>Test 4: Go to Performance Page</h3>
+        <button onclick="goToPerformance()">Go to Performance Page</button>
+        <p>After clicking, manually reload the performance page to test the fix.</p>
+    </div>
+
+    <script>
+        function addTestHistory() {
+            const testIP = "10.5.1.100";
+            const testHistory = [
+                {
+                    timestamp: new Date().toISOString(),
+                    changes: {
+                        name: "Test Device Updated",
+                        category: "Server",
+                        networkRole: "switch"
+                    }
+                },
+                {
+                    timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+                    changes: {
+                        name: "Test Device",
+                        category: "Workstation"
+                    }
+                }
+            ];
+            
+            // Get existing customDeviceProperties or create new
+            const existingProps = JSON.parse(localStorage.getItem('customDeviceProperties') || '{}');
+            
+            // Add our test device with history
+            existingProps[testIP] = {
+                name: "Test Device Updated",
+                category: "Server", 
+                networkRole: "switch",
+                history: testHistory
+            };
+            
+            // Save to localStorage
+            localStorage.setItem('customDeviceProperties', JSON.stringify(existingProps));
+            
+            document.getElementById('add-result').innerHTML = `
+                <div class="success">
+                    <p>✅ Test history added for device ${testIP}</p>
+                    <p>History entries: ${testHistory.length}</p>
+                </div>
+            `;
+        }
+        
+        function checkLocalStorage() {
+            const customProps = localStorage.getItem('customDeviceProperties');
+            const result = document.getElementById('check-result');
+            
+            if (customProps) {
+                const parsed = JSON.parse(customProps);
+                const devices = Object.keys(parsed);
+                const devicesWithHistory = devices.filter(ip => parsed[ip].history && parsed[ip].history.length > 0);
+                
+                result.innerHTML = `
+                    <div class="success">
+                        <p>✅ CustomDeviceProperties found in localStorage</p>
+                        <p>Total devices: ${devices.length}</p>
+                        <p>Devices with history: ${devicesWithHistory.length}</p>
+                        <pre>${JSON.stringify(parsed, null, 2)}</pre>
+                    </div>
+                `;
+            } else {
+                result.innerHTML = `
+                    <div class="error">
+                        <p>❌ No customDeviceProperties found in localStorage</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function simulateReload() {
+            // Simulate how the performance page loads devices
+            const customProps = JSON.parse(localStorage.getItem('customDeviceProperties') || '{}');
+            const result = document.getElementById('reload-result');
+            
+            // Mock device data (simulating what would come from network scan)
+            const mockDevices = [
+                { ip: "10.5.1.100", name: "Test Device", category: "Unknown" }
+            ];
+            
+            // Apply the same loading logic as our fix
+            const loadedDevices = mockDevices.map(device => {
+                if (customProps[device.ip]) {
+                    return {
+                        ...device,
+                        name: customProps[device.ip].name || device.name,
+                        category: customProps[device.ip].category || device.category,
+                        networkRole: customProps[device.ip].networkRole,
+                        history: customProps[device.ip].history || []
+                    };
+                } else {
+                    return {
+                        ...device,
+                        history: []
+                    };
+                }
+            });
+            
+            const deviceWithHistory = loadedDevices.find(d => d.ip === "10.5.1.100");
+            
+            if (deviceWithHistory && deviceWithHistory.history && deviceWithHistory.history.length > 0) {
+                result.innerHTML = `
+                    <div class="success">
+                        <p>✅ Device history loaded successfully!</p>
+                        <p>Device: ${deviceWithHistory.name}</p>
+                        <p>History entries: ${deviceWithHistory.history.length}</p>
+                        <pre>${JSON.stringify(deviceWithHistory, null, 2)}</pre>
+                    </div>
+                `;
+            } else {
+                result.innerHTML = `
+                    <div class="error">
+                        <p>❌ Device history not loaded properly</p>
+                        <pre>${JSON.stringify(deviceWithHistory, null, 2)}</pre>
+                    </div>
+                `;
+            }
+        }
+        
+        function goToPerformance() {
+            window.location.href = '/performance';
+        }
+        
+        // Auto-run initial check
+        window.onload = function() {
+            checkLocalStorage();
+        };
+    </script>
+</body>
+</html>

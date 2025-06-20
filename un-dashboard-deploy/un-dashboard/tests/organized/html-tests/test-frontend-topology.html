@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Topology Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success {
+            color: green;
+        }
+        .error {
+            color: red;
+        }
+        .info {
+            color: blue;
+        }
+        #results {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 5px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background: #007cba;
+            color: white;
+        }
+        button:hover {
+            background: #005a87;
+        }
+    </style>
+</head>
+<body>
+    <h1>UN Dashboard Frontend Topology Test</h1>
+    
+    <div class="test-section">
+        <h2>Test Controls</h2>
+        <button onclick="runFullTest()">Run Full Test Suite</button>
+        <button onclick="testAuthentication()">Test Authentication Only</button>
+        <button onclick="testTopologyComponents()">Test Topology Components</button>
+        <button onclick="clearResults()">Clear Results</button>
+    </div>
+
+    <div class="test-section">
+        <h2>Test Results</h2>
+        <div id="results">Click "Run Full Test Suite" to begin testing...</div>
+    </div>
+
+    <script>
+        let testResults = [];
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const formattedMessage = `[${timestamp}] ${message}`;
+            testResults.push(formattedMessage);
+            updateResults();
+            
+            // Also log to console
+            console.log(formattedMessage);
+        }
+
+        function updateResults() {
+            document.getElementById('results').textContent = testResults.join('\n');
+        }
+
+        function clearResults() {
+            testResults = [];
+            updateResults();
+        }
+
+        async function runFullTest() {
+            clearResults();
+            log('=== Starting Full Frontend Test Suite ===', 'info');
+            
+            await testAuthentication();
+            await testScanHistoryAPI();
+            await testTopologyComponents();
+            await testComponentState();
+            
+            log('\n=== Test Suite Complete ===', 'info');
+        }
+
+        async function testAuthentication() {
+            log('\n1. Testing Authentication...', 'info');
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123!'
+                    })
+                });
+
+                if (response.ok) {
+                    const authData = await response.json();
+                    log('✓ Authentication successful', 'success');
+                    log(`   - Token received: ${authData.token ? 'Yes' : 'No'}`, 'info');
+                    
+                    if (authData.token) {
+                        localStorage.setItem('authToken', authData.token);
+                        log('   - Token stored in localStorage', 'success');
+                        
+                        // Test profile endpoint
+                        await testProfileEndpoint(authData.token);
+                    }
+                } else {
+                    const errorData = await response.text();
+                    log(`✗ Authentication failed: ${response.status}`, 'error');
+                    log(`   - Error: ${errorData}`, 'error');
+                }
+            } catch (error) {
+                log(`✗ Authentication error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testProfileEndpoint(token) {
+            log('\n2. Testing Profile Endpoint...', 'info');
+            
+            try {
+                const profileResponse = await fetch('/api/user/profile', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                if (profileResponse.ok) {
+                    const profileData = await profileResponse.json();
+                    log('✓ Profile endpoint accessible', 'success');
+                    log(`   - User: ${profileData.user?.username || 'N/A'}`, 'info');
+                    log(`   - Role: ${profileData.user?.role || 'N/A'}`, 'info');
+                } else {
+                    log(`✗ Profile endpoint failed: ${profileResponse.status}`, 'error');
+                }
+            } catch (error) {
+                log(`✗ Profile endpoint error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testScanHistoryAPI() {
+            log('\n3. Testing Scan History API...', 'info');
+            
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                log('✗ No auth token available', 'error');
+                return;
+            }
+
+            try {
+                const scanResponse = await fetch('/api/scan-history', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (scanResponse.ok) {
+                    const scanData = await scanResponse.json();
+                    log('✓ Scan history endpoint accessible', 'success');
+                    log(`   - Scans found: ${scanData.scans?.length || 0}`, 'info');
+                    
+                    if (scanData.scans && scanData.scans.length > 0) {
+                        const latestScan = scanData.scans[0];
+                        log(`   - Latest scan: ${latestScan.scanId}`, 'info');
+                        log(`   - Device count: ${latestScan.deviceCount}`, 'info');
+                        log(`   - IP Range: ${latestScan.ipRange}`, 'info');
+                        
+                        // Test topology visualization with real data
+                        testTopologyWithData(latestScan);
+                    } else {
+                        log('   - No existing scans, testing with mock data', 'info');
+                        testTopologyWithData(getMockScanData());
+                    }
+                } else {
+                    log(`✗ Scan history failed: ${scanResponse.status}`, 'error');
+                }
+            } catch (error) {
+                log(`✗ Scan history error: ${error.message}`, 'error');
+            }
+        }
+
+        function testTopologyWithData(scanData) {
+            log('\n4. Testing Topology Data Processing...', 'info');
+            
+            try {
+                log(`   - Scan ID: ${scanData.scanId}`, 'info');
+                log(`   - IP Range: ${scanData.ipRange}`, 'info');
+                log(`   - Device Count: ${scanData.deviceCount}`, 'info');
+                
+                if (scanData.scanData && typeof scanData.scanData === 'object') {
+                    log('✓ Scan data structure valid', 'success');
+                    
+                    // Count devices by vendor
+                    const vendors = Object.keys(scanData.scanData);
+                    log(`   - Vendors found: ${vendors.length}`, 'info');
+                    
+                    let totalDevices = 0;
+                    vendors.forEach(vendor => {
+                        const devices = scanData.scanData[vendor];
+                        const deviceCount = Array.isArray(devices) ? devices.length : 0;
+                        totalDevices += deviceCount;
+                        log(`     - ${vendor}: ${deviceCount} devices`, 'info');
+                    });
+                    
+                    log(`   - Total devices processed: ${totalDevices}`, 'info');
+                    
+                    // Test device role classification
+                    testDeviceClassification(scanData);
+                } else {
+                    log('✗ Invalid scan data structure', 'error');
+                }
+            } catch (error) {
+                log(`✗ Topology data processing error: ${error.message}`, 'error');
+            }
+        }
+
+        function testDeviceClassification(scanData) {
+            log('\n5. Testing Device Classification...', 'info');
+            
+            try {
+                // Extract all devices
+                const allDevices = [];
+                Object.keys(scanData.scanData).forEach(vendor => {
+                    if (Array.isArray(scanData.scanData[vendor])) {
+                        scanData.scanData[vendor].forEach(device => {
+                            allDevices.push({ ...device, vendor });
+                        });
+                    }
+                });
+
+                log(`✓ Devices extracted: ${allDevices.length}`, 'success');
+
+                // Classify devices by role
+                const devicesByRole = {
+                    gateways: [],
+                    switches: [],
+                    devices: []
+                };
+
+                allDevices.forEach(device => {
+                    const role = determineDeviceRole(device);
+                    if (devicesByRole[role]) {
+                        devicesByRole[role].push(device);
+                    } else {
+                        devicesByRole.devices.push(device);
+                    }
+                });
+
+                log(`   - Gateways: ${devicesByRole.gateways.length}`, 'info');
+                log(`   - Switches: ${devicesByRole.switches.length}`, 'info');
+                log(`   - Other devices: ${devicesByRole.devices.length}`, 'info');
+
+                // Test network relationships
+                testNetworkRelationships(allDevices);
+                
+            } catch (error) {
+                log(`✗ Device classification error: ${error.message}`, 'error');
+            }
+        }
+
+        function testNetworkRelationships(devices) {
+            log('\n6. Testing Network Relationships...', 'info');
+            
+            try {
+                const relationships = [];
+                
+                devices.forEach((device, index) => {
+                    devices.forEach((otherDevice, otherIndex) => {
+                        if (index !== otherIndex) {
+                            const deviceIp = device.ip || device.ipAddress || '';
+                            const otherIp = otherDevice.ip || otherDevice.ipAddress || '';
+                            
+                            if (areDevicesRelated(deviceIp, otherIp)) {
+                                relationships.push({
+                                    source: deviceIp,
+                                    target: otherIp,
+                                    type: 'subnet'
+                                });
+                            }
+                        }
+                    });
+                });
+
+                log(`✓ Network relationships built: ${relationships.length} connections`, 'success');
+                
+                // Show some example relationships
+                if (relationships.length > 0) {
+                    log('   - Example relationships:', 'info');
+                    relationships.slice(0, 3).forEach(rel => {
+                        log(`     ${rel.source} <-> ${rel.target}`, 'info');
+                    });
+                }
+                
+            } catch (error) {
+                log(`✗ Network relationships error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testTopologyComponents() {
+            log('\n7. Testing Topology Components...', 'info');
+            
+            // Check for D3.js
+            if (typeof d3 !== 'undefined') {
+                log('✓ D3.js library available', 'success');
+            } else {
+                log('⚠ D3.js library not found (may be loaded by React components)', 'info');
+            }
+
+            // Check for React
+            if (typeof React !== 'undefined') {
+                log('✓ React library available', 'success');
+            } else {
+                log('⚠ React library not found in global scope (normal for Next.js)', 'info');
+            }
+
+            // Check for topology-related DOM elements
+            const topologyElements = document.querySelectorAll('[class*="topology"], [class*="network"], [id*="topology"], [class*="vis"]');
+            log(`   - Topology DOM elements found: ${topologyElements.length}`, 'info');
+
+            if (topologyElements.length > 0) {
+                log('   - Element types found:', 'info');
+                const elementTypes = new Set();
+                topologyElements.forEach(el => {
+                    elementTypes.add(el.tagName.toLowerCase());
+                });
+                Array.from(elementTypes).forEach(type => {
+                    log(`     - ${type}`, 'info');
+                });
+            }
+
+            // Check for canvas or svg elements (used by D3)
+            const canvasElements = document.querySelectorAll('canvas');
+            const svgElements = document.querySelectorAll('svg');
+            log(`   - Canvas elements: ${canvasElements.length}`, 'info');
+            log(`   - SVG elements: ${svgElements.length}`, 'info');
+        }
+
+        function testComponentState() {
+            log('\n8. Testing Component State...', 'info');
+            
+            // Check localStorage for auth state
+            const authToken = localStorage.getItem('authToken');
+            if (authToken) {
+                log('✓ Auth token stored in localStorage', 'success');
+                log(`   - Token length: ${authToken.length} characters`, 'info');
+            } else {
+                log('✗ No auth token in localStorage', 'error');
+            }
+
+            // Check for Next.js specific elements
+            const nextElements = document.querySelectorAll('[id*="__next"]');
+            if (nextElements.length > 0) {
+                log('✓ Next.js app structure detected', 'success');
+            }
+
+            // Check current page URL
+            log(`   - Current URL: ${window.location.href}`, 'info');
+            log(`   - Page title: ${document.title}`, 'info');
+        }
+
+        // Helper functions
+        function determineDeviceRole(device) {
+            const ip = device.ip || device.ipAddress || '';
+            const hostname = device.hostname || device.name || '';
+            const vendor = device.vendor || '';
+
+            // Gateway detection
+            if (ip.endsWith('.1') || ip.endsWith('.254') || 
+                hostname.toLowerCase().includes('gateway') ||
+                hostname.toLowerCase().includes('router')) {
+                return 'gateways';
+            }
+
+            // Switch detection
+            if (hostname.toLowerCase().includes('switch') ||
+                vendor.toLowerCase().includes('cisco') ||
+                vendor.toLowerCase().includes('netgear')) {
+                return 'switches';
+            }
+
+            return 'devices';
+        }
+
+        function areDevicesRelated(ip1, ip2) {
+            if (!ip1 || !ip2) return false;
+            
+            // Check if they're in the same subnet
+            const parts1 = ip1.split('.');
+            const parts2 = ip2.split('.');
+            
+            if (parts1.length === 4 && parts2.length === 4) {
+                // Same /24 subnet
+                return parts1[0] === parts2[0] && 
+                       parts1[1] === parts2[1] && 
+                       parts1[2] === parts2[2];
+            }
+            
+            return false;
+        }
+
+        function getMockScanData() {
+            return {
+                scanId: 'test-scan-' + Date.now(),
+                ipRange: '10.5.1.0/24',
+                deviceCount: 3,
+                scanData: {
+                    "Cisco": [
+                        {
+                            ip: "10.5.1.1",
+                            hostname: "gateway.local",
+                            mac: "00:11:22:33:44:55",
+                            ports: [80, 443, 22]
+                        }
+                    ],
+                    "Netgear": [
+                        {
+                            ip: "10.5.1.10",
+                            hostname: "switch-01.local",
+                            mac: "00:AA:BB:CC:DD:EE",
+                            ports: [80, 443]
+                        }
+                    ],
+                    "Unknown": [
+                        {
+                            ip: "10.5.1.100",
+                            hostname: "device-01.local",
+                            mac: "00:FF:EE:DD:CC:BB",
+                            ports: [22, 3389]
+                        }
+                    ]
+                }
+            };
+        }
+
+        // Auto-run basic checks on page load
+        window.addEventListener('load', () => {
+            log('Frontend test page loaded', 'info');
+            log('Click "Run Full Test Suite" to begin comprehensive testing', 'info');
+        });
+    </script>
+</body>
+</html>

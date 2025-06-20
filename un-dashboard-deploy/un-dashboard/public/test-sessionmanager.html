@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SessionManager Fetch Test</title>
+</head>
+<body>
+    <h1>SessionManager Fetch Test</h1>
+    <div id="results"></div>
+    <button id="testButton">Test Fetch</button>
+    
+    <script type="module">
+        // Import the SessionManager
+        import { SessionManager } from './src/utils/sessionManager.js';
+        
+        const results = document.getElementById('results');
+        const testButton = document.getElementById('testButton');
+        
+        function log(message, isError = false) {
+            const div = document.createElement('div');
+            div.textContent = message;
+            div.style.color = isError ? 'red' : 'green';
+            div.style.margin = '5px 0';
+            results.appendChild(div);
+        }
+        
+        // Test the SessionManager
+        try {
+            log('Creating SessionManager instance...');
+            const sessionManager = new SessionManager();
+            
+            log('Intercepting fetch...');
+            sessionManager.interceptFetch();
+            
+            log('✅ SessionManager initialized successfully');
+            
+            testButton.addEventListener('click', async () => {
+                try {
+                    log('Testing fetch call...');
+                    
+                    // Test with a simple API call
+                    const response = await fetch('/api/csrf-token');
+                    
+                    if (response.ok) {
+                        log('✅ Fetch call successful - no "Illegal invocation" error');
+                        log('🎉 Fix verified: SessionManager fetch interception works correctly');
+                    } else {
+                        log(`⚠️ Fetch returned status ${response.status} but no error thrown`);
+                    }
+                } catch (error) {
+                    log(`❌ Fetch call failed: ${error.message}`, true);
+                    if (error.message.includes('Illegal invocation')) {
+                        log('❌ The "Illegal invocation" error is still present!', true);
+                    }
+                }
+            });
+            
+        } catch (error) {
+            log(`❌ SessionManager initialization failed: ${error.message}`, true);
+        }
+    </script>
+</body>
+</html>

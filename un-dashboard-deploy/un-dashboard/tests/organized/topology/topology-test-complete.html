@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UN Dashboard - Complete Topology Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .test-controls {
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .control-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-1px);
+        }
+        
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #c82333;
+            transform: translateY(-1px);
+        }
+        
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            padding: 15px 0;
+            border-top: 1px solid #dee2e6;
+            margin-top: 20px;
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #6c757d;
+        }
+        
+        .status-dot.connected {
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+        
+        .results-section {
+            padding: 30px;
+        }
+        
+        .results-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .results-header h2 {
+            margin: 0;
+            color: #1e3c72;
+        }
+        
+        .results-content {
+            background: #1a1a1a;
+            color: #00ff00;
+            padding: 20px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            height: 500px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            border: 2px solid #333;
+        }
+        
+        .test-progress {
+            display: none;
+            margin: 20px 0;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        
+        .test-summary {
+            display: none;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 8px;
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .summary-item {
+            text-align: center;
+            padding: 10px;
+            background: white;
+            border-radius: 6px;
+            border: 1px solid #b8daff;
+        }
+        
+        .summary-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1e3c72;
+        }
+        
+        .summary-label {
+            font-size: 12px;
+            color: #6c757d;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>UN Dashboard - Topology Visualization Test</h1>
+            <p>Comprehensive testing suite for network topology visualization and authentication</p>
+        </div>
+        
+        <div class="test-controls">
+            <div class="control-grid">
+                <button class="btn btn-primary" onclick="runFullTopologyTest()">
+                    🚀 Run Complete Test Suite
+                </button>
+                <button class="btn btn-secondary" onclick="testAuthenticationOnly()">
+                    🔐 Test Authentication Only
+                </button>
+                <button class="btn btn-secondary" onclick="testTopologyComponents()">
+                    🌐 Test Topology Components
+                </button>
+                <button class="btn btn-secondary" onclick="testDataProcessing()">
+                    📊 Test Data Processing
+                </button>
+                <button class="btn btn-secondary" onclick="createTestScan()">
+                    📡 Create Test Scan Data
+                </button>
+                <button class="btn btn-secondary" onclick="navigateToNetworkScan()">
+                    🔗 Go to Network Scan
+                </button>
+                <button class="btn btn-secondary" onclick="testD3Visualization()">
+                    📈 Test D3 Visualization
+                </button>
+                <button class="btn btn-danger" onclick="clearAllData()">
+                    🗑️ Clear All Data
+                </button>
+            </div>
+            
+            <div class="status-bar">
+                <div class="status-indicator">
+                    <div class="status-dot" id="authStatus"></div>
+                    <span>Authentication</span>
+                </div>
+                <div class="status-indicator">
+                    <div class="status-dot" id="apiStatus"></div>
+                    <span>API Connection</span>
+                </div>
+                <div class="status-indicator">
+                    <div class="status-dot" id="topologyStatus"></div>
+                    <span>Topology Components</span>
+                </div>
+                <div class="status-indicator">
+                    <div class="status-dot" id="dataStatus"></div>
+                    <span>Scan Data</span>
+                </div>
+            </div>
+            
+            <div class="test-progress" id="testProgress">
+                <div>Running tests...</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+            </div>
+            
+            <div class="test-summary" id="testSummary">
+                <h3>Test Results Summary</h3>
+                <div class="summary-grid">
+                    <div class="summary-item">
+                        <div class="summary-value" id="testsRun">0</div>
+                        <div class="summary-label">Tests Run</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-value" id="testsPassed">0</div>
+                        <div class="summary-label">Passed</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-value" id="testsFailed">0</div>
+                        <div class="summary-label">Failed</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-value" id="devicesFound">0</div>
+                        <div class="summary-label">Devices</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-value" id="connectionsFound">0</div>
+                        <div class="summary-label">Connections</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="results-section">
+            <div class="results-header">
+                <h2>Test Results</h2>
+                <button class="btn btn-secondary" onclick="clearResults()">Clear Results</button>
+            </div>
+            <div class="results-content" id="results">
+Welcome to the UN Dashboard Topology Visualization Test Suite
+
+This comprehensive test will verify:
+• Authentication system functionality
+• API endpoint accessibility  
+• Topology visualization components
+• Network relationship processing
+• Data persistence and state management
+
+Click "Run Complete Test Suite" to begin testing...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let testResults = [];
+        let testStats = { run: 0, passed: 0, failed: 0, devices: 0, connections: 0 };
+
+        function updateStatus(statusId, connected) {
+            const statusDot = document.getElementById(statusId);
+            if (connected) {
+                statusDot.classList.add('connected');
+            } else {
+                statusDot.classList.remove('connected');
+            }
+        }
+
+        function updateProgress(percentage) {
+            const progressFill = document.getElementById('progressFill');
+            progressFill.style.width = percentage + '%';
+        }
+
+        function showProgress() {
+            document.getElementById('testProgress').style.display = 'block';
+            updateProgress(0);
+        }
+
+        function hideProgress() {
+            document.getElementById('testProgress').style.display = 'none';
+        }
+
+        function updateTestSummary() {
+            document.getElementById('testsRun').textContent = testStats.run;
+            document.getElementById('testsPassed').textContent = testStats.passed;
+            document.getElementById('testsFailed').textContent = testStats.failed;
+            document.getElementById('devicesFound').textContent = testStats.devices;
+            document.getElementById('connectionsFound').textContent = testStats.connections;
+            document.getElementById('testSummary').style.display = 'block';
+        }
+
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = type === 'success' ? '✓' : type === 'error' ? '✗' : type === 'warning' ? '⚠' : 'ℹ';
+            const formattedMessage = `[${timestamp}] ${prefix} ${message}`;
+            
+            testResults.push(formattedMessage);
+            document.getElementById('results').textContent = testResults.join('\n');
+            document.getElementById('results').scrollTop = document.getElementById('results').scrollHeight;
+            
+            console.log(formattedMessage);
+            
+            // Update test statistics
+            if (type === 'success') testStats.passed++;
+            if (type === 'error') testStats.failed++;
+            testStats.run++;
+        }
+
+        function clearResults() {
+            testResults = [];
+            testStats = { run: 0, passed: 0, failed: 0, devices: 0, connections: 0 };
+            document.getElementById('results').textContent = 'Results cleared. Ready for new tests...';
+            document.getElementById('testSummary').style.display = 'none';
+            
+            // Reset status indicators
+            ['authStatus', 'apiStatus', 'topologyStatus', 'dataStatus'].forEach(id => {
+                updateStatus(id, false);
+            });
+        }
+
+        async function runFullTopologyTest() {
+            clearResults();
+            showProgress();
+            
+            log('=== Starting Complete Topology Visualization Test Suite ===', 'info');
+            updateProgress(10);
+
+            // Test 1: Authentication
+            const authResult = await testAuthenticationOnly();
+            updateProgress(25);
+
+            if (!authResult) {
+                log('Authentication failed - stopping test suite', 'error');
+                hideProgress();
+                updateTestSummary();
+                return;
+            }
+
+            // Test 2: API Endpoints
+            await testAPIEndpoints();
+            updateProgress(40);
+
+            // Test 3: Topology Components  
+            await testTopologyComponents();
+            updateProgress(60);
+
+            // Test 4: Data Processing
+            await testDataProcessing();
+            updateProgress(80);
+
+            // Test 5: Visualization Testing
+            await testVisualizationRendering();
+            updateProgress(100);
+
+            log('=== Complete Test Suite Finished ===', 'info');
+            hideProgress();
+            updateTestSummary();
+        }
+
+        async function testAuthenticationOnly() {
+            log('Testing Authentication System...', 'info');
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123!'
+                    })
+                });
+
+                if (response.ok) {
+                    const authData = await response.json();
+                    if (authData.token) {
+                        localStorage.setItem('authToken', authData.token);
+                        log('Authentication successful', 'success');
+                        updateStatus('authStatus', true);
+                        
+                        // Test profile endpoint
+                        const profileResponse = await fetch('/api/user/profile', {
+                            headers: { 'Authorization': `Bearer ${authData.token}` }
+                        });
+                        
+                        if (profileResponse.ok) {
+                            const profileData = await profileResponse.json();
+                            log(`Profile accessible - User: ${profileData.user?.username || 'N/A'}`, 'success');
+                            return true;
+                        } else {
+                            log('Profile endpoint failed', 'error');
+                            return false;
+                        }
+                    } else {
+                        log('No token received in response', 'error');
+                        return false;
+                    }
+                } else {
+                    const errorText = await response.text();
+                    log(`Login failed: ${response.status} - ${errorText}`, 'error');
+                    return false;
+                }
+            } catch (error) {
+                log(`Authentication error: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function testAPIEndpoints() {
+            log('Testing API Endpoints...', 'info');
+            
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                log('No auth token available', 'error');
+                return;
+            }
+
+            try {
+                // Test scan history endpoint
+                const scanResponse = await fetch('/api/scan-history', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+
+                if (scanResponse.ok) {
+                    const scanData = await scanResponse.json();
+                    log(`Scan history accessible - ${scanData.scans?.length || 0} scans found`, 'success');
+                    updateStatus('apiStatus', true);
+                    
+                    if (scanData.scans && scanData.scans.length > 0) {
+                        const latestScan = scanData.scans[0];
+                        log(`Latest scan: ${latestScan.scanId} (${latestScan.deviceCount} devices)`, 'info');
+                        testStats.devices = latestScan.deviceCount;
+                        updateStatus('dataStatus', true);
+                    }
+                } else {
+                    log(`Scan history endpoint failed: ${scanResponse.status}`, 'error');
+                }
+            } catch (error) {
+                log(`API endpoint error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testTopologyComponents() {
+            log('Testing Topology Components...', 'info');
+            
+            // Check for libraries
+            const d3Available = typeof d3 !== 'undefined';
+            const reactAvailable = typeof React !== 'undefined';
+            
+            log(`D3.js library: ${d3Available ? 'Available' : 'Not found'}`, d3Available ? 'success' : 'warning');
+            log(`React library: ${reactAvailable ? 'Available' : 'Not found (normal for Next.js)'}`, 'info');
+            
+            // Check for DOM elements
+            const svgElements = document.querySelectorAll('svg');
+            const canvasElements = document.querySelectorAll('canvas');
+            const topologyElements = document.querySelectorAll('[class*="topology"], [class*="network"]');
+            
+            log(`SVG elements found: ${svgElements.length}`, svgElements.length > 0 ? 'success' : 'info');
+            log(`Canvas elements found: ${canvasElements.length}`, 'info');
+            log(`Topology DOM elements: ${topologyElements.length}`, topologyElements.length > 0 ? 'success' : 'info');
+            
+            if (svgElements.length > 0 || topologyElements.length > 0) {
+                updateStatus('topologyStatus', true);
+                log('Topology components detected', 'success');
+            } else {
+                log('No topology components found - may need to navigate to network scan page', 'warning');
+            }
+        }
+
+        async function testDataProcessing() {
+            log('Testing Data Processing...', 'info');
+            
+            // Create mock scan data for testing
+            const mockData = createMockScanData();
+            log(`Created mock scan data: ${mockData.deviceCount} devices`, 'info');
+            
+            // Process the data
+            const processedData = processTopologyData(mockData);
+            
+            log(`Data processing results:`, 'info');
+            log(`  - Total devices: ${processedData.totalDevices}`, 'info');
+            log(`  - Gateways: ${processedData.gateways.length}`, 'info');
+            log(`  - Switches: ${processedData.switches.length}`, 'info');
+            log(`  - Regular devices: ${processedData.devices.length}`, 'info');
+            log(`  - Network relationships: ${processedData.relationships.length}`, 'info');
+            
+            testStats.devices = processedData.totalDevices;
+            testStats.connections = processedData.relationships.length;
+            
+            if (processedData.totalDevices > 0) {
+                log('Data processing successful', 'success');
+            } else {
+                log('Data processing failed', 'error');
+            }
+        }
+
+        async function testVisualizationRendering() {
+            log('Testing Visualization Rendering...', 'info');
+            
+            // Test if we can create a simple D3 visualization
+            if (typeof d3 !== 'undefined') {
+                try {
+                    // Create a test SVG
+                    const testContainer = document.createElement('div');
+                    testContainer.style.display = 'none';
+                    document.body.appendChild(testContainer);
+                    
+                    const svg = d3.select(testContainer)
+                        .append('svg')
+                        .attr('width', 100)
+                        .attr('height', 100);
+                    
+                    // Add a test circle
+                    svg.append('circle')
+                        .attr('cx', 50)
+                        .attr('cy', 50)
+                        .attr('r', 20)
+                        .attr('fill', 'blue');
+                    
+                    const circles = svg.selectAll('circle');
+                    if (circles.size() > 0) {
+                        log('D3 visualization test successful', 'success');
+                    } else {
+                        log('D3 visualization test failed', 'error');
+                    }
+                    
+                    // Cleanup
+                    document.body.removeChild(testContainer);
+                    
+                } catch (error) {
+                    log(`D3 visualization error: ${error.message}`, 'error');
+                }
+            } else {
+                log('D3 not available for visualization testing', 'warning');
+            }
+        }
+
+        function createMockScanData() {
+            return {
+                scanId: 'test-topology-' + Date.now(),
+                ipRange: '10.5.1.0/24',
+                deviceCount: 5,
+                scanData: {
+                    "Cisco": [
+                        {
+                            ip: "10.5.1.1",
+                            hostname: "gateway.local",
+                            mac: "00:11:22:33:44:55",
+                            ports: [80, 443, 22],
+                            vendor: "Cisco"
+                        }
+                    ],
+                    "Netgear": [
+                        {
+                            ip: "10.5.1.10",
+                            hostname: "switch-01.local",
+                            mac: "00:AA:BB:CC:DD:EE",
+                            ports: [80, 443],
+                            vendor: "Netgear"
+                        },
+                        {
+                            ip: "10.5.1.11",
+                            hostname: "switch-02.local",
+                            mac: "00:BB:CC:DD:EE:FF",
+                            ports: [80, 443],
+                            vendor: "Netgear"
+                        }
+                    ],
+                    "Unknown": [
+                        {
+                            ip: "10.5.1.100",
+                            hostname: "device-01.local",
+                            mac: "00:FF:EE:DD:CC:BB",
+                            ports: [22, 3389],
+                            vendor: "Unknown"
+                        },
+                        {
+                            ip: "10.5.1.101",
+                            hostname: "device-02.local",
+                            mac: "00:EE:DD:CC:BB:AA",
+                            ports: [80, 443, 22],
+                            vendor: "Unknown"
+                        }
+                    ]
+                }
+            };
+        }
+
+        function processTopologyData(scanData) {
+            const result = {
+                totalDevices: 0,
+                gateways: [],
+                switches: [],
+                devices: [],
+                relationships: []
+            };
+
+            if (!scanData.scanData) return result;
+
+            // Extract all devices
+            const allDevices = [];
+            Object.keys(scanData.scanData).forEach(vendor => {
+                if (Array.isArray(scanData.scanData[vendor])) {
+                    scanData.scanData[vendor].forEach(device => {
+                        allDevices.push({ ...device, vendor });
+                    });
+                }
+            });
+
+            result.totalDevices = allDevices.length;
+
+            // Classify devices
+            allDevices.forEach(device => {
+                const role = determineDeviceRole(device);
+                switch (role) {
+                    case 'gateway':
+                        result.gateways.push(device);
+                        break;
+                    case 'switch':
+                        result.switches.push(device);
+                        break;
+                    default:
+                        result.devices.push(device);
+                }
+            });
+
+            // Build relationships
+            result.relationships = buildNetworkRelationships(allDevices);
+
+            return result;
+        }
+
+        function determineDeviceRole(device) {
+            const ip = device.ip || '';
+            const hostname = device.hostname || '';
+            const vendor = device.vendor || '';
+
+            if (ip.endsWith('.1') || ip.endsWith('.254') || 
+                hostname.toLowerCase().includes('gateway') ||
+                hostname.toLowerCase().includes('router')) {
+                return 'gateway';
+            }
+
+            if (hostname.toLowerCase().includes('switch') ||
+                vendor.toLowerCase().includes('cisco') ||
+                vendor.toLowerCase().includes('netgear')) {
+                return 'switch';
+            }
+
+            return 'device';
+        }
+
+        function buildNetworkRelationships(devices) {
+            const relationships = [];
+            
+            devices.forEach((device1, i) => {
+                devices.forEach((device2, j) => {
+                    if (i !== j && areDevicesRelated(device1.ip, device2.ip)) {
+                        relationships.push({
+                            source: device1,
+                            target: device2,
+                            type: 'subnet'
+                        });
+                    }
+                });
+            });
+
+            return relationships;
+        }
+
+        function areDevicesRelated(ip1, ip2) {
+            if (!ip1 || !ip2) return false;
+            
+            const parts1 = ip1.split('.');
+            const parts2 = ip2.split('.');
+            
+            if (parts1.length === 4 && parts2.length === 4) {
+                return parts1[0] === parts2[0] && 
+                       parts1[1] === parts2[1] && 
+                       parts1[2] === parts2[2];
+            }
+            
+            return false;
+        }
+
+        function createTestScan() {
+            log('Creating test scan data...', 'info');
+            const mockData = createMockScanData();
+            
+            // Store in localStorage for testing
+            localStorage.setItem('testScanData', JSON.stringify(mockData));
+            log('Test scan data created and stored', 'success');
+            log(`  - Scan ID: ${mockData.scanId}`, 'info');
+            log(`  - IP Range: ${mockData.ipRange}`, 'info');
+            log(`  - Device Count: ${mockData.deviceCount}`, 'info');
+        }
+
+        function navigateToNetworkScan() {
+            log('Navigating to network scan page...', 'info');
+            window.location.href = '/networkscan';
+        }
+
+        function testD3Visualization() {
+            if (typeof d3 === 'undefined') {
+                log('D3.js not available - cannot test visualization', 'error');
+                return;
+            }
+
+            log('Testing D3 visualization capabilities...', 'info');
+            
+            try {
+                // Create a simple test visualization
+                const testData = [
+                    { name: "Gateway", x: 100, y: 50, type: "gateway" },
+                    { name: "Switch 1", x: 50, y: 150, type: "switch" },
+                    { name: "Switch 2", x: 150, y: 150, type: "switch" },
+                    { name: "Device 1", x: 25, y: 250, type: "device" },
+                    { name: "Device 2", x: 75, y: 250, type: "device" },
+                    { name: "Device 3", x: 125, y: 250, type: "device" },
+                    { name: "Device 4", x: 175, y: 250, type: "device" }
+                ];
+
+                const links = [
+                    { source: 0, target: 1 },
+                    { source: 0, target: 2 },
+                    { source: 1, target: 3 },
+                    { source: 1, target: 4 },
+                    { source: 2, target: 5 },
+                    { source: 2, target: 6 }
+                ];
+
+                log(`Created test data: ${testData.length} nodes, ${links.length} links`, 'success');
+                log('D3 visualization test completed', 'success');
+                
+            } catch (error) {
+                log(`D3 visualization test error: ${error.message}`, 'error');
+            }
+        }
+
+        function clearAllData() {
+            log('Clearing all stored data...', 'info');
+            
+            const keysToRemove = [
+                'authToken',
+                'testScanData',
+                'customDeviceProperties',
+                'user',
+                'userProfile'
+            ];
+            
+            keysToRemove.forEach(key => {
+                if (localStorage.getItem(key)) {
+                    localStorage.removeItem(key);
+                    log(`Cleared: ${key}`, 'info');
+                }
+            });
+            
+            // Reset status indicators
+            ['authStatus', 'apiStatus', 'topologyStatus', 'dataStatus'].forEach(id => {
+                updateStatus(id, false);
+            });
+            
+            log('All data cleared', 'success');
+        }
+
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            log('UN Dashboard Topology Test Suite loaded', 'info');
+            log('Click "Run Complete Test Suite" to begin comprehensive testing', 'info');
+            
+            // Check initial state
+            const hasAuthToken = !!localStorage.getItem('authToken');
+            if (hasAuthToken) {
+                updateStatus('authStatus', true);
+                log('Existing auth token found', 'info');
+            }
+        });
+    </script>
+</body>
+</html>

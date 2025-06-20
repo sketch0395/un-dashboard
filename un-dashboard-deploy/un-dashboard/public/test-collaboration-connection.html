@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaboration Connection Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .log { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; font-family: monospace; white-space: pre-wrap; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h1>Collaboration Server Connection Test</h1>
+    
+    <div>
+        <button onclick="testHealthEndpoint()">Test Health Endpoint</button>        <button onclick="testWebSocketConnection()">Test WebSocket Connection</button>
+        <button onclick="testWithAuth()">Test With Real Auth</button>
+        <button onclick="clearLogs()">Clear Logs</button>
+    </div>
+    
+    <div id="logs"></div>
+
+    <script>
+        const COLLABORATION_PORT = 4001;
+        const COLLABORATION_HOST = window.location.hostname;
+        
+        function log(message, type = 'info') {
+            const logsDiv = document.getElementById('logs');
+            const logDiv = document.createElement('div');
+            logDiv.className = `log ${type}`;
+            logDiv.textContent = new Date().toLocaleTimeString() + ' - ' + message;
+            logsDiv.appendChild(logDiv);
+            logsDiv.scrollTop = logsDiv.scrollHeight;
+            console.log(message);
+        }
+        
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+        
+        async function testHealthEndpoint() {
+            log('Testing health endpoint...', 'info');
+            try {
+                const response = await fetch(`http://${COLLABORATION_HOST}:${COLLABORATION_PORT}/health`);
+                if (response.ok) {
+                    const data = await response.json();
+                    log(`✅ Health check passed: ${JSON.stringify(data)}`, 'success');
+                } else {
+                    log(`❌ Health check failed: ${response.status} ${response.statusText}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ Health check error: ${error.message}`, 'error');
+            }
+        }
+        
+        function testWebSocketConnection() {
+            log('Testing WebSocket connection...', 'info');
+            const scanId = 'test-' + Date.now();
+            const wsUrl = `ws://${COLLABORATION_HOST}:${COLLABORATION_PORT}/collaboration-ws?scanId=${scanId}`;
+            log(`Connecting to: ${wsUrl}`, 'info');
+            
+            const ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                log('✅ WebSocket connection opened successfully!', 'success');
+                ws.close();
+            };
+            
+            ws.onclose = (event) => {
+                if (event.code === 1008) {
+                    log(`🔐 WebSocket closed with authentication required (${event.code}: ${event.reason})`, 'info');
+                    log('This is expected - server requires authentication', 'info');
+                } else {
+                    log(`🔌 WebSocket closed: ${event.code} - ${event.reason}`, 'info');
+                }
+            };
+            
+            ws.onerror = (error) => {
+                log(`🚨 WebSocket error: ${error}`, 'error');
+            };
+        }
+          function testWithAuth() {
+            log('Testing WebSocket with real authentication...', 'info');
+            
+            // Check for actual auth token
+            const authToken = document.cookie
+                .split('; ')
+                .find(row => row.startsWith('auth-token='))
+                ?.split('=')[1];
+            
+            if (!authToken) {
+                log('❌ No auth token found in cookies - user may not be logged in', 'error');
+                log('Available cookies: ' + document.cookie, 'info');
+                return;
+            }
+            
+            log('✅ Found auth token in cookies', 'success');
+            
+            const scanId = 'test-auth-' + Date.now();
+            const wsUrl = `ws://${COLLABORATION_HOST}:${COLLABORATION_PORT}/collaboration-ws?scanId=${scanId}&token=${authToken}`;
+            log(`Connecting to: ${wsUrl.replace(/token=[^&]+/, 'token=***')}`, 'info');
+            
+            const ws = new WebSocket(wsUrl);
+            
+            let timeoutId = setTimeout(() => {
+                log('⏱️ Connection timeout after 10 seconds', 'error');
+                ws.close();
+            }, 10000);
+            
+            ws.onopen = () => {
+                clearTimeout(timeoutId);
+                log('✅ WebSocket connection opened with real auth!', 'success');
+                setTimeout(() => ws.close(), 1000);
+            };
+            
+            ws.onclose = (event) => {
+                clearTimeout(timeoutId);
+                if (event.code === 1008) {
+                    log(`❌ Authentication failed (${event.code}: ${event.reason})`, 'error');
+                    log('Auth token may be invalid or expired', 'error');
+                } else if (event.code === 1011) {
+                    log(`❌ Server not ready (${event.code}: ${event.reason})`, 'error');
+                } else {
+                    log(`🔌 WebSocket closed: ${event.code} - ${event.reason}`, 'info');
+                }
+            };
+            
+            ws.onerror = (error) => {
+                clearTimeout(timeoutId);
+                log(`🚨 WebSocket error: ${error}`, 'error');
+            };
+        }
+        
+        // Auto-run health check on load
+        window.onload = () => {
+            log('Collaboration Connection Test Started', 'info');
+            testHealthEndpoint();
+        };
+    </script>
+</body>
+</html>

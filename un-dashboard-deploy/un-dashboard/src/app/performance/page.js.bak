@@ -1,0 +1,430 @@
+"use client";
+
+import { useState, useEffect, useRef } from "react";
+import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
+import { FaChevronLeft, FaChevronRight, FaCog, FaFilter, FaChevronDown, FaPlay, FaStop, FaSync, FaDocker } from "react-icons/fa";
+import PerformanceControls from "../components/PerformanceControls";
+
+// Use dynamic import with no SSR to avoid the "Component is not a function" error
+const NetworkPerformance = dynamic(
+  () => import("../components/networkperformance"),
+  { ssr: false }
+);
+
+export default function PerformancePage() {
+    const [devices, setDevices] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [controlsMinimized, setControlsMinimized] = useState(false);
+    const router = useRouter();
+    
+    // Added state for scan selection
+    const [scans, setScans] = useState([]);
+    const [selectedScan, setSelectedScan] = useState('all');
+    const [filteredDevices, setFilteredDevices] = useState([]);
+    const [scanHistory, setScanHistory] = useState([]);
+    
+    // Monitoring control states
+    const [isMonitoring, setIsMonitoring] = useState(false);
+    const [refreshInterval, setRefreshInterval] = useState(60);
+    const [useDockerTools, setUseDockerTools] = useState(true);
+    const [dockerHost, setDockerHost] = useState("10.5.1.212");
+    const [showDockerConfig, setShowDockerConfig] = useState(false);
+    const [isCheckingNow, setIsCheckingNow] = useState(false);
+    
+    // Chart visualization state
+    const [activeChartTab, setActiveChartTab] = useState('latency');
+    
+    // Reference to NetworkPerformance component
+    const networkPerformanceRef = useRef(null);
+
+    useEffect(() => {
+        // Load scan history from localStorage
+        const savedHistory = JSON.parse(localStorage.getItem("scanHistory")) || [];
+        setScanHistory(savedHistory);
+        
+        // Extract scans from history
+        const scansFromHistory = savedHistory.map(entry => ({
+            id: entry.id || `scan-${Math.random().toString(36).substring(2, 9)}`,
+            name: entry.name || `Scan ${savedHistory.indexOf(entry) + 1}`,
+            timestamp: entry.timestamp || new Date().toISOString(),
+            deviceCount: entry.devices || 0
+        }));
+        
+        setScans(scansFromHistory);
+        
+        // Load devices from scan results in localStorage
+        const savedDevices = localStorage.getItem("scanResults");
+        let parsedDevices = [];
+        
+        if (savedDevices) {
+            try {
+                const deviceData = JSON.parse(savedDevices);
+                if (typeof deviceData === "object" && !Array.isArray(deviceData)) {
+                    // Convert to array if it's an object with scan groups
+                    Object.entries(deviceData).forEach(([scanId, scanDevices]) => {
+                        if (Array.isArray(scanDevices)) {
+                            // Tag each device with its scan ID for filtering
+                            const devicesWithScanId = scanDevices.map(device => ({
+                                ...device,
+                                _scanId: scanId
+                            }));
+                            parsedDevices.push(...devicesWithScanId);
+                        }
+                    });
+                } else if (Array.isArray(deviceData)) {
+                    parsedDevices = deviceData;
+                }
+            } catch (error) {
+                console.error("Error parsing saved devices:", error);
+            }
+        }
+        
+        // Also process devices from scan history entries
+        savedHistory.forEach(entry => {
+            if (entry.data) {
+                const entryDevices = Object.values(entry.data).flat();
+                const devicesWithScanId = entryDevices.map(device => ({
+                    ...device,
+                    _scanId: entry.id || `scan-${Math.random().toString(36).substring(2, 9)}`
+                }));
+                parsedDevices.push(...devicesWithScanId);
+            }
+        });
+        
+        // Remove duplicates based on IP
+        const uniqueDevices = Array.from(
+            new Map(parsedDevices.map(device => [device.ip, device])).values()
+        );
+        
+        setDevices(uniqueDevices);
+        setFilteredDevices(uniqueDevices);
+        
+        // Load custom device names
+        const savedCustomProperties = localStorage.getItem("customDeviceProperties");
+        if (savedCustomProperties) {
+            try {
+                const customProps = JSON.parse(savedCustomProperties);
+                setDevices(prev => prev.map(device => {
+                    if (device.ip && customProps[device.ip]) {
+                        return {
+                            ...device,
+                            name: customProps[device.ip].name || device.name
+                        };
+                    }
+                    return device;
+                }));
+                
+                setFilteredDevices(prev => prev.map(device => {
+                    if (device.ip && customProps[device.ip]) {
+                        return {
+                            ...device,
+                            name: customProps[device.ip].name || device.name
+                        };
+                    }
+                    return device;
+                }));
+            } catch (error) {
+                console.error("Error parsing custom properties:", error);
+            }
+        }
+        
+        setIsLoading(false);
+    }, []);
+    
+    // Filter devices when selected scan changes
+    useEffect(() => {
+        if (selectedScan === 'all') {
+            setFilteredDevices(devices);
+        } else {
+            // Use scan history data to get devices
+            const selectedHistoryEntry = scanHistory.find(entry => entry.id === selectedScan);
+            
+            if (selectedHistoryEntry && selectedHistoryEntry.data) {
+                // Get devices from the scan history entry
+                const selectedScanDevices = Object.values(selectedHistoryEntry.data).flat();
+                
+                // Apply any custom names from the devices state
+                const enhancedDevices = selectedScanDevices.map(histDevice => {
+                    const matchingDevice = devices.find(d => d.ip === histDevice.ip);
+                    return matchingDevice || histDevice;
+                });
+                
+                setFilteredDevices(enhancedDevices);
+            } else {
+                // Fall back to filtering by _scanId if scan history entry not found
+                setFilteredDevices(devices.filter(device => device._scanId === selectedScan));
+            }
+        }
+    }, [selectedScan, devices, scanHistory]);
+    
+    // Sort scans by timestamp (newest first)
+    const sortedScans = [...scans].sort((a, b) => {
+        return new Date(b.timestamp) - new Date(a.timestamp);
+    });
+    
+    // Format scan timestamp for display
+    const formatTimestamp = (timestamp) => {
+        if (!timestamp) return '';
+        const date = new Date(timestamp);
+        return date.toLocaleString();
+    };
+    
+    // Handle start monitoring
+    const handleStartMonitoring = () => {
+        if (!networkPerformanceRef.current) return;
+        
+        if (isMonitoring) {
+            // Stop monitoring
+            networkPerformanceRef.current.stopMonitoring();
+            setIsMonitoring(false);
+        } else {
+            // Start monitoring
+            networkPerformanceRef.current.startMonitoring(refreshInterval * 1000);
+            setIsMonitoring(true);
+        }
+    };
+    
+    // Handle check now button
+    const handleCheckNow = () => {
+        if (!networkPerformanceRef.current) return;
+        
+        setIsCheckingNow(true);
+        networkPerformanceRef.current.checkNow().then(() => {
+            setIsCheckingNow(false);
+        }).catch(() => {
+            setIsCheckingNow(false);
+        });
+    };
+
+    return (
+        <main className="p-6">
+            <h1 className="text-3xl font-bold mb-6">Performance Monitoring</h1>
+            <PerformanceControls />
+            
+            <div className="bg-gray-800 rounded-lg shadow-lg p-4 mb-6">
+                
+                {!controlsMinimized && (
+                    <div className="overflow-y-auto max-h-[calc(100vh-120px)] flex-grow text-white">
+                        {/* Scan Selection Dropdown */}
+                        <div className="mb-6">
+                            <label className="block text-sm text-gray-300 mb-2">Select Scan</label>
+                            <div className="relative">
+                                <select
+                                    value={selectedScan}
+                                    onChange={(e) => setSelectedScan(e.target.value)}
+                                    className="w-full bg-gray-700 text-white px-3 py-2 rounded appearance-none"
+                                >
+                                    <option value="all">All Scans ({devices.length} devices)</option>
+                                    {sortedScans.map((scan) => (
+                                        <option key={scan.id} value={scan.id}>
+                                            {scan.name} ({scan.deviceCount} devices)
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-white">
+                                    <FaChevronDown size={14} />
+                                </div>
+                            </div>
+                            {selectedScan !== 'all' && (
+                                <div className="mt-2 text-xs text-gray-400">
+                                    <span>Scan Time: {formatTimestamp(sortedScans.find(scan => scan.id === selectedScan)?.timestamp)}</span>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* Monitoring Controls - MOVED HERE FROM MAIN PANEL */}
+                        <div className="mb-6">
+                            <div className="flex items-center mb-2">
+                                <FaSync className="mr-2 text-blue-400" />
+                                <h3 className="font-semibold">Monitoring</h3>
+                            </div>
+                            
+                            <div className="ml-2 space-y-3">
+                                {/* Auto Refresh Interval */}
+                                <div>
+                                    <label className="block text-sm text-gray-300 mb-1">Auto Refresh</label>
+                                    <select
+                                        value={refreshInterval}
+                                        onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                                        className="w-full bg-gray-700 text-white px-3 py-2 rounded text-sm"
+                                        disabled={isMonitoring}
+                                    >
+                                        <option value={10}>10 seconds</option>
+                                        <option value={30}>30 seconds</option>
+                                        <option value={60}>1 minute</option>
+                                        <option value={300}>5 minutes</option>
+                                        <option value={600}>10 minutes</option>
+                                    </select>
+                                </div>
+                                
+                                {/* Control Buttons */}
+                                <div className="grid grid-cols-1 gap-2">
+                                    <button
+                                        onClick={handleStartMonitoring}
+                                        className={`w-full py-2 rounded flex items-center justify-center ${
+                                            isMonitoring 
+                                                ? "bg-red-600 hover:bg-red-700" 
+                                                : "bg-green-600 hover:bg-green-700"
+                                        }`}
+                                    >
+                                        {isMonitoring ? <><FaStop className="mr-2" /> Stop Monitoring</> : <><FaPlay className="mr-2" /> Start Monitoring</>}
+                                    </button>
+                                    
+                                    <button
+                                        onClick={handleCheckNow}
+                                        className="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded flex items-center justify-center"
+                                        disabled={isCheckingNow}
+                                    >
+                                        <FaSync className={`mr-2 ${isCheckingNow ? 'animate-spin' : ''}`} />
+                                        {isCheckingNow ? "Checking..." : "Check Now"}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Docker Tools Option - Now enabled by default */}
+                        <div className="mb-6">
+                            <div className="flex items-center mb-2">
+                                <FaDocker className="mr-2 text-blue-400" />
+                                <h3 className="font-semibold">Advanced Settings</h3>
+                            </div>
+                            
+                            <div className="ml-2 space-y-3">
+                                <div className="flex items-center mb-2">
+                                    <input
+                                        id="useDockerTools" 
+                                        type="checkbox"
+                                        checked={useDockerTools}
+                                        onChange={(e) => setUseDockerTools(e.target.checked)}
+                                        className="form-checkbox h-4 w-4 text-blue-600"
+                                    />
+                                    <label htmlFor="useDockerTools" className="ml-2 text-sm text-gray-300">
+                                        Use Docker Network Tools
+                                    </label>
+                                    <button 
+                                        className="ml-2 text-xs text-blue-400 hover:text-blue-300"
+                                        onClick={() => setShowDockerConfig(!showDockerConfig)}
+                                    >
+                                        {showDockerConfig ? "Hide" : "Configure"}
+                                    </button>
+                                </div>
+                                
+                                {showDockerConfig && (
+                                    <div className="bg-gray-700 p-3 rounded text-sm">
+                                        <div className="mb-2">
+                                            <label className="block text-xs text-gray-400 mb-1">Docker Host IP</label>
+                                            <input
+                                                type="text"
+                                                value={dockerHost}
+                                                onChange={(e) => setDockerHost(e.target.value)}
+                                                className="w-full bg-gray-800 text-white px-3 py-1 rounded text-sm"
+                                                placeholder="e.g., 10.5.1.212"
+                                            />
+                                        </div>
+                                        <div className="text-xs text-gray-400">
+                                            <p>Using jonlabelle/network-tools container for network diagnostics</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                        
+                        {/* Additional Filters */}
+                        <div className="mb-6">
+                            <div className="flex items-center mb-2">
+                                <FaFilter className="mr-2 text-blue-400" />
+                                <h3 className="font-semibold">Filters</h3>
+                            </div>
+                            
+                            <div className="ml-2">
+                                <div className="mb-3">
+                                    <label className="block text-sm text-gray-300 mb-1">Status</label>
+                                    <div className="flex gap-2">
+                                        <button className="px-2 py-1 text-xs bg-blue-600 text-white rounded">All</button>
+                                        <button className="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-500 rounded">Online</button>
+                                        <button className="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-500 rounded">Offline</button>
+                                    </div>
+                                </div>
+                                
+                                <div className="mb-3">
+                                    <label className="block text-sm text-gray-300 mb-1">Performance</label>
+                                    <div className="flex flex-wrap gap-2">
+                                        <button className="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-500 rounded">High Latency</button>
+                                        <button className="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-500 rounded">Low Bandwidth</button>
+                                        <button className="px-2 py-1 text-xs bg-gray-600 hover:bg-gray-500 rounded">Packet Loss</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {/* Minimized state shows only icons */}
+                {controlsMinimized && (
+                    <div className="flex flex-col items-center gap-3 mt-4 text-white">
+                        <button 
+                            className="bg-gray-700 p-2 rounded-full hover:bg-gray-600"
+                            title="Check Now"
+                            onClick={handleCheckNow}
+                        >
+                            <FaSync className={isCheckingNow ? 'animate-spin' : ''} />
+                        </button>
+                        <button 
+                            className={`p-2 rounded-full ${isMonitoring ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
+                            title={isMonitoring ? "Stop Monitoring" : "Start Monitoring"}
+                            onClick={handleStartMonitoring}
+                        >
+                            {isMonitoring ? <FaStop /> : <FaPlay />}
+                        </button>
+                        <button 
+                            className="bg-gray-700 p-2 rounded-full hover:bg-gray-600"
+                            title="Filters"
+                        >
+                            <FaFilter />
+                        </button>
+                        <button 
+                            className="bg-gray-700 p-2 rounded-full hover:bg-gray-600"
+                            title="Settings"
+                        >
+                            <FaCog />
+                        </button>
+                    </div>
+                )}
+            </div>
+            
+            {/* Main Content */}
+            <div className="flex-1 p-4 overflow-hidden">
+                {isLoading ? (
+                    <div className="bg-gray-800 p-8 rounded-lg text-white text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white mx-auto"></div>
+                        <p className="mt-4">Loading network data...</p>
+                    </div>
+                ) : filteredDevices.length > 0 ? (
+                    <NetworkPerformance 
+                        ref={networkPerformanceRef}
+                        devices={filteredDevices}
+                        activeTab={activeChartTab}
+                        setActiveTab={setActiveChartTab}
+                        monitoringEnabled={isMonitoring}
+                        useDockerTools={useDockerTools}
+                        dockerHost={dockerHost}
+                        refreshInterval={refreshInterval * 1000}
+                    />
+                ) : (
+                    <div className="bg-gray-800 p-8 rounded-lg text-white text-center">
+                        <p className="mb-4">No network scan data available for the selected filter.</p>
+                        {selectedScan !== 'all' && (
+                            <button 
+                                className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded"
+                                onClick={() => setSelectedScan('all')}
+                            >
+                                Show All Scans
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}

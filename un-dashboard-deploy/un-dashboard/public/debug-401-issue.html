@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Debug 401 Authentication Issue</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        pre {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .test-result {
+            margin: 10px 0;
+            padding: 10px;
+            border-left: 4px solid #007bff;
+            background-color: #f8f9fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Debug 401 Authentication Issue</h1>
+        <p>This tool will help identify why the scan history API is returning 401 errors.</p>
+    </div>
+
+    <div class="container">
+        <h2>📊 Current Status</h2>
+        <div id="statusInfo">Loading...</div>
+    </div>
+
+    <div class="container">
+        <h2>🔧 Debug Tests</h2>
+        <button onclick="checkCookies()">Check Cookies</button>
+        <button onclick="testAuthVerify()">Test Auth Verification</button>
+        <button onclick="testScanHistoryGet()">Test Scan History GET</button>
+        <button onclick="testScanHistoryPost()">Test Scan History POST</button>
+        <button onclick="runAllTests()">Run All Tests</button>
+        <button onclick="clearResults()">Clear Results</button>
+    </div>
+
+    <div class="container">
+        <h2>📋 Test Results</h2>
+        <div id="results"></div>
+    </div>
+
+    <script>
+        let testResults = [];
+
+        function addResult(test, success, message, details = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            testResults.push({
+                timestamp,
+                test,
+                success,
+                message,
+                details
+            });
+            updateResultsDisplay();
+        }
+
+        function updateResultsDisplay() {
+            const resultsDiv = document.getElementById('results');
+            if (testResults.length === 0) {
+                resultsDiv.innerHTML = '<p class="info">No test results yet. Run some tests to see results here.</p>';
+                return;
+            }
+
+            resultsDiv.innerHTML = testResults.map(result => `
+                <div class="test-result">
+                    <div class="${result.success ? 'success' : 'error'} status">
+                        <strong>[${result.timestamp}] ${result.test}</strong><br>
+                        ${result.message}
+                    </div>
+                    ${result.details ? `<pre>${JSON.stringify(result.details, null, 2)}</pre>` : ''}
+                </div>
+            `).join('');
+        }
+
+        function clearResults() {
+            testResults = [];
+            updateResultsDisplay();
+        }
+
+        function checkCookies() {
+            const cookies = document.cookie;
+            console.log('All cookies:', cookies);
+
+            const authToken = document.cookie
+                .split('; ')
+                .find(row => row.startsWith('auth-token='))
+                ?.split('=')[1];
+            
+            const sessionId = document.cookie
+                .split('; ')
+                .find(row => row.startsWith('session-id='))
+                ?.split('=')[1];
+
+            const cookieInfo = {
+                allCookies: cookies,
+                authTokenPresent: !!authToken,
+                sessionIdPresent: !!sessionId,
+                authTokenLength: authToken ? authToken.length : 0,
+                sessionIdLength: sessionId ? sessionId.length : 0
+            };
+
+            if (authToken && sessionId) {
+                addResult('Cookie Check', true, 'Both auth-token and session-id cookies are present', cookieInfo);
+            } else if (authToken || sessionId) {
+                addResult('Cookie Check', false, 'Only one authentication cookie present', cookieInfo);
+            } else {
+                addResult('Cookie Check', false, 'No authentication cookies found', cookieInfo);
+            }
+        }
+
+        async function testAuthVerify() {
+            try {
+                const response = await fetch('/api/auth/verify', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    addResult('Auth Verification', true, 'Authentication verification successful', {
+                        status: response.status,
+                        user: result.user,
+                        headers: Object.fromEntries(response.headers.entries())
+                    });
+                } else {
+                    addResult('Auth Verification', false, `Authentication verification failed: ${result.error || 'Unknown error'}`, {
+                        status: response.status,
+                        result: result,
+                        headers: Object.fromEntries(response.headers.entries())
+                    });
+                }
+            } catch (error) {
+                addResult('Auth Verification', false, `Auth verification request failed: ${error.message}`, {
+                    error: error.toString()
+                });
+            }
+        }
+
+        async function testScanHistoryGet() {
+            try {
+                const response = await fetch('/api/scan-history', {
+                    method: 'GET',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    addResult('Scan History GET', true, `Successfully retrieved scan history (${result.data?.length || 0} scans)`, {
+                        status: response.status,
+                        scanCount: result.data?.length || 0,
+                        headers: Object.fromEntries(response.headers.entries())
+                    });
+                } else {
+                    addResult('Scan History GET', false, `Scan History GET failed: ${result.error || 'Unknown error'}`, {
+                        status: response.status,
+                        result: result,
+                        headers: Object.fromEntries(response.headers.entries())
+                    });
+                }
+            } catch (error) {
+                addResult('Scan History GET', false, `Scan History GET request failed: ${error.message}`, {
+                    error: error.toString()
+                });
+            }
+        }
+
+        async function testScanHistoryPost() {
+            try {
+                // Create a test scan payload
+                const testScan = {
+                    scanId: `test-scan-${Date.now()}`,
+                    name: `Test Scan ${new Date().toLocaleString()}`,
+                    ipRange: '192.168.1.0/24',
+                    deviceCount: 2,
+                    scanData: {
+                        devices: [
+                            { ip: '192.168.1.1', hostname: 'router', status: 'up' },
+                            { ip: '192.168.1.100', hostname: 'test-device', status: 'up' }
+                        ],
+                        portScanResults: [],
+                        networkInfo: { gateway: '192.168.1.1' }
+                    },
+                    metadata: {
+                        timestamp: Date.now(),
+                        scanDuration: 5000,
+                        userAgent: navigator.userAgent
+                    },
+                    settings: {
+                        isPrivate: true,
+                        isFavorite: false,
+                        tags: ['test'],
+                        notes: 'Debug test scan'
+                    }
+                };
+
+                const response = await fetch('/api/scan-history', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(testScan)
+                });
+
+                const result = await response.json();
+                
+                if (response.ok) {
+                    addResult('Scan History POST', true, 'Successfully saved test scan to database', {
+                        status: response.status,
+                        savedScan: result,
+                        headers: Object.fromEntries(response.headers.entries())
+                    });
+                } else if (response.status === 409) {
+                    addResult('Scan History POST', true, 'Test scan already exists (409 - expected for repeated tests)', {
+                        status: response.status,
+                        result: result,
+                        headers: Object.fromEntries(response.headers.entries())
+                    });
+                } else {
+                    addResult('Scan History POST', false, `Scan History POST failed: ${result.error || 'Unknown error'}`, {
+                        status: response.status,
+                        result: result,
+                        headers: Object.fromEntries(response.headers.entries()),
+                        requestPayload: testScan
+                    });
+                }
+            } catch (error) {
+                addResult('Scan History POST', false, `Scan History POST request failed: ${error.message}`, {
+                    error: error.toString()
+                });
+            }
+        }
+
+        async function runAllTests() {
+            clearResults();
+            addResult('Test Suite', true, 'Starting comprehensive authentication tests...', null);
+            
+            await new Promise(resolve => setTimeout(resolve, 500));
+            checkCookies();
+            
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await testAuthVerify();
+            
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await testScanHistoryGet();
+            
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await testScanHistoryPost();
+            
+            addResult('Test Suite', true, 'All tests completed', null);
+        }
+
+        function updateStatus() {
+            const statusDiv = document.getElementById('statusInfo');
+            const cookies = document.cookie;
+            const authToken = cookies.includes('auth-token=');
+            const sessionId = cookies.includes('session-id=');
+            
+            statusDiv.innerHTML = `
+                <div class="${authToken && sessionId ? 'success' : 'warning'} status">
+                    <strong>Authentication Cookies:</strong><br>
+                    Auth Token: ${authToken ? '✅ Present' : '❌ Missing'}<br>
+                    Session ID: ${sessionId ? '✅ Present' : '❌ Missing'}
+                </div>
+                <div class="info status">
+                    <strong>Current URL:</strong> ${window.location.href}<br>
+                    <strong>User Agent:</strong> ${navigator.userAgent.substring(0, 100)}...
+                </div>
+            `;
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            updateStatus();
+            updateResultsDisplay();
+        });
+    </script>
+</body>
+</html>

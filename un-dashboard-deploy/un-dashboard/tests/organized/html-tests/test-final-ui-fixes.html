@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Final UI Fix Validation</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 Final UI Fix Validation Test</h1>
+    <p>Testing the socket reconnection fixes for React components</p>
+
+    <div class="test-section">
+        <h2>📡 Socket Connection Test</h2>
+        <div id="socketStatus" class="status info">Connecting to server...</div>
+        <div id="socketLog" class="log"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>🔄 Scan Completion State Test</h2>
+        <div id="scanStatus" class="status info">Ready to test</div>
+        <button id="startScanBtn" onclick="triggerScan()">Start Test Scan</button>
+        <button id="resetBtn" onclick="resetTest()">Reset Test</button>
+        
+        <h3>Test Progress:</h3>
+        <div id="testProgress" class="log"></div>
+        
+        <h3>Expected vs Actual Behavior:</h3>
+        <div id="behaviorComparison" class="log">
+            <strong>Expected:</strong><br>
+            1. Button shows "Scanning..." during scan<br>
+            2. Socket remains connected throughout scan<br>
+            3. Scan completion event is received<br>
+            4. Button reverts to "Start Scan" after completion<br>
+            5. UI state properly updates without reconnections
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>🧪 Component Integration Test</h2>
+        <p>This test simulates the behavior of both fixed components:</p>
+        <ul>
+            <li><strong>DashboardNetworkScanControl.js</strong> - Fixed useEffect dependencies</li>
+            <li><strong>NetworkControlModal.js</strong> - Fixed ref pattern and function ordering</li>
+        </ul>
+        <div id="integrationResults" class="log"></div>
+    </div>
+
+    <script>
+        let socket;
+        let scanStartTime;
+        let connectionStable = true;
+        let scanInProgress = false;
+
+        function log(message, elementId = 'socketLog') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById(elementId);
+            logElement.innerHTML += `[${timestamp}] ${message}<br>`;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(`[${timestamp}] ${message}`);
+        }
+
+        function updateStatus(message, className, elementId = 'socketStatus') {
+            const statusElement = document.getElementById(elementId);
+            statusElement.textContent = message;
+            statusElement.className = `status ${className}`;
+        }
+
+        function initSocket() {
+            log('🔌 Initializing socket connection...');
+            
+            socket = io('http://localhost:4000');
+            
+            socket.on('connect', () => {
+                log('✅ Socket connected successfully');
+                updateStatus('Connected to server', 'success');
+                connectionStable = true;
+            });
+            
+            socket.on('disconnect', (reason) => {
+                log(`❌ Socket disconnected: ${reason}`);
+                updateStatus('Disconnected from server', 'error');
+                
+                if (scanInProgress) {
+                    log('🚨 CRITICAL: Socket disconnected during scan - this was the bug!', 'testProgress');
+                    connectionStable = false;
+                }
+            });
+            
+            socket.on('reconnect', () => {
+                log('🔄 Socket reconnected');
+                if (scanInProgress) {
+                    log('⚠️ Reconnection during scan detected - potential issue', 'testProgress');
+                }
+            });
+
+            // Network scan event handlers (mimicking the fixed React components)
+            socket.on('networkData', (data) => {
+                log(`📊 Received network data: ${data.devices?.length || 0} devices`);
+                log(`📊 Network data received during scan`, 'testProgress');
+            });
+
+            socket.on('scanProgress', (data) => {
+                log(`⏳ Scan progress: ${data.message || 'In progress...'}`);
+                log(`⏳ Progress: ${data.message || 'In progress...'}`, 'testProgress');
+            });
+
+            socket.on('scanComplete', (data) => {
+                log(`✅ Scan completed! Found ${data.devices?.length || 0} devices`);
+                log(`✅ SCAN COMPLETION EVENT RECEIVED!`, 'testProgress');
+                
+                // Simulate the UI state update that was failing before
+                setTimeout(() => {
+                    scanInProgress = false;
+                    document.getElementById('startScanBtn').textContent = 'Start Test Scan';
+                    document.getElementById('startScanBtn').disabled = false;
+                    
+                    if (connectionStable) {
+                        updateStatus('✅ Test PASSED - Scan completed with stable connection', 'success', 'scanStatus');
+                        log(`🎉 SUCCESS: UI state updated correctly after scan completion!`, 'testProgress');
+                        log(`🎉 Connection remained stable throughout the scan`, 'integrationResults');
+                        log(`🎉 No socket reconnections detected during critical scan completion`, 'integrationResults');
+                    } else {
+                        updateStatus('❌ Test FAILED - Connection issues detected', 'error', 'scanStatus');
+                        log(`❌ FAILURE: Connection instability detected during scan`, 'testProgress');
+                    }
+                }, 500);
+            });
+
+            socket.on('error', (error) => {
+                log(`❌ Socket error: ${error}`);
+                updateStatus('Socket error occurred', 'error');
+            });
+        }
+
+        function triggerScan() {
+            if (scanInProgress) return;
+            
+            log('🚀 Starting test scan...', 'testProgress');
+            scanInProgress = true;
+            connectionStable = true;
+            scanStartTime = Date.now();
+            
+            // Update UI to scanning state
+            document.getElementById('startScanBtn').textContent = 'Scanning...';
+            document.getElementById('startScanBtn').disabled = true;
+            updateStatus('Scan in progress...', 'warning', 'scanStatus');
+            
+            // Clear previous results
+            document.getElementById('testProgress').innerHTML = '';
+            document.getElementById('integrationResults').innerHTML = '';
+            
+            log('🎯 Triggering network scan with test parameters', 'testProgress');
+            
+            // Trigger the scan
+            socket.emit('startNetworkScan', {
+                ipRange: '127.0.0.1-2',  // Small range for quick test
+                scanType: 'quick',
+                timestamp: Date.now()
+            });
+            
+            log('📡 Scan request sent to server', 'testProgress');
+            
+            // Monitor for the issue: socket disconnections during scan
+            const monitorInterval = setInterval(() => {
+                if (!scanInProgress) {
+                    clearInterval(monitorInterval);
+                    return;
+                }
+                
+                if (!socket.connected) {
+                    log('🚨 Socket disconnection detected during scan!', 'testProgress');
+                    connectionStable = false;
+                }
+            }, 100);
+        }
+
+        function resetTest() {
+            scanInProgress = false;
+            connectionStable = true;
+            document.getElementById('startScanBtn').textContent = 'Start Test Scan';
+            document.getElementById('startScanBtn').disabled = false;
+            updateStatus('Ready to test', 'info', 'scanStatus');
+            
+            // Clear logs
+            document.getElementById('testProgress').innerHTML = '';
+            document.getElementById('integrationResults').innerHTML = '';
+            document.getElementById('socketLog').innerHTML = '';
+            
+            log('🔄 Test reset - ready for new test');
+        }
+
+        // Initialize when page loads
+        window.onload = () => {
+            log('🚀 Starting Final UI Fix Validation Test');
+            log('🎯 This test validates that the React component fixes prevent socket reconnections');
+            initSocket();
+            
+            // Add integration test info
+            setTimeout(() => {
+                log('📋 Testing fixes for useEffect dependency arrays causing socket reconnections', 'integrationResults');
+                log('📋 Testing ref pattern implementation to maintain stable socket connections', 'integrationResults');
+                log('📋 Testing function declaration ordering fixes', 'integrationResults');
+            }, 1000);
+        };
+
+        window.onbeforeunload = () => {
+            if (socket) {
+                socket.disconnect();
+            }
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,184 @@
+# Docker Deployment Configuration for UN Dashboard
+# This file sets up the complete application stack with reverse proxy
+
+version: '3.8'
+
+services:
+  # Reverse Proxy - Traefik for external access
+  traefik:
+    image: traefik:v3.0
+    container_name: un-dashboard-traefik
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=admin@10.5.1.212.nip.io"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+    networks:
+      - un-dashboard-network    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.rule=Host(`traefik.10.5.1.212.nip.io`)"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.tls.certresolver=letsencrypt"
+
+  # MongoDB Database
+  mongodb:
+    image: mongo:7.0
+    container_name: un-dashboard-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: un-dashboard-2024
+      MONGO_INITDB_DATABASE: undashboard
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongodb-init:/docker-entrypoint-initdb.d
+    networks:
+      - un-dashboard-network
+    # Remove port exposure for security - only internal access
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.runCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis for Session Management
+  redis:
+    image: redis:7.2-alpine
+    container_name: un-dashboard-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - un-dashboard-network
+    # Remove port exposure for security
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # UN Dashboard Application
+  un-dashboard-app:
+    build:
+      context: ./un-dashboard
+      dockerfile: Dockerfile
+    container_name: un-dashboard-app
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://admin:un-dashboard-2024@mongodb:27017/undashboard?authSource=admin
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=your-super-secret-jwt-key-change-this-in-production-${RANDOM_SECRET:-default}
+      - NEXTAUTH_SECRET=your-nextauth-secret-change-this-${RANDOM_SECRET:-default}
+      - NEXTAUTH_URL=https://10.5.1.212.nip.io
+      - DEFAULT_IP_RANGE=10.5.1.1-255
+      - DEFAULT_PORTS=21,22,23,25,53,80,110,111,135,139,143,443,993,995,1723,3389,5432,5900,6000,8080
+      - USE_DOCKER_NETWORK_TOOLS=true
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - DEFAULT_SSH_USER=dialtone
+      - DEFAULT_SSH_PASSWORD=admin
+      - COLLABORATION_PORT=4001
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - app_data:/app/data
+    networks:
+      - un-dashboard-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.un-dashboard.rule=Host(`10.5.1.212.nip.io`)"
+      - "traefik.http.routers.un-dashboard.entrypoints=websecure"
+      - "traefik.http.routers.un-dashboard.tls.certresolver=letsencrypt"
+      - "traefik.http.services.un-dashboard.loadbalancer.server.port=3000"
+      # WebSocket support for collaboration
+      - "traefik.http.routers.un-dashboard-ws.rule=Host(`10.5.1.212.nip.io`) && PathPrefix(`/collaboration-ws`)"
+      - "traefik.http.routers.un-dashboard-ws.entrypoints=websecure"
+      - "traefik.http.routers.un-dashboard-ws.tls.certresolver=letsencrypt"
+      - "traefik.http.services.un-dashboard-ws.loadbalancer.server.port=4000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Network Server (for network scanning tools)
+  un-dashboard-network:
+    build:
+      context: ./un-dashboard
+      dockerfile: Dockerfile.network
+    container_name: un-dashboard-network
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://admin:un-dashboard-2024@mongodb:27017/undashboard?authSource=admin
+      - USE_DOCKER_NETWORK_TOOLS=true
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - COLLABORATION_PORT=4001
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - un-dashboard-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.un-dashboard-network.rule=Host(`10.5.1.212.nip.io`) && PathPrefix(`/api/network`)"
+      - "traefik.http.routers.un-dashboard-network.entrypoints=websecure"
+      - "traefik.http.routers.un-dashboard-network.tls.certresolver=letsencrypt"
+      - "traefik.http.services.un-dashboard-network.loadbalancer.server.port=4000"
+
+  # MongoDB Express (optional - for database management)
+  mongo-express:
+    image: mongo-express:1.0.0
+    container_name: un-dashboard-mongo-express
+    restart: unless-stopped
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: un-dashboard-2024
+      ME_CONFIG_MONGODB_URL: mongodb://admin:un-dashboard-2024@mongodb:27017/
+      ME_CONFIG_BASICAUTH_USERNAME: admin
+      ME_CONFIG_BASICAUTH_PASSWORD: admin123
+    networks:
+      - un-dashboard-network
+    depends_on:
+      - mongodb
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.mongo-express.rule=Host(`db.10.5.1.212.nip.io`)"
+      - "traefik.http.routers.mongo-express.entrypoints=websecure"
+      - "traefik.http.routers.mongo-express.tls.certresolver=letsencrypt"
+      - "traefik.http.services.mongo-express.loadbalancer.server.port=8081"
+
+volumes:
+  mongodb_data:
+    driver: local
+  redis_data:
+    driver: local
+  traefik_letsencrypt:
+    driver: local
+  app_data:
+    driver: local
+
+networks:
+  un-dashboard-network:
+    driver: bridge
+    external: false

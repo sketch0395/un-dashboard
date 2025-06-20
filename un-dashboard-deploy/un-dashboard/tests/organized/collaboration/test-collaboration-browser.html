@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collaboration System Browser Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .warning { background: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        button { background: #007bff; color: white; border: none; padding: 10px 20px; margin: 5px; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        button:disabled { background: #6c757d; cursor: not-allowed; }
+        .log { background: #f8f9fa; border: 1px solid #dee2e6; padding: 10px; margin: 10px 0; border-radius: 4px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #dee2e6; border-radius: 8px; }
+        .device-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 10px 0; }
+        .device-card { border: 1px solid #dee2e6; padding: 10px; border-radius: 4px; background: #f8f9fa; }
+        .device-card.locked-by-me { border-color: #007bff; background: #e7f3ff; }
+        .device-card.locked-by-other { border-color: #dc3545; background: #f8d7da; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤝 Collaboration System Browser Test</h1>
+        <p>This test verifies that the collaboration system works correctly in a real browser environment.</p>
+        
+        <div class="test-section">
+            <h3>🔐 Authentication Status</h3>
+            <div id="auth-status" class="status info">Checking authentication...</div>
+            <button id="login-btn" onclick="testLogin()">Test Login</button>
+        </div>
+        
+        <div class="test-section">
+            <h3>🔗 WebSocket Connection</h3>
+            <div id="ws-status" class="status info">Not connected</div>
+            <button id="connect-btn" onclick="testConnection()" disabled>Connect to Collaboration</button>
+            <button id="disconnect-btn" onclick="disconnect()" disabled>Disconnect</button>
+        </div>
+        
+        <div class="test-section">
+            <h3>👥 Collaboration Status</h3>
+            <div id="collab-status" class="status info">
+                <strong>Connected:</strong> <span id="connected-status">No</span><br>
+                <strong>Users:</strong> <span id="users-count">0</span><br>
+                <strong>Device Locks:</strong> <span id="locks-count">0</span>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>🔒 Device Lock Testing</h3>
+            <div id="lock-status" class="status info">Ready to test device locking</div>
+            <div class="device-list" id="device-list">
+                <div class="device-card" data-device-id="192.168.1.1">
+                    <strong>Router (192.168.1.1)</strong><br>
+                    <button onclick="testLockDevice('192.168.1.1')">Lock Device</button>
+                    <button onclick="testUnlockDevice('192.168.1.1')">Unlock Device</button>
+                    <div class="device-status" id="device-192.168.1.1">Available</div>
+                </div>
+                <div class="device-card" data-device-id="192.168.1.100">
+                    <strong>Laptop (192.168.1.100)</strong><br>
+                    <button onclick="testLockDevice('192.168.1.100')">Lock Device</button>
+                    <button onclick="testUnlockDevice('192.168.1.100')">Unlock Device</button>
+                    <div class="device-status" id="device-192.168.1.100">Available</div>
+                </div>
+                <div class="device-card" data-device-id="192.168.1.50">
+                    <strong>Phone (192.168.1.50)</strong><br>
+                    <button onclick="testLockDevice('192.168.1.50')">Lock Device</button>
+                    <button onclick="testUnlockDevice('192.168.1.50')">Unlock Device</button>
+                    <div class="device-status" id="device-192.168.1.50">Available</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="test-section">
+            <h3>📋 Test Log</h3>
+            <div id="log" class="log"></div>
+            <button onclick="clearLog()">Clear Log</button>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let scanId = 'browser-test-' + Date.now();
+        let currentUser = null;
+        let deviceLocks = new Map();
+        
+        function log(message, type = 'info') {
+            const logEl = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️';
+            logEl.innerHTML += `<div>[${timestamp}] ${icon} ${message}</div>`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(`[${timestamp}] ${message}`);
+        }
+        
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+        
+        function updateStatus(elementId, message, className) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.className = `status ${className}`;
+        }
+        
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/auth/verify', {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.authenticated) {
+                        currentUser = data.user;
+                        updateStatus('auth-status', `Authenticated as: ${data.user.username}`, 'success');
+                        document.getElementById('connect-btn').disabled = false;
+                        log(`Authentication verified for user: ${data.user.username}`, 'success');
+                        return true;
+                    }
+                }
+                
+                updateStatus('auth-status', 'Not authenticated', 'error');
+                log('User not authenticated', 'error');
+                return false;
+                
+            } catch (error) {
+                updateStatus('auth-status', `Auth check failed: ${error.message}`, 'error');
+                log(`Authentication check failed: ${error.message}`, 'error');
+                return false;
+            }
+        }
+        
+        async function testLogin() {
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        username: 'admin',
+                        password: 'admin123'
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    log('Login successful', 'success');
+                    checkAuth();
+                } else {
+                    log(`Login failed: ${data.message}`, 'error');
+                }
+                
+            } catch (error) {
+                log(`Login error: ${error.message}`, 'error');
+            }
+        }
+        
+        function testConnection() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                log('Already connected', 'warning');
+                return;
+            }
+            
+            log('Attempting to connect to collaboration server...', 'info');
+              // Connect to collaboration server on port 4000
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.hostname;
+            const port = 4000; // Collaboration server runs on port 4000
+            
+            const wsUrl = `${protocol}//${host}:${port}/collaboration-ws?scanId=${scanId}`;
+            log(`Connecting to: ${wsUrl}`, 'info');
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onopen = () => {
+                log('WebSocket connected successfully', 'success');
+                updateStatus('ws-status', 'Connected', 'success');
+                document.getElementById('connect-btn').disabled = true;
+                document.getElementById('disconnect-btn').disabled = false;
+                
+                document.getElementById('connected-status').textContent = 'Yes';
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleCollaborationMessage(data);
+                } catch (error) {
+                    log(`Failed to parse message: ${error.message}`, 'error');
+                }
+            };
+            
+            ws.onclose = (event) => {
+                log(`WebSocket closed: ${event.code} - ${event.reason || 'No reason'}`, 'warning');
+                updateStatus('ws-status', 'Disconnected', 'error');
+                document.getElementById('connect-btn').disabled = false;
+                document.getElementById('disconnect-btn').disabled = true;
+                
+                document.getElementById('connected-status').textContent = 'No';
+                document.getElementById('users-count').textContent = '0';
+                document.getElementById('locks-count').textContent = '0';
+                
+                // Clear device locks
+                deviceLocks.clear();
+                updateDeviceDisplay();
+            };
+            
+            ws.onerror = (error) => {
+                log(`WebSocket error: ${error.message || 'Unknown error'}`, 'error');
+                updateStatus('ws-status', 'Connection error', 'error');
+            };
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close(1000);
+                ws = null;
+            }
+        }
+        
+        function handleCollaborationMessage(data) {
+            log(`Received: ${data.type}`, 'info');
+            
+            switch (data.type) {
+                case 'session_data':
+                    log(`Session data: ${data.users?.length || 0} users, ${data.locks?.length || 0} locks`, 'success');
+                    document.getElementById('users-count').textContent = data.users?.length || 0;
+                    document.getElementById('locks-count').textContent = data.locks?.length || 0;
+                    
+                    // Update device locks
+                    deviceLocks.clear();
+                    if (data.locks) {
+                        data.locks.forEach(lock => {
+                            deviceLocks.set(lock.deviceId, lock);
+                        });
+                    }
+                    updateDeviceDisplay();
+                    break;
+                    
+                case 'device_locked':
+                    log(`Device ${data.deviceId} locked by ${data.username}`, 'success');
+                    deviceLocks.set(data.deviceId, {
+                        deviceId: data.deviceId,
+                        userId: data.userId,
+                        username: data.username,
+                        lockedAt: data.timestamp
+                    });
+                    updateDeviceDisplay();
+                    document.getElementById('locks-count').textContent = deviceLocks.size;
+                    break;
+                    
+                case 'device_unlocked':
+                    log(`Device ${data.deviceId} unlocked`, 'success');
+                    deviceLocks.delete(data.deviceId);
+                    updateDeviceDisplay();
+                    document.getElementById('locks-count').textContent = deviceLocks.size;
+                    break;
+                    
+                case 'device_lock_failed':
+                    log(`Device lock failed: ${data.reason}`, 'error');
+                    break;
+                    
+                case 'user_joined':
+                    log(`User ${data.user.username} joined`, 'info');
+                    break;
+                    
+                case 'user_left':
+                    log(`User ${data.user.username} left`, 'info');
+                    break;
+                    
+                case 'error':
+                    log(`Server error: ${data.message}`, 'error');
+                    break;
+                    
+                default:
+                    log(`Unknown message type: ${data.type}`, 'warning');
+            }
+        }
+        
+        function updateDeviceDisplay() {
+            const deviceCards = document.querySelectorAll('.device-card');
+            
+            deviceCards.forEach(card => {
+                const deviceId = card.dataset.deviceId;
+                const statusEl = card.querySelector('.device-status');
+                const lock = deviceLocks.get(deviceId);
+                
+                // Reset classes
+                card.classList.remove('locked-by-me', 'locked-by-other');
+                
+                if (lock) {
+                    const isMyLock = currentUser && lock.userId === currentUser._id;
+                    
+                    if (isMyLock) {
+                        card.classList.add('locked-by-me');
+                        statusEl.textContent = 'Locked by you';
+                        statusEl.style.color = '#007bff';
+                    } else {
+                        card.classList.add('locked-by-other');
+                        statusEl.textContent = `Locked by ${lock.username}`;
+                        statusEl.style.color = '#dc3545';
+                    }
+                } else {
+                    statusEl.textContent = 'Available';
+                    statusEl.style.color = '#28a745';
+                }
+            });
+        }
+        
+        function testLockDevice(deviceId) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('Not connected to collaboration server', 'error');
+                return;
+            }
+            
+            log(`Attempting to lock device: ${deviceId}`, 'info');
+            
+            const lockRequest = {
+                type: 'device_lock',
+                deviceId: deviceId,
+                timestamp: new Date().toISOString()
+            };
+            
+            ws.send(JSON.stringify(lockRequest));
+        }
+        
+        function testUnlockDevice(deviceId) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('Not connected to collaboration server', 'error');
+                return;
+            }
+            
+            log(`Attempting to unlock device: ${deviceId}`, 'info');
+            
+            const unlockRequest = {
+                type: 'device_unlock',
+                deviceId: deviceId,
+                timestamp: new Date().toISOString()
+            };
+            
+            ws.send(JSON.stringify(unlockRequest));
+        }
+        
+        // Initialize
+        window.addEventListener('load', () => {
+            log('Browser test initialized', 'success');
+            checkAuth();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Integration Verification</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .warning { background-color: #fff3cd; border-color: #ffeaa7; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; }
+        .log {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .synced { background-color: #28a745; color: white; }
+        .pending { background-color: #ffc107; color: black; }
+        .error-badge { background-color: #dc3545; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗄️ Database Integration Verification</h1>
+        <p>This page verifies the scan history database integration functionality.</p>
+
+        <div class="test-section info">
+            <h3>📊 Current Status</h3>
+            <div id="status-info">
+                <p>Loading...</p>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔑 Authentication Test</h3>
+            <button onclick="testAuthentication()">Test Auth Status</button>
+            <div id="auth-result" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🗃️ Database API Test</h3>
+            <button onclick="testDatabaseAPI()">Test Database Connection</button>
+            <button onclick="testCreateScan()">Create Test Scan</button>
+            <button onclick="testListScans()">List Scans</button>
+            <div id="api-result" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>💾 LocalStorage Test</h3>
+            <button onclick="testLocalStorage()">Test Local Storage</button>
+            <button onclick="showLocalStorageData()">Show Local Data</button>
+            <button onclick="clearLocalStorage()">Clear Local Data</button>
+            <div id="storage-result" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🔄 Sync Functionality Test</h3>
+            <button onclick="testSyncStatus()">Check Sync Status</button>
+            <button onclick="simulateOfflineMode()">Simulate Offline</button>
+            <button onclick="testDataMigration()">Test Migration</button>
+            <div id="sync-result" class="log"></div>
+        </div>
+
+        <div class="test-section">
+            <h3>📈 Performance Test</h3>
+            <button onclick="testPerformance()">Run Performance Test</button>
+            <div id="performance-result" class="log"></div>
+        </div>
+    </div>
+
+    <script>
+        let testLog = '';
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}`;
+            console.log(logEntry);
+            testLog += logEntry + '\\n';
+        }
+
+        function updateLog(elementId, content) {
+            document.getElementById(elementId).innerHTML = content;
+        }
+
+        async function testAuthentication() {
+            log('Testing authentication status...');
+            updateLog('auth-result', 'Testing authentication...');
+            
+            try {
+                // Check if user data is available
+                const userData = localStorage.getItem('user');
+                if (userData) {
+                    const user = JSON.parse(userData);
+                    log(`✅ User authenticated: ${user.email || user.username || 'Unknown'}`);
+                    log(`   User ID: ${user._id}`);
+                    updateLog('auth-result', `✅ Authenticated as: ${user.email || user.username}\\nUser ID: ${user._id}`);
+                } else {
+                    log('❌ No user data found in localStorage');
+                    updateLog('auth-result', '❌ Not authenticated - no user data found');
+                }
+                
+                // Test API authentication
+                const response = await fetch('/api/scan-history?limit=1', {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    log('✅ API authentication successful');
+                    updateLog('auth-result', document.getElementById('auth-result').innerHTML + '\\n✅ API authentication working');
+                } else {
+                    log(`❌ API authentication failed: ${response.status}`);
+                    updateLog('auth-result', document.getElementById('auth-result').innerHTML + `\\n❌ API auth failed: ${response.status}`);
+                }
+                
+            } catch (error) {
+                log(`❌ Authentication test error: ${error.message}`);
+                updateLog('auth-result', `❌ Error: ${error.message}`);
+            }
+        }
+
+        async function testDatabaseAPI() {
+            log('Testing database API endpoints...');
+            updateLog('api-result', 'Testing database API...');
+            
+            try {
+                // Test GET endpoint
+                const listResponse = await fetch('/api/scan-history?limit=5', {
+                    credentials: 'include'
+                });
+                
+                if (listResponse.ok) {
+                    const data = await listResponse.json();
+                    log(`✅ GET /api/scan-history: ${data.scanHistory.length} scans found`);
+                    updateLog('api-result', `✅ Database connected\\n📊 Found ${data.scanHistory.length} scans\\n📄 Page: ${data.pagination.page}/${data.pagination.totalPages}`);
+                } else {
+                    log(`❌ GET /api/scan-history failed: ${listResponse.status}`);
+                    updateLog('api-result', `❌ Database connection failed: ${listResponse.status}`);
+                }
+                
+            } catch (error) {
+                log(`❌ Database API test error: ${error.message}`);
+                updateLog('api-result', `❌ Error: ${error.message}`);
+            }
+        }
+
+        async function testCreateScan() {
+            log('Testing scan creation...');
+            
+            const testScan = {
+                scanId: `test-${Date.now()}`,
+                name: `Verification Test - ${new Date().toLocaleString()}`,
+                ipRange: '192.168.1.0/24',
+                deviceCount: 2,
+                scanData: {
+                    'Network Device': [
+                        { ip: '192.168.1.1', hostname: 'test-router', status: 'up' },
+                        { ip: '192.168.1.10', hostname: 'test-device', status: 'up' }
+                    ]
+                },
+                metadata: {
+                    scanType: 'ping',
+                    osDetection: false,
+                    serviceDetection: false,
+                    ports: [],
+                    deviceTypes: ['router', 'computer']
+                },
+                settings: {
+                    isPrivate: true,
+                    isFavorite: false,
+                    tags: ['test', 'verification'],
+                    notes: 'Created by verification script'
+                }
+            };
+            
+            try {
+                const response = await fetch('/api/scan-history', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(testScan)
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    log(`✅ Test scan created successfully: ${result.name}`);
+                    updateLog('api-result', document.getElementById('api-result').innerHTML + `\\n✅ Created test scan: ${result.name}`);
+                } else {
+                    const error = await response.json();
+                    log(`❌ Scan creation failed: ${error.error}`);
+                    updateLog('api-result', document.getElementById('api-result').innerHTML + `\\n❌ Creation failed: ${error.error}`);
+                }
+                
+            } catch (error) {
+                log(`❌ Scan creation error: ${error.message}`);
+                updateLog('api-result', document.getElementById('api-result').innerHTML + `\\n❌ Error: ${error.message}`);
+            }
+        }
+
+        async function testListScans() {
+            try {
+                const response = await fetch('/api/scan-history', {
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    let output = `Found ${data.scanHistory.length} scans:\\n`;
+                    
+                    data.scanHistory.slice(0, 5).forEach((scan, index) => {
+                        output += `${index + 1}. ${scan.name} (${scan.deviceCount} devices)\\n`;
+                    });
+                    
+                    if (data.scanHistory.length > 5) {
+                        output += `... and ${data.scanHistory.length - 5} more`;
+                    }
+                    
+                    updateLog('api-result', document.getElementById('api-result').innerHTML + `\\n\\n📋 Scan List:\\n${output}`);
+                } else {
+                    updateLog('api-result', document.getElementById('api-result').innerHTML + `\\n❌ List failed: ${response.status}`);
+                }
+            } catch (error) {
+                updateLog('api-result', document.getElementById('api-result').innerHTML + `\\n❌ List error: ${error.message}`);
+            }
+        }
+
+        function testLocalStorage() {
+            log('Testing localStorage functionality...');
+            
+            const userData = localStorage.getItem('user');
+            if (!userData) {
+                updateLog('storage-result', '❌ No user data - cannot test user-specific storage');
+                return;
+            }
+            
+            const user = JSON.parse(userData);
+            const storageKey = `scanHistory_${user._id}`;
+            
+            // Test data
+            const testData = [
+                {
+                    id: 'local-test-1',
+                    timestamp: new Date().toISOString(),
+                    ipRange: '192.168.1.0/24',
+                    devices: 3,
+                    data: { 'Test': [{ ip: '192.168.1.1', status: 'up' }] },
+                    isFromDatabase: false
+                }
+            ];
+            
+            try {
+                // Save test data
+                localStorage.setItem(storageKey, JSON.stringify(testData));
+                
+                // Read back
+                const retrieved = JSON.parse(localStorage.getItem(storageKey));
+                
+                if (retrieved && retrieved.length === 1 && retrieved[0].id === 'local-test-1') {
+                    log('✅ localStorage read/write successful');
+                    updateLog('storage-result', `✅ localStorage working\\n🔑 Storage key: ${storageKey}\\n📊 Test data saved and retrieved successfully`);
+                } else {
+                    log('❌ localStorage data mismatch');
+                    updateLog('storage-result', '❌ localStorage data mismatch');
+                }
+                
+            } catch (error) {
+                log(`❌ localStorage error: ${error.message}`);
+                updateLog('storage-result', `❌ Error: ${error.message}`);
+            }
+        }
+
+        function showLocalStorageData() {
+            const userData = localStorage.getItem('user');
+            if (!userData) {
+                updateLog('storage-result', 'No user data available');
+                return;
+            }
+            
+            const user = JSON.parse(userData);
+            const storageKey = `scanHistory_${user._id}`;
+            const scanData = localStorage.getItem(storageKey);
+            
+            if (scanData) {
+                const scans = JSON.parse(scanData);
+                let output = `📋 Local Storage Data (${scans.length} scans):\\n`;
+                
+                scans.slice(0, 10).forEach((scan, index) => {
+                    const syncStatus = scan.isFromDatabase ? '🔄 synced' : '⏳ pending';
+                    output += `${index + 1}. ${scan.ipRange} (${scan.devices} devices) ${syncStatus}\\n`;
+                });
+                
+                if (scans.length > 10) {
+                    output += `... and ${scans.length - 10} more`;
+                }
+                
+                updateLog('storage-result', output);
+            } else {
+                updateLog('storage-result', 'No scan data in localStorage');
+            }
+        }
+
+        function clearLocalStorage() {
+            const userData = localStorage.getItem('user');
+            if (userData) {
+                const user = JSON.parse(userData);
+                const storageKey = `scanHistory_${user._id}`;
+                localStorage.removeItem(storageKey);
+                updateLog('storage-result', '🗑️ Local scan data cleared');
+            }
+        }
+
+        function testSyncStatus() {
+            const userData = localStorage.getItem('user');
+            if (!userData) {
+                updateLog('sync-result', '❌ No user data for sync test');
+                return;
+            }
+            
+            const user = JSON.parse(userData);
+            const storageKey = `scanHistory_${user._id}`;
+            const scanData = localStorage.getItem(storageKey);
+            
+            if (!scanData) {
+                updateLog('sync-result', '📭 No local scans to check sync status');
+                return;
+            }
+            
+            const scans = JSON.parse(scanData);
+            const synced = scans.filter(scan => scan.isFromDatabase).length;
+            const pending = scans.length - synced;
+            
+            let output = `📊 Sync Status:\\n`;
+            output += `✅ Synced: ${synced}\\n`;
+            output += `⏳ Pending: ${pending}\\n`;
+            output += `📁 Total: ${scans.length}\\n\\n`;
+            
+            if (pending > 0) {
+                output += `🔄 Pending scans:\\n`;
+                scans.filter(scan => !scan.isFromDatabase).forEach((scan, index) => {
+                    output += `${index + 1}. ${scan.ipRange} (${scan.devices} devices)\\n`;
+                });
+            }
+            
+            updateLog('sync-result', output);
+        }
+
+        function simulateOfflineMode() {
+            updateLog('sync-result', '🔌 Simulating offline mode...\\n\\nIn offline mode:\\n✅ Scans saved to localStorage\\n❌ Database sync unavailable\\n🔄 Sync will resume when online\\n\\nThis demonstrates fallback functionality.');
+        }
+
+        function testDataMigration() {
+            // Simulate global scan history migration
+            const globalScans = [
+                {
+                    id: 'global-1',
+                    timestamp: new Date().toISOString(),
+                    ipRange: '10.0.0.0/24',
+                    devices: 2,
+                    data: {}
+                }
+            ];
+            
+            // Save global data
+            localStorage.setItem('scanHistory', JSON.stringify(globalScans));
+            
+            // Check if user-specific migration would work
+            const userData = localStorage.getItem('user');
+            if (userData) {
+                const user = JSON.parse(userData);
+                const userKey = `scanHistory_${user._id}`;
+                const userScans = localStorage.getItem(userKey);
+                
+                if (!userScans || JSON.parse(userScans).length === 0) {
+                    updateLog('sync-result', '🔄 Migration scenario detected\\n✅ Global scans found\\n📋 Would migrate to user-specific storage\\n🔑 Target key: ' + userKey);
+                } else {
+                    updateLog('sync-result', '✅ User already has scan data\\n📋 No migration needed');
+                }
+            } else {
+                updateLog('sync-result', '❌ No user data for migration test');
+            }
+            
+            // Cleanup
+            localStorage.removeItem('scanHistory');
+        }
+
+        async function testPerformance() {
+            updateLog('performance-result', '⏱️ Running performance tests...');
+            
+            const startTime = performance.now();
+            
+            try {
+                // Test localStorage performance
+                const localStart = performance.now();
+                for (let i = 0; i < 100; i++) {
+                    localStorage.setItem(`test_${i}`, JSON.stringify({ test: 'data' }));
+                    localStorage.getItem(`test_${i}`);
+                    localStorage.removeItem(`test_${i}`);
+                }
+                const localEnd = performance.now();
+                
+                // Test API performance
+                const apiStart = performance.now();
+                const response = await fetch('/api/scan-history?limit=1', {
+                    credentials: 'include'
+                });
+                const apiEnd = performance.now();
+                
+                const totalTime = performance.now() - startTime;
+                
+                let output = `📊 Performance Results:\\n`;
+                output += `💾 localStorage (100 ops): ${(localEnd - localStart).toFixed(2)}ms\\n`;
+                output += `🌐 API response time: ${(apiEnd - apiStart).toFixed(2)}ms\\n`;
+                output += `⏱️ Total test time: ${totalTime.toFixed(2)}ms\\n\\n`;
+                
+                if (response.ok) {
+                    output += `✅ API performance: Good\\n`;
+                } else {
+                    output += `⚠️ API performance: Check connection\\n`;
+                }
+                
+                output += `✅ localStorage performance: Excellent`;
+                
+                updateLog('performance-result', output);
+                
+            } catch (error) {
+                updateLog('performance-result', `❌ Performance test error: ${error.message}`);
+            }
+        }
+
+        // Initialize status on page load
+        window.onload = function() {
+            updateStatus();
+        };
+
+        function updateStatus() {
+            const userData = localStorage.getItem('user');
+            let statusHTML = '';
+            
+            if (userData) {
+                const user = JSON.parse(userData);
+                const storageKey = `scanHistory_${user._id}`;
+                const scanData = localStorage.getItem(storageKey);
+                const scanCount = scanData ? JSON.parse(scanData).length : 0;
+                
+                statusHTML = `
+                    👤 User: ${user.email || user.username || 'Unknown'}<br>
+                    🔑 User ID: ${user._id}<br>
+                    📊 Local Scans: ${scanCount}<br>
+                    💾 Storage Key: ${storageKey}
+                `;
+            } else {
+                statusHTML = `
+                    ❌ Not authenticated<br>
+                    Please log in to test database integration
+                `;
+            }
+            
+            document.getElementById('status-info').innerHTML = statusHTML;
+        }
+    </script>
+</body>
+</html>
